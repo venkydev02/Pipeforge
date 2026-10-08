@@ -1,6 +1,6 @@
 # Relational Data Migration Engine
 
-> An assisted relational data migration engine that helps discover, map, validate, transform, and migrate data between relational systems — with deterministic recommendations and human review before execution.
+> An assisted relational data migration engine for Rails applications. It discovers, maps, validates, transforms, and loads data into your database through ActiveRecord — with deterministic, explainable recommendations that produce a runnable plan you can edit, and options that let you say *how* a migration should behave while the engine handles the rest.
 
 ## About
 
@@ -11,47 +11,45 @@ Most of my backend work has involved data migrations that were never as simple a
 - Records that were invalid, missing, or silently blocked
 - Foreign keys that only resolved correctly against the real state of the target database
 
-The hard part was never parsing the input — it was everything around it: mapping source to target with enough confidence to explain *why* a mapping was chosen, catching bad data before it reached the database, resolving relationships deliberately, staying practical at volume, and running migrations in reviewed phases with customer sign-off. In practice that meant a new one-off script per migration, tightly coupled to a specific Rails app or ORM, unreusable, and opaque about why any decision was made.
+The hard part was never parsing the input — it was everything around it: mapping source to target with enough confidence to explain *why* a mapping was chosen, catching bad data before it reached the database, resolving relationships deliberately, staying practical at volume, and being able to see what a migration would do before it does it. In practice that meant a new one-off script per migration, tightly coupled to a specific Rails app, unreusable, and opaque about why any decision was made.
 
-This engine is the fix: a **framework-independent, plain-Ruby, contract-first relational data migration engine**. It discovers source and target schemas, recommends mappings for human review, validates and transforms the data, resolves relationships deliberately, and only then executes — in a controlled, repeatable way, independent of any one application or ORM.
+This engine is the fix: a **contract-first relational data migration engine built on ActiveRecord**. You give it a source and a target model (or table) and set options for how it should behave. It reads the schema and model metadata, recommends a runnable plan, validates and transforms the data, resolves relationships deliberately, and loads — in a controlled, repeatable, reportable way, without you writing connections, lookups, or loaders.
 
 ## Architecture
 
-Source and target are analyzed into formal schemas, the Planner recommends a mapping for human review, and only a reviewed, built plan is ever executed. Core never touches a real target row directly — relationship resolution and loading are dispatched across a capability boundary to adapters, which are the only components allowed to reach actual target storage.
+The source and the target schema (including model metadata) are analyzed into formal schemas. The Planner recommends a plan as a draft: runnable *state*, plus optional *facts* explaining why. You can edit the draft or use it as-is. The Builder validates it into a state-only plan, and only that plan is executed. Planning never reads existing target rows; only the relationship resolver (reads parent rows) and the loader (writes rows) touch business data.
 
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 45, 'rankSpacing': 65, 'padding': 20}}}%%
 flowchart TD
-    Source[Source Input]
-    TargetDB[(Target Database)]
+    Source[Source: CSV]
+    DB[(Target database via ActiveRecord)]
 
-    subgraph Core["Core Engine — never touches target rows"]
-        P1["Source Analysis (P1)"]
-        P2["Target Catalog Discovery (P2)"]
+    subgraph Engine["Engine"]
+        Analyzer["Source analysis (P1)"]
+        Schema["Target schema + model metadata (P2)"]
         Planner[MigrationPlanner]
-        Review{{Mandatory Consumer Review}}
+        Edit{{Optional consumer edit}}
         Builder[MigrationPlanBuilder]
         Runtime[MigrationRuntime]
+        subgraph Rows["Row-access modules"]
+            Resolver[Relationship Resolver]
+            Loader[Loader]
+        end
     end
 
-    subgraph Adapters["Capability Adapters (consumer-owned)"]
-        Resolver[Resolver Adapter]
-        Loader[Loader Adapter]
-    end
-
-    Source --> P1
-    TargetDB -->|schema metadata only| P2
-    P1 --> Planner
-    P2 --> Planner
-    Planner -->|recommendations| Review
-    Review -->|reviewed decisions| Builder
-    Builder -->|valid plan| Runtime
-    Runtime -->|resolve relationships| Resolver
-    Runtime -->|load records| Loader
-    Resolver -.->|business rows| TargetDB
-    Loader -.->|business rows| TargetDB
+    Source --> Analyzer --> Planner
+    DB -. "metadata only" .-> Schema --> Planner
+    Planner -->|PlanDraft| Edit
+    Planner -.->|"PlanDraft, unedited"| Builder
+    Edit -->|"PlanDraft, edited"| Builder
+    Builder -->|"MigrationPlan (state only)"| Runtime
+    Runtime --> Resolver
+    Runtime --> Loader
+    Resolver -. reads parent rows .-> DB
+    Loader -. writes rows .-> DB
 ```
 
-Within `MigrationRuntime`, execution runs in a fixed order: extract → map → transform → pre-resolution validation → relationship resolution (dispatched to the Resolver Adapter) → post-resolution validation → load (dispatched to the Loader Adapter).
+Within `MigrationRuntime`, execution runs in a fixed order: extract → map → transform → pre-resolution validation → relationship resolution → post-resolution validation → load → report.
 
-This is a simplified view for a quick read. The full system topology, the Planner/Review/Builder/Runtime boundary, and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md) — every other doc in `docs/` refers back to that file rather than redrawing its own version.
+This is a simplified view. The full topology, the Planner/Builder/Runtime boundary and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md); every other doc refers back to that file.

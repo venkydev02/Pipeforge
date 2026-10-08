@@ -1,337 +1,166 @@
 # Architecture Overview & System Topology
 
-> **Document Location:** `docs/architecture/overview.md`  
-> **Status:** Final & Frozen Architecture (v2.3)  
+> **Document Location:** `docs/architecture/overview.md`
+> **Status:** Draft v3.0 — rewritten 2026-10-08 for the ActiveRecord-based design (ADR-10, ADR-11)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
 
-## 1. Foundational Axioms & Architectural Principles
+## 1. Foundational Principles
 
-The **Relational Data Migration Engine** is designed around the following foundational axioms.
+The **Relational Data Migration Engine** is a Rails-oriented gem that migrates data from a source file into a relational database through ActiveRecord. The consumer states *how a migration should behave*; the engine discovers, recommends, validates, resolves relationships and loads.
 
-CSV is the **current MVP source adapter / input format**. It is not the system identity. The engine is a framework-independent relational data migration engine; additional source formats may be added later without changing the Core Planner → Builder → Runtime design.
+CSV is the **current MVP source format**. It is not the system identity; other source formats may be added later without changing the Planner → Builder → Runtime design.
 
-### 1.1 The Hard Constraint: Zero Core Target-Row Access
-The Core Engine will **never have direct access to the consumer's target business data or existing target rows**.
+### 1.1 Minimal Consumer Effort
+The consumer does not write connections, resolvers, or loaders. They supply a source, name the target (a model or table), and set behavior options. Everything else is built in. Custom components exist only as an advanced extension point (see `target-access.md`).
 
-Target **schema discovery** is an explicitly authorized **structural** capability. Target **business rows** are not.
+### 1.2 The Row-Access Boundary (Zero Target-Row Access, as a Module Boundary)
+Planning must never depend on what is already in the target database.
 
-```text
-Target Catalog Discovery
-        ↓
-TargetSchema
-        ↓
-Core Planner / Plan Builder / Validation (structural rules)
+* **Allowed everywhere in the engine (metadata only):** columns, types, nullability, defaults, primary/foreign keys, unique indexes, and model metadata (enums, associations, virtual attributes, validators).
+* **Forbidden outside the two row-access modules:** reading existing target rows, value distributions, value overlaps, existing parent entities, or "is this table empty?" checks.
+* **Row-access modules:** only the **relationship resolver** (reads parent rows) and the **loader** (writes rows) may touch business rows. A test verifies that the Planner, Builder and pre-resolution stages never query rows.
 
-Target Business Rows
-        ↓
-NOT directly accessible by Core
-        ↓
-Capability Adapter only (resolver / loader)
-```
+### 1.3 Schema Is Structural Truth, Not Business Truth
+The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values are allowed. Allowed values are known only from model metadata (for example an `enum` declaration), never inferred from stored data.
 
-* **What the Core Engine has access to:**
-  * Target database catalog metadata (tables, columns, SQL types, PKs, FKs, nullability, unique constraints) via Target Catalog Discovery → `TargetSchema`.
-  * Source data through the configured source adapter (MVP: CSV streams and bounded sampling buffers).
-  * Optional application semantic declarations explicitly exposed by the consumer (`SemanticSchema`).
-* **What the Core Engine MUST NOT assume or access:**
-  * Existing target rows, target value distributions, target value overlaps, existing parent entities, live application state, or “is this table empty?” checks.
-* **The Capability Boundary:**
-  $$\text{Core Engine} \xrightarrow{\text{NO direct target-row access}} \text{Isolated}$$
-  $$\text{Configured Capability Adapters} \xrightarrow{\text{Authorized & configured}} \text{Target DB / ORM / API Storage}$$
-
-Catalog discovery may use a schema-only connection or catalog API. That is not a license for Core to `SELECT` business rows. Row lookups and persistence happen only across the capability boundary.
-
-### 1.2 Target Schema Structural Truth Does NOT Imply Business Values
-The target database catalog provides *structural truth* (column names, SQL types, nullability, PK/FK relationships, lengths, and defaults). It **does not provide arbitrary business-level domain values** for `VARCHAR` or `INTEGER` columns.
-* For example, knowing a target column is `users.status VARCHAR(50)` does **not** tell the engine that allowed values are `["ACTIVE", "INACTIVE", "SUSPENDED"]`.
-* Domain values are known to the engine **only** when explicitly declared by the consumer via `SemanticSchema`.
-
-### 1.3 Tripartite Architecture: Planner → Consumer Review → Plan Builder → Runtime
-The architecture strictly decouples planning, plan building, and execution:
+### 1.4 Planner → Builder → Runtime, One Plan Format (ADR-01 amended by ADR-10)
 
 ```text
 MigrationPlanner
         ↓
-Initial MigrationPlan
+PlanDraft  (state + optional facts)
         ↓
-Consumer Review
+[Optional consumer edit]
         ↓
-MigrationPlanBuilder
+MigrationPlanBuilder   (PlanDraft → BuildResult; reads only state)
         ↓
-Valid MigrationPlan
+MigrationPlan (P3, state only)
         ↓
 MigrationRuntime
 ```
 
-1. **`MigrationPlanner`:** Discovers facts, analyzes metadata, recommends mappings, surfaces uncertainties, and creates the **initial `MigrationPlan`**.
-2. **`MigrationPlanBuilder`:** Constructs/reconstructs and validates a final valid **`MigrationPlan`** from decisions submitted by the consumer (whether the consumer changed mappings or accepted the Planner's recommendations unchanged). The Builder does **not** start the Runtime.
-3. **`MigrationRuntime`:** Consumes and executes the valid **`MigrationPlan`**. It has no awareness of the Planner, the Builder, or consumer UI workflows. The consumer/application or orchestration layer decides when Runtime is invoked.
+1. **`MigrationPlanner`** discovers facts, recommends mappings and lookups, and produces a **`PlanDraft`**: a runnable `state` plus optional `facts` explaining it. It builds the draft through `MigrationPlanBuilder`'s own methods.
+2. **`MigrationPlanBuilder`** is a pure function `PlanDraft → BuildResult`. It reads only `state`, never `facts`. Success carries the state-only `MigrationPlan`; failure carries errors (column, code, reason). It is used internally by the Planner and as a public API.
+3. **`MigrationRuntime`** executes a `MigrationPlan`. It knows nothing about the Planner, the Builder, or `facts`.
 
-### 1.4 `MigrationPlan` as Domain Contract, Not Serialization Format
-`MigrationPlan` (P3) is the **in-memory domain contract** between planning/building and execution.
-* The Runtime consumes a valid `MigrationPlan` object directly.
-* Formats such as JSON, YAML, or database-stored JSON are optional, thin serialization representations for storage or transport across network/CLI boundaries.
-* The Runtime is never responsible for generic format parsing; it depends on a validated domain object.
+Consumer review or editing between Planner and Builder is **optional** and consumer-owned. The Planner's draft may go straight to `build`.
 
-### 1.5 Formal Data Contract / Protocol First, Implementation Second
-In this project, **protocol** means a **formal data contract**: the structure, semantics, invariants, and allowed interaction between engine components.
+### 1.5 Plan as Domain Object
+`MigrationPlan` is an immutable in-memory object consumed directly by the Runtime. JSON or YAML are optional serializations for storage or transport. The Runtime never parses formats.
 
-It does **not** necessarily mean an HTTP API, REST API, or network protocol. JSON/YAML examples in the protocol documents are serialization illustrations of those contracts.
+### 1.6 Contracts Between Components
+Stages communicate through explicit value objects (P1–P8, `PlanDraft`, `BuildResult`) and not through shared mutable state or ad hoc hashes. Only artifacts that cross a process or storage boundary (`SourceSchema`, `TargetSchema`, `PlanDraft`, `MigrationPlan`, the run report) carry a `protocol_version`. In-process objects (P4 to P8) do not. See `protocols.md`.
 
-* Layers depend on these contracts—not on a chain of Ruby classes, ORM models, or database sockets.
-* The Validator never depends on SQL connections or ORM gems.
-* The Transformer never depends on PostgreSQL or CSV driver internals.
-* The Loader adapter never knows Recommendation Engine scoring heuristics.
-* Adapters interact solely via versioned contract payloads.
-
-### 1.6 Deterministic Core
-The Core recommendation and planning system must be:
-
-* **deterministic**
-* **explainable**
-* **reproducible**
-* **testable**
-
-The Core Engine must not depend on LLMs or external AI services for correctness. Identical metadata and `EngineConfiguration` recommendation policies must produce identical recommendations.
+### 1.7 Deterministic Core
+Recommendations are **deterministic**, **explainable**, **reproducible** and **testable**. Identical inputs and `EngineConfiguration` produce identical drafts. No LLM or external AI service participates in correctness.
 
 ---
 
-## 2. System Architecture & Topology
+## 2. System Topology
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        FRAMEWORK-INDEPENDENT CORE ENGINE                               │
-│        (Zero Target-Row Access • Pure Metadata & Transformation Engine)                │
-│                                                                                        │
-│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                    ENGINE-WIDE CONFIGURATION SUBSYSTEM                           │  │
-│  │                                                                                  │  │
-│  │  config/engine.yml ──► ConfigLoader & Validator ──► EngineConfiguration (Domain) │  │
-│  │                                                            │ (Injected across all)│  │
-│  └────────────────────────────────────────────────────────────┼─────────────────────┘  │
-│                                                               │                        │
-│  ┌────────────────────────────────────────────────────────────┼─────────────────────┐  │
-│  │                    PLANNING & PLAN CONSTRUCTION SUBSYSTEM  ▼                     │  │
-│  │                                                                                  │  │
-│  │  P1: SourceSchema ──┐                                                            │  │
-│  │  P2: TargetSchema ──┼──► MigrationPlanner ──► Initial MigrationPlan              │  │
-│  │  P2-Ext: Semantic ──┘          │                                                 │  │
-│  │                                │ Uses                                            │  │
-│  │                                ▼                                                 │  │
-│  │                 ┌─────────────────────────────┐                                  │  │
-│  │                 │ Shared Plan Construction &  │                                  │  │
-│  │                 │   Validation Primitives     │                                  │  │
-│  │                 └──────────────┬──────────────┘                                  │  │
-│  │                                ▲                                                 │  │
-│  │                                │ Uses                                            │  │
-│  │  Consumer Decisions ───────────┴──► MigrationPlanBuilder ──► Valid MigrationPlan │  │
-│  │  (or Unchanged Recommendations)                                    │             │  │
-│  └────────────────────────────────────────────────────────────────────┼─────────────┘  │
-│                                                                       │                │
-│                                                                       ▼ P3 Contract    │
-│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                        STREAMING RUNTIME SUBSYSTEM                               │  │
-│  │                                                                                  │  │
-│  │   Extract → Map → Transform → Pre-resolution validation → P4: TransformedBatch   │  │
-│  │                              │                                                   │  │
-│  │                              ▼                                                   │  │
-│  │                    Runtime Orchestrator ◄── (Derives ExecutionContext from       │  │
-│  │                       │              │       EngineConfiguration + plan/overrides)│  │
-│  │   P5a: RelResolutionRequest          │ P7: LoadRequest + ExecutionContext        │  │
-│  │   then post-resolution / integrity → P6                                          │  │
-│  └───────────────────────┼──────────────┼───────────────────────────────────────────┘  │
-└──────────────────────────┼──────────────┼──────────────────────────────────────────────┘
-                           │              │
-═══════════════════════════╪══════════════╪═══════════════════════════════════════════════
-                           │ CAPABILITY   │ CAPABILITY
-                           │ BOUNDARY     │ BOUNDARY
-═══════════════════════════╪══════════════╪═══════════════════════════════════════════════
-                           ▼              ▼
-┌──────────────────────────────────────┐  ┌─────────────────────────────────────────────┐
-│     RESOLVER ADAPTER                 │  │         LOADER ADAPTER                      │
-│   (Authorized for Target Lookups)    │  │       (Authorized for Persistence)          │
-│                                      │  │                                             │
-│  ┌────────────────────────────────┐  │  │  ┌───────────────────────────────────────┐  │
-│  │ DbRelationshipResolver [gem]   │  │  │  │ DbBulkLoader [gem — generic SQL]      │  │
-│  ├────────────────────────────────┤  │  │  ├───────────────────────────────────────┤  │
-│  │ Consumer ORM Resolver [opt]    │  │  │  │ Consumer ORM Loader [opt]             │  │
-│  ├────────────────────────────────┤  │  │  ├───────────────────────────────────────┤  │
-│  │ Consumer Custom / API [opt]    │  │  │  │ Consumer Custom / API Loader [opt]    │  │
-│  └────────────────┬───────────────┘  │  │  └───────────────────┬─────────────────┘  │
-└───────────────────┼──────────────────┘  └─────────────────────┼──────────────────────┘
-                    │                                           │
-                    │ P5b: RelResolutionResult                 │ P8: LoadResult
-                    ▼                                           ▼
-┌──────────────────────────────────────┐  ┌─────────────────────────────────────────────┐
-│ P6: ValidationBatch (Unified Verdict)│  │ P8: Migration Summary & Dead-Letter Log     │
-└──────────────────────────────────────┘  └─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Source[Source: CSV]
+    DB[(Target database via ActiveRecord)]
+    Config[engine.yml → EngineConfiguration]
+
+    subgraph Engine["Engine"]
+        Analyzer[SourceAnalyzer → P1]
+        Schema["Target::Schema reader → P2<br/>(metadata only)"]
+        Planner[MigrationPlanner]
+        Builder[MigrationPlanBuilder]
+        Runtime[MigrationRuntime]
+        subgraph Rows["Row-access modules"]
+            Resolver[Relationship Resolver]
+            Loader[Loader]
+        end
+    end
+
+    Consumer{{"Consumer (optional edit)"}}
+
+    Source --> Analyzer --> Planner
+    DB -. "schema + model metadata" .-> Schema --> Planner
+    Config --> Planner
+    Planner -->|PlanDraft| Consumer
+    Planner -.->|"PlanDraft, unedited"| Builder
+    Consumer -->|"PlanDraft, edited"| Builder
+    Builder -->|"MigrationPlan (P3)"| Runtime
+    Runtime -->|"P5a / P5b"| Resolver
+    Runtime -->|"P7 / P8"| Loader
+    Resolver -. reads parent rows .-> DB
+    Loader -. writes rows .-> DB
 ```
 
-The gem may provide generic framework-independent adapters (`DbRelationshipResolver`, `DbBulkLoader`). ORM, API, and application-specific adapters are **consumer-owned**. The gem does not require or promise them.
+Source analysis and target schema reading are independent and may run concurrently.
 
 ---
 
 ## 3. Planning, Plan Construction, and Execution Boundary
 
-```
-                  ┌────────────────────────────────────────┐
-                  │       Shared Plan Construction &       │
-                  │         Validation Primitives          │
-                  └───────────┬────────────────┬───────────┘
-                              ▲                ▲
-                              │                │
-            ┌─────────────────┘                └──────────────────┐
-            │ Uses primitives                     Uses primitives │
-            │                                                     │
- ┌─────────────────────┐                               ┌──────────────────────┐
- │   MigrationPlanner  │                               │  MigrationPlanBuilder│
- └──────────┬──────────┘                               └──────────▲───────────┘
-            │                                                     │
-            │ Creates initial plan                                │ Builds / validates
-            ▼                                                     │ final plan
- ┌─────────────────────┐                                          │
- │Initial MigrationPlan│                                          │
- └──────────┬──────────┘                                          │
-            │                                                     │
-            └───────────────► ┌───────────────────┐ ──────────────┘
-                              │  Consumer Review  │
-                              │ (UI, Admin, API)  │
-                              │                   │
-                              │ [Change Decisions │
-                              │        OR         │
-                              │    No Changes]    │
-                              └───────────────────┘
-                                        │
-                                        │ (Yields valid plan)
-                                        ▼
-                             ┌─────────────────────┐
-                             │ Valid MigrationPlan │
-                             └──────────┬──────────┘
-                                        │
-                                        │ Consumer / orchestration
-                                        │ invokes Runtime
-                                        ▼
-                             ┌─────────────────────┐
-                             │  MigrationRuntime   │
-                             └──────────┬──────────┘
-                                        │
-                                        │ Dispatches to adapters
-                                        ▼
-                             ┌─────────────────────┐
-                             │    Target Storage   │
-                             └─────────────────────┘
-```
-
 ### 3.1 `MigrationPlanner`
-* **Input:** `SourceSchema` (P1), `TargetSchema` (P2), optional `SemanticSchema` (P2-Ext), and `EngineConfiguration` recommendation policies (synonyms, thresholds).
+* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, including model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation policy (synonyms, thresholds).
 * **Responsibility:**
-  * Discovers metadata facts.
-  * Evaluates name similarity, type compatibility, format patterns, and single-attribute foreign key markers.
+  * Evaluates name similarity, type compatibility, format patterns, enum and association evidence, and foreign-key markers.
   * Recommends column mappings and relationship lookups where evidence exists.
-  * Surfaces uncertainties, ambiguous candidates, and unmapped required target columns.
-  * Constructs the **initial `MigrationPlan`**.
-* **Non-Responsibilities:** Does not render UIs, does not persist plans, does not execute migrations, and does not invent business value mappings when source tokens might match target semantics directly.
+  * Puts into `state` only mappings at or above the configured confidence threshold. Lower-confidence and hard-gated candidates, warnings and alternatives appear only in `facts`.
+* **Non-responsibilities:** no UI, no persistence, no execution, no invented value mappings, no guesses on ambiguous lookups.
 
 ### 3.2 `MigrationPlanBuilder`
-* **Input:** Plan structure and decisions supplied by the consumer (mappings, added transforms, explicit value mappings, relationship lookup choices) and target schema metadata.
-* **Responsibility:**
-  * Constructs/reconstructs and validates a final, executable `MigrationPlan`.
-  * Verifies structural completeness: all required non-null target columns are mapped, source columns exist, transforms exist in registry, and lookups target valid entities.
-* **The "No-Change" Invariant:**
-  * **"No consumer change" is a completely valid outcome.** If the consumer approves the Planner's recommendations without alteration, the Builder validates and instantiates the `MigrationPlan` directly from the initial plan's data structure.
-* **Non-Responsibilities:** Does not make new recommendations, heuristic guesses, alter consumer decisions, or invoke `MigrationRuntime`.
+* **Input:** a `PlanDraft` (unchanged from the Planner, edited, or hand-written) and the `TargetSchema`.
+* **Output:** a `BuildResult`: the `MigrationPlan`, or a list of errors, each with the affected column, a stable code, and the reason. All errors are reported at once.
+* **Validates:** every `NOT NULL` target column that has no default and is not auto-generated is covered by the plan; source columns exist; transforms exist in the registry; lookups reference real parent entities and attributes; mapped attributes are writable.
+* **Required properties:** determinism; idempotence (`build(plan.to_draft) == plan`); fact-independence.
+* **Non-responsibilities:** no recommendations, no heuristics, no execution.
 
-### 3.3 Shared Plan Construction & Validation Primitives
-Both `MigrationPlanner` and `MigrationPlanBuilder` internally utilize a shared set of lower-level domain primitives:
-* **Validation Rules:** Validates that field names are syntactically valid, transformations are registered, and required fields are satisfied.
-* **Plan Structural Types:** Value objects representing direct mappings, relationship lookups, and transform steps.
-* Reusing these primitives guarantees that a plan constructed by the Planner and a plan reconstructed by the Builder obey identical contract invariants.
+### 3.3 Shared Plan Primitives
+Planner and Builder share value objects for mappings, lookups and transform steps, and the validation rules for them, so drafts from either author obey identical invariants.
 
 ### 3.4 The Consumer Boundary
-The consumer application or integration layer owns:
-* Plan presentation (terminal UI, React admin dashboard, CLI prompts).
-* User interaction and review workflows.
-* Plan storage (saving plan YAML files, PostgreSQL JSON columns, S3 blobs).
-* Network/API transport across client-server boundaries.
-* **When** to invoke `MigrationRuntime` with a valid `MigrationPlan`.
-
-The Core Engine provides the Planner, Builder, and Runtime. It does not mandate how the consumer manages review workflows or stores plans.
+The consumer owns: how plans are presented or edited (if at all), where drafts and plans are stored, and **when** to invoke the Runtime. The engine never prompts, never requires review, and never becomes a web app. Progress is surfaced through consumer-supplied hooks, not terminal UI.
 
 ---
 
 ## 4. End-to-End Information Flow
 
-Runtime execution order is explicit and must not be collapsed to “transform → resolve → validate → load”:
+Runtime stage order is fixed:
 
 ```text
-Extraction
-    ↓
-Mapping
-    ↓
-Transformation
-    ↓
-Pre-resolution validation
-    ↓
-Relationship resolution
-    ↓
-Post-resolution / integrity validation
-    ↓
-Loading
+Extraction → Mapping → Transformation → Pre-resolution validation
+→ Relationship resolution → Post-resolution validation → Loading → Reporting
 ```
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Src as Source Stream (MVP: CSV)
-    participant Config as EngineConfiguration (engine.yml)
+    participant Src as Source (CSV)
     participant Planner as MigrationPlanner
-    participant Consumer as Consumer Application (UI/Review)
+    participant Consumer as Consumer (optional edit)
     participant Builder as MigrationPlanBuilder
     participant Runtime as MigrationRuntime
-    participant ResAdapter as Resolver Adapter
-    participant PreVal as Pre-Resolution Validation
-    participant PostVal as Post-Resolution Validation
-    participant LoadAdapter as Loader Adapter
-    participant Rep as Migration Reporter
+    participant Resolver as Resolver (row access)
+    participant Loader as Loader (row access)
+    participant Rep as Reporter
 
-    Note over Config: Boot: Loads engine.yml into EngineConfiguration domain object
+    Note over Planner: Phase A: Planning
+    Planner->>Planner: Analyze P1 + P2 (metadata only), score candidates
+    Planner->>Consumer: PlanDraft (runnable state + optional facts)
 
-    Note over Planner: Phase A: Initial Planning
-    Planner->>Planner: Analyzes P1 (Source), P2 (Target), P2-Ext (Semantic)<br/>using synonyms/thresholds from EngineConfiguration
-    Planner->>Consumer: Emits Initial MigrationPlan (with review flags)
+    Note over Consumer: Phase B: Optional edit
+    Consumer->>Builder: PlanDraft (edited or not)
 
-    Note over Consumer: Phase B: Consumer Review
-    Consumer->>Consumer: User reviews, modifies mappings or accepts unchanged
-    Consumer->>Builder: Submits reviewed plan structure
+    Note over Builder: Phase C: Construction
+    Builder->>Consumer: BuildResult: MigrationPlan (P3) or errors
+    Consumer->>Runtime: MigrationPlan + source
 
-    Note over Builder: Phase C: Plan Construction & Validation
-    Builder->>Builder: Validates structure against TargetSchema
-    Builder->>Consumer: Returns Valid MigrationPlan (P3)
-
-    Note over Consumer: Consumer/orchestration invokes Runtime
-    Consumer->>Runtime: Valid MigrationPlan + source
-
-    Note over Runtime: Phase D: Streaming Execution
-    Runtime->>Runtime: Derives ExecutionContext from EngineConfiguration + plan + overrides
-    Src->>Runtime: Yields Raw Chunk (e.g. 2,000 records)
-    Runtime->>Runtime: Extract, map, transform -> P4: TransformedBatch
-    Runtime->>PreVal: Direct formats, types, required non-FK fields
-    Note over PreVal: Must not enforce target FK types on lookup candidates
-    PreVal-->>Runtime: Pre-resolution verdicts (syntax / direct constraints)
-
-    Runtime->>ResAdapter: Dispatches P5a: RelationshipResolutionRequest
-    Note over ResAdapter: Adapter may use SQL, ORM, API, or cache.<br/>Evaluates cardinality (0, 1, >1).
-    ResAdapter-->>Runtime: Returns P5b: RelationshipResolutionResult
-
-    Runtime->>PostVal: Transformed (P4) + Resolved (P5b) + TargetSchema
-    Note over PostVal: FK integrity, UNRESOLVED vs NULL, 4-state taxonomy.
-    PostVal-->>Runtime: Produces P6: ValidationBatch
-
-    Runtime->>LoadAdapter: Dispatches P7: LoadRequest + ExecutionContext
-    Note over LoadAdapter: Adapter policy: gem DbBulkLoader typically loads VALID only.<br/>Consumer ORM/API adapters may handle DELEGATED.
-    LoadAdapter-->>Runtime: Returns P8: LoadResult
-
-    Runtime->>Rep: Emits Progress, Metrics & Dead-Letter Records
+    Note over Runtime: Phase D: Streaming execution (serial chunks)
+    Src->>Runtime: Raw chunk (default 2,000 rows)
+    Runtime->>Runtime: Extract, map, transform, pre-resolution validation → P4
+    Runtime->>Resolver: P5a (distinct lookup values)
+    Resolver-->>Runtime: P5b (resolved / unresolved / ambiguous / failure)
+    Runtime->>Runtime: Post-resolution validation → P6 (4-state)
+    Runtime->>Loader: P7 LoadRequest + ExecutionContext
+    Loader-->>Runtime: P8 LoadResult (per-record outcomes)
+    Runtime->>Rep: Progress, metrics, dead-letter records, accounting
 ```
