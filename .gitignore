@@ -1,0 +1,10 @@
+# Claude Code project context (local working guidance, not shipped)
+CLAUDE.md
+
+.claude/
+
+
+docs/*
+!docs/architecture/
+docs/architecture/*
+!docs/architecture/overview.md

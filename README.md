@@ -53,3 +53,5 @@ flowchart TD
 ```
 
 Within `MigrationRuntime`, execution runs in a fixed order: extract → map → transform → pre-resolution validation → relationship resolution (dispatched to the Resolver Adapter) → post-resolution validation → load (dispatched to the Loader Adapter).
+
+This is a simplified view for a quick read. The full system topology, the Planner/Review/Builder/Runtime boundary, and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md) — every other doc in `docs/` refers back to that file rather than redrawing its own version.
