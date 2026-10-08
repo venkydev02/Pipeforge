@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installs Ruby, runs `bundle install`, and caches the installed gems between runs.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Lint (StandardRB)
+        run: bundle exec standardrb
+
+      - name: Test (RSpec)
+        run: bundle exec rspec
