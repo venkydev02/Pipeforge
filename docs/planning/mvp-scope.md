@@ -1,7 +1,7 @@
 # MVP Scope & Definition of Done
 
 > **Document Location:** `docs/planning/mvp-scope.md`
-> **Status:** Draft v3.0 — rewritten 2026-10-08 (ADR-10, ADR-11)
+> **Status:** Draft v3.1 — updated 2026-10-10 (ADR-10 to ADR-13)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -26,13 +26,13 @@
 - One-time engine configuration through `engine.yml`; behavior is chosen by options, not code
 - Migration-specific input: source, target, and the plan
 - Programmatic overrides for individual runs
-- Review is optional: the Planner's `PlanDraft` is runnable as-is; any editing UI or workflow is consumer-owned
+- The Planner returns a JSON draft; the consumer reviews or edits it and sets the acknowledgement flag, without which `build` refuses (ADR-13). Any review UI or workflow is consumer-owned
 
 ### 1.5 Migration Pipeline
 1. Analyze source CSV (concurrently with step 2)
 2. Read target schema and model metadata
-3. Generate deterministic recommendations as a `PlanDraft`
-4. (Optional) Edit the draft
+3. Generate deterministic recommendations (ranked by column names only) as a JSON draft
+4. Review or edit the draft and set `acknowledgement_flag` to `true`
 5. Build the validated, state-only `MigrationPlan`
 6. Stream source records in chunks
 7. Map and transform; pre-resolution validation
@@ -42,7 +42,7 @@
 11. Produce the run report and dead-letter log
 
 ### 1.6 Core Guarantees
-- Deterministic, explainable recommendations
+- Deterministic, explainable recommendations (reproducible from column names alone)
 - No guessing on ambiguous relationships
 - Explicit unresolved-reference handling
 - Streaming, bounded-memory processing
@@ -69,9 +69,9 @@
 1. A Rails consumer can configure the engine and run a migration from their own code with only options and a source file.
 2. CSV files are analyzed without loading the whole file into memory.
 3. PostgreSQL and SQLite schemas and model metadata are read.
-4. Deterministic recommendations are produced as a runnable `PlanDraft`.
-5. A consumer can optionally edit the draft, or use it unchanged.
-6. A valid state-only `MigrationPlan` is built from any `PlanDraft`; invalid drafts return errors naming each column and the reason.
+4. Deterministic recommendations are produced as a JSON draft with findings, a mapping per writable target column (confidence, reason, type compatibility), distinct values for value mappings, and `acknowledgement_flag: false`.
+5. A consumer can edit the draft (remap columns, add value mappings, choose lookup columns) or leave it unchanged, and sets the acknowledgement flag.
+6. A valid state-only `MigrationPlan` is built from an acknowledged draft; a draft without the flag, or with a required target column unmapped, returns errors naming each column and the reason.
 7. The runtime processes CSV data through transformation, relationship resolution, validation and loading.
 8. Resolved, unresolved and ambiguous references are handled correctly.
 9. Loading supports bulk insert with row-level fallback, and per-record model-path loading.

@@ -1,6 +1,6 @@
 # Relational Data Migration Engine
 
-> An assisted relational data migration engine for Rails applications. It discovers, maps, validates, transforms, and loads data into your database through ActiveRecord — with deterministic, explainable recommendations that produce a runnable plan you can edit, and options that let you say *how* a migration should behave while the engine handles the rest.
+> An assisted relational data migration engine for Rails applications. It discovers, maps, validates, transforms, and loads data into your database through ActiveRecord — with deterministic, explainable recommendations (ranked by column names) that you review, edit and acknowledge before anything runs, and options that let you say *how* a migration should behave while the engine handles the rest.
 
 ## About
 
@@ -13,11 +13,11 @@ Most of my backend work has involved data migrations that were never as simple a
 
 The hard part was never parsing the input — it was everything around it: mapping source to target with enough confidence to explain *why* a mapping was chosen, catching bad data before it reached the database, resolving relationships deliberately, staying practical at volume, and being able to see what a migration would do before it does it. In practice that meant a new one-off script per migration, tightly coupled to a specific Rails app, unreusable, and opaque about why any decision was made.
 
-This engine is the fix: a **contract-first relational data migration engine built on ActiveRecord**. You give it a source and a target model (or table) and set options for how it should behave. It reads the schema and model metadata, recommends a runnable plan, validates and transforms the data, resolves relationships deliberately, and loads — in a controlled, repeatable, reportable way, without you writing connections, lookups, or loaders.
+This engine is the fix: a **contract-first relational data migration engine built on ActiveRecord**. You give it a source and a target model (or table) and set options for how it should behave. It reads the schema and model metadata, recommends a column mapping you review and acknowledge, validates and transforms the data, resolves relationships deliberately, and loads — in a controlled, repeatable, reportable way, without you writing connections, lookups, or loaders.
 
 ## Architecture
 
-The source and the target schema (including model metadata) are analyzed into formal schemas. The Planner recommends a plan as a draft: runnable *state*, plus optional *facts* explaining why. You can edit the draft or use it as-is. The Builder validates it into a state-only plan, and only that plan is executed. Planning never reads existing target rows; only the relationship resolver (reads parent rows) and the loader (writes rows) touch business data.
+The source and the target schema (including model metadata) are analyzed into formal schemas. The Planner returns a JSON draft: what the source and target contain, a recommended source column for each target column (with confidence and reason), and the distinct values you need for value mappings. You review and edit it, then set an acknowledgement flag. The Builder refuses any draft without that flag, validates it into a state-only plan, and only that plan is executed. Planning never reads existing target rows; only the relationship resolver (reads parent rows) and the loader (writes rows) touch business data.
 
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 45, 'rankSpacing': 65, 'padding': 20}}}%%
@@ -29,7 +29,7 @@ flowchart TD
         Analyzer["Source analysis (P1)"]
         Schema["Target schema + model metadata (P2)"]
         Planner[MigrationPlanner]
-        Edit{{Optional consumer edit}}
+        Edit{{Consumer review + acknowledge}}
         Builder[MigrationPlanBuilder]
         Runtime[MigrationRuntime]
         subgraph Rows["Row-access modules"]
@@ -40,9 +40,8 @@ flowchart TD
 
     Source --> Analyzer --> Planner
     DB -. "metadata only" .-> Schema --> Planner
-    Planner -->|PlanDraft| Edit
-    Planner -.->|"PlanDraft, unedited"| Builder
-    Edit -->|"PlanDraft, edited"| Builder
+    Planner -->|"draft JSON"| Edit
+    Edit -->|"draft + acknowledgement_flag = true"| Builder
     Builder -->|"MigrationPlan (state only)"| Runtime
     Runtime --> Resolver
     Runtime --> Loader
