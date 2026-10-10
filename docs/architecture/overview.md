@@ -1,7 +1,7 @@
 # Architecture Overview & System Topology
 
 > **Document Location:** `docs/architecture/overview.md`
-> **Status:** Draft v3.0 — rewritten 2026-10-08 for the ActiveRecord-based design (ADR-10, ADR-11)
+> **Status:** Draft v3.1 — updated 2026-10-10 (ADR-10 to ADR-13)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -25,27 +25,27 @@ Planning must never depend on what is already in the target database.
 ### 1.3 Schema Is Structural Truth, Not Business Truth
 The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values are allowed. Allowed values are known only from model metadata (for example an `enum` declaration), never inferred from stored data.
 
-### 1.4 Planner → Builder → Runtime, One Plan Format (ADR-01 amended by ADR-10)
+### 1.4 Planner → Builder → Runtime, One Plan Format (ADR-01 amended by ADR-10 and ADR-13)
 
 ```text
 MigrationPlanner
         ↓
-PlanDraft  (state + optional facts)
+Planner response (JSON draft: findings + draft_plan + acknowledgement_flag = false)
         ↓
-[Optional consumer edit]
+Consumer review / edit  →  sets acknowledgement_flag = true
         ↓
-MigrationPlanBuilder   (PlanDraft → BuildResult; reads only state)
+MigrationPlanBuilder   (draft → BuildResult; accepts only an acknowledged draft; reads only the mapping state)
         ↓
 MigrationPlan (P3, state only)
         ↓
 MigrationRuntime
 ```
 
-1. **`MigrationPlanner`** discovers facts, recommends mappings and lookups, and produces a **`PlanDraft`**: a runnable `state` plus optional `facts` explaining it. It builds the draft through `MigrationPlanBuilder`'s own methods.
-2. **`MigrationPlanBuilder`** is a pure function `PlanDraft → BuildResult`. It reads only `state`, never `facts`. Success carries the state-only `MigrationPlan`; failure carries errors (column, code, reason). It is used internally by the Planner and as a public API.
-3. **`MigrationRuntime`** executes a `MigrationPlan`. It knows nothing about the Planner, the Builder, or `facts`.
+1. **`MigrationPlanner`** reads the source and target schemas and returns the **draft**: `findings` (what the source and target contain), `draft_plan.column_mapping` (one entry per writable target column, with a recommended source column, confidence and reason) and `acknowledgement_flag`, set to `false`.
+2. **`MigrationPlanBuilder`** turns a draft into a `BuildResult`: the state-only `MigrationPlan`, or a list of errors (code, column, reason). It reads only `source_column`, `value_mapping`, `lookup` and `acknowledgement_flag`; facts (`findings`, `confidence`, `reason`, `type_compatibility`) are ignored. It is used internally by the Planner and as a public API.
+3. **`MigrationRuntime`** executes a `MigrationPlan`. It knows nothing about the Planner, the Builder, or facts.
 
-Consumer review or editing between Planner and Builder is **optional** and consumer-owned. The Planner's draft may go straight to `build`.
+The consumer reviews the draft and edits it if needed (remap a column, add value mappings, choose lookup columns), then sets `acknowledgement_flag` to `true`. **`build` refuses any draft whose flag is missing or `false`.** "No changes" is valid, but the consumer still sets the flag. How the review happens (a UI, a script, a glance at the JSON) is the consumer's business; the engine never resets the flag.
 
 ### 1.5 Plan as Domain Object
 `MigrationPlan` is an immutable in-memory object consumed directly by the Runtime. JSON or YAML are optional serializations for storage or transport. The Runtime never parses formats.
@@ -78,14 +78,13 @@ flowchart TD
         end
     end
 
-    Consumer{{"Consumer (optional edit)"}}
+    Consumer{{"Consumer review + acknowledge"}}
 
     Source --> Analyzer --> Planner
     DB -. "schema + model metadata" .-> Schema --> Planner
     Config --> Planner
-    Planner -->|PlanDraft| Consumer
-    Planner -.->|"PlanDraft, unedited"| Builder
-    Consumer -->|"PlanDraft, edited"| Builder
+    Planner -->|"draft JSON"| Consumer
+    Consumer -->|"draft + acknowledgement_flag = true"| Builder
     Builder -->|"MigrationPlan (P3)"| Runtime
     Runtime -->|"P5a / P5b"| Resolver
     Runtime -->|"P7 / P8"| Loader
@@ -100,25 +99,26 @@ Source analysis and target schema reading are independent and may run concurrent
 ## 3. Planning, Plan Construction, and Execution Boundary
 
 ### 3.1 `MigrationPlanner`
-* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, including model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation policy (synonyms, thresholds).
+* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, with model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation settings (inclusion threshold, reorder penalty, distinct-value cap, synonyms and aliases).
 * **Responsibility:**
-  * Evaluates name similarity, type compatibility, format patterns, enum and association evidence, and foreign-key markers.
-  * Recommends column mappings and relationship lookups where evidence exists.
-  * Puts into `state` only mappings at or above the configured confidence threshold. Lower-confidence and hard-gated candidates, warnings and alternatives appear only in `facts`.
-* **Non-responsibilities:** no UI, no persistence, no execution, no invented value mappings, no guesses on ambiguous lookups.
+  * Ranks target-to-source pairs **by column names only** (ADR-12) and assigns them greedily, one to one.
+  * Puts into the plan the pairs at or above the inclusion threshold; lists below-threshold candidates as doubtful.
+  * Lists every writable target column; never recommends database-filled or not-writable columns.
+  * Fills in only safe value mappings; lists distinct values so the customer can map the rest.
+* **Non-responsibilities:** no UI, no persistence, no execution, no data-based ranking, no invented value mappings, no guessed lookup columns.
 
 ### 3.2 `MigrationPlanBuilder`
-* **Input:** a `PlanDraft` (unchanged from the Planner, edited, or hand-written) and the `TargetSchema`.
-* **Output:** a `BuildResult`: the `MigrationPlan`, or a list of errors, each with the affected column, a stable code, and the reason. All errors are reported at once.
-* **Validates:** every `NOT NULL` target column that has no default and is not auto-generated is covered by the plan; source columns exist; transforms exist in the registry; lookups reference real parent entities and attributes; mapped attributes are writable.
-* **Required properties:** determinism; idempotence (`build(plan.to_draft) == plan`); fact-independence.
+* **Input:** the draft JSON (the Planner's response, edited or not) and the `TargetSchema`.
+* **Output:** a `BuildResult`: the `MigrationPlan`, or a list of errors, each with a stable code, the affected column and the reason. All errors are reported at once.
+* **Rejects:** a draft whose `acknowledgement_flag` is not `true`; a required target column (`NOT NULL`, no default, not filled by the database) with no `source_column`; unknown source or lookup columns; unsupported relationships (composite foreign keys).
+* **Required properties:** determinism (same mapping state, same plan); fact-independence (editing or removing facts never changes the result); no plan without the acknowledgement flag.
 * **Non-responsibilities:** no recommendations, no heuristics, no execution.
 
 ### 3.3 Shared Plan Primitives
 Planner and Builder share value objects for mappings, lookups and transform steps, and the validation rules for them, so drafts from either author obey identical invariants.
 
 ### 3.4 The Consumer Boundary
-The consumer owns: how plans are presented or edited (if at all), where drafts and plans are stored, and **when** to invoke the Runtime. The engine never prompts, never requires review, and never becomes a web app. Progress is surfaced through consumer-supplied hooks, not terminal UI.
+The consumer owns: how plans are presented or edited (if at all), where drafts and plans are stored, and **when** to invoke the Runtime. The engine never prompts and never becomes a web app; the only thing it requires from the consumer's review is the acknowledgement flag. Progress is surfaced through consumer-supplied hooks, not terminal UI.
 
 ---
 
@@ -136,7 +136,7 @@ sequenceDiagram
     autonumber
     participant Src as Source (CSV)
     participant Planner as MigrationPlanner
-    participant Consumer as Consumer (optional edit)
+    participant Consumer as Consumer (review)
     participant Builder as MigrationPlanBuilder
     participant Runtime as MigrationRuntime
     participant Resolver as Resolver (row access)
@@ -145,10 +145,10 @@ sequenceDiagram
 
     Note over Planner: Phase A: Planning
     Planner->>Planner: Analyze P1 + P2 (metadata only), score candidates
-    Planner->>Consumer: PlanDraft (runnable state + optional facts)
+    Planner->>Consumer: Draft JSON (findings, draft_plan, acknowledgement_flag = false)
 
-    Note over Consumer: Phase B: Optional edit
-    Consumer->>Builder: PlanDraft (edited or not)
+    Note over Consumer: Phase B: Review and acknowledge
+    Consumer->>Builder: Draft (edited or not) with acknowledgement_flag = true
 
     Note over Builder: Phase C: Construction
     Builder->>Consumer: BuildResult: MigrationPlan (P3) or errors
