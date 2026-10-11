@@ -99,12 +99,12 @@ Source analysis and target schema reading are independent and may run concurrent
 ## 3. Planning, Plan Construction, and Execution Boundary
 
 ### 3.1 `MigrationPlanner`
-* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, with model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation settings (inclusion threshold, reorder penalty, distinct-value cap, synonyms and aliases).
+* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, with model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation settings (inclusion threshold, reorder penalty, synonyms and aliases).
 * **Responsibility:**
   * Ranks target-to-source pairs **by column names only** (ADR-12) and assigns them greedily, one to one.
   * Puts into the plan the pairs at or above the inclusion threshold; lists below-threshold candidates as doubtful.
   * Lists every writable target column; never recommends database-filled or not-writable columns.
-  * Fills in only safe value mappings; lists distinct values so the customer can map the rest.
+  * Fills in only safe value mappings; lists distinct values (up to `source.distinct_values_cap` per source column) so the customer can map the rest.
 * **Non-responsibilities:** no UI, no persistence, no execution, no data-based ranking, no invented value mappings, no guessed lookup columns.
 
 ### 3.2 `MigrationPlanBuilder`

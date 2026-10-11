@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
+# Relational data migration engine. See docs/architecture/overview.md.
 require "active_record"
 require_relative "pipeforge/version"
-
-# Relational data migration engine. See docs/architecture/overview.md.
-module Pipeforge
-  class Error < StandardError; end
-end
+require_relative "pipeforge/errors"
+require_relative "pipeforge/configuration"
+require_relative "pipeforge/engine"
