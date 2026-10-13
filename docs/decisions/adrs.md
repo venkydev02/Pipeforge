@@ -1,7 +1,7 @@
 # Architecture Decision Records (ADRs)
 
 > **Document Location:** `docs/decisions/adrs.md`  
-> **Status:** ADR-01 through ADR-13. ADR-06 and ADR-08 are superseded by ADR-11. ADR-01 and ADR-10 are partially superseded (see each entry; superseded parts are marked inline). Where entries disagree, the later ADR wins.  
+> **Status:** ADR-01 through ADR-14. ADR-06 and ADR-08 are superseded by ADR-11. ADR-13 is superseded by ADR-14. ADR-01 and ADR-10 are partially superseded (see each entry; superseded parts are marked inline). Where entries disagree, the later ADR wins.  
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -122,7 +122,7 @@
 ---
 
 ### ADR-12: Recommendations Are Ranked by Column Names Only; Values Feed Value Mappings
-* **Status:** Accepted (2026-10-10). Details and reasoning: `docs/architecture/recommendation-name-matching.md` (D1 to D16).
+* **Status:** Accepted (2026-10-10). Details and reasoning: `docs/architecture/recommendation-name-matching.md` (D1 to D16). *Refined by ADR-14 (2026-10-11): ranking, assignment and thresholds are unchanged; the value scan of item 3 now runs in its own stage, after the column mapping is settled, and only for the mapped columns.*
 * **Context:** The earlier design scored pairs with a weighted formula (name 0.45, type 0.25, values 0.20, structure 0.10) and used hard gates on types and values. That let data outvote names, hid contributions in one number, and meant a few dirty values could delete the obviously right column.
 * **Decision:**
   1. **Ranking uses column names only.** Names are tokenized into words (separators, camelCase, digits, acronym runs; singularized; table-name prefix stripped from targets). A pair of words scores `shorter / longer` when the shorter is a full prefix of the longer, otherwise 0. A pair of columns scores `2 x (sum of word scores) / (target words + source words)`, each word used at most once, minus a fixed penalty (10 points proposed) when matched words appear in a different order. For real foreign-key columns only, a trailing `id` is ignored as a reference marker.
@@ -137,7 +137,7 @@
 ---
 
 ### ADR-13: Acknowledgement Flag Required to Build; Draft as a JSON Response
-* **Status:** Accepted (2026-10-10). **Partially supersedes ADR-10** (optional review; draft shape).
+* **Status:** Accepted (2026-10-10). **Partially supersedes ADR-10** (optional review; draft shape). **Superseded by ADR-14 (2026-10-11):** the single JSON draft is replaced by a header result and a value result, and the acknowledgement flag is removed. The list of what the Builder reads (item 3) and the build errors (item 4, except the acknowledgement error) carry over.
 * **Context:** With ranking by names only and weak candidates visible but unmapped, a recommended plan can still be wrong, and review is the safeguard. A conditional gate based on confidence tiers was judged more complex and unreliable.
 * **Decision:**
   1. **The Planner returns a JSON draft** with three parts: `findings` (visibility: source columns with non-empty/empty counts and distinct values; target columns with type, constraints, enums, and for reference columns the parent table and its columns), `draft_plan.column_mapping` (one entry per writable target column, keyed by target column name, each with `source_column`, `value_mapping`, optional `lookup`, and the facts `confidence`, `reason`, `type_compatibility`), and `acknowledgement_flag`.
@@ -145,4 +145,40 @@
   3. **The Builder reads only `source_column`, `value_mapping`, `lookup` and `acknowledgement_flag`.** Everything else (`findings`, `confidence`, `reason`, `type_compatibility`) is a fact and is ignored, even if edited or stale.
   4. **Build errors** include: acknowledgement missing; a required target column (`NOT NULL`, no default, not filled by the database) with no `source_column`; a `source_column` or `lookup` column that does not exist. All errors are returned at once.
   5. "No changes" remains valid: the consumer sets the flag without editing anything.
-* **Consequences:** Review is mandatory again, but as a plain flag and not a workflow. `MigrationPlan` (P3) stays state-only and the Runtime never sees facts. CLAUDE.md principles 2 and 3, `overview.md`, `protocols.md`, `mvp-scope.md`, the README and the test strategy were updated to match.
+* **Consequences:** Review is mandatory again, but as a plain flag and not a workflow. `MigrationPlan` (P3) stays state-only and the Runtime never sees facts. `overview.md`, `protocols.md`, `mvp-scope.md`, the README and the test strategy were updated to match. *(Superseded by ADR-14.)*
+
+---
+
+### ADR-14: Staged Engine Methods; Every Stage Boundary Is a Contract; Acknowledgement Flag Removed
+* **Status:** Accepted (2026-10-11). **Supersedes ADR-13.** Restores ADR-10 item 4 (review is optional and consumer-owned). Refines ADR-12 item 3 (when the value scan runs). Ranking, assignment, thresholds and the row-access boundary (ADR-11, ADR-12) are unchanged.
+* **Context:** One draft that mixed column names, values and a review flag meant the value scan ran before anyone knew whether the column mapping was right, and the consumer had no clear place to see facts again after editing. Since ranking depends on names only (ADR-12), name matching and value analysis are separate pieces of work and can be separate steps. The acknowledgement flag existed to mark "someone looked at the draft"; with explicit steps, the consumer's call to the next step is that mark, and a consumer could always set the flag from code anyway.
+* **Decision:**
+  1. **The engine exposes one method per stage.** `Engine.new(config_path:, source_path:)` is given the configuration and the source once. Then, in order: `analyze_headers`, `analyze_values`, `build_plan`, `dry_run`, `run`. Each method is a function of its arguments (plus the configuration and the source path); the engine keeps no stage state between calls.
+  2. **Header stage (column mapping).** Reads only the source header row and the target schema (P2); never values. Returns a `HeaderAnalysis` with facts (source columns, target columns, unmatched columns on both sides, per-target candidates, doubtful candidates) and the editable state `column_mapping` (per writable target column: `source_column`, optional `lookup`). Names rank, as in ADR-12.
+  3. **Value stage.** Takes the (possibly edited) column mapping and the type of each mapped target column (from `TargetSchema`), and scans the source once, only for the mapped source columns. Returns a value result (`ValueAnalyzer::Result`) keyed by source column with, per column: the `target_column` it is mapped to, its position, the `empty` count, `type_compatibility` (`fits` and `total`: how many non-empty values fit the target type, by strict rules of our own and not ActiveRecord's lenient cast), and the distinct values split into `compatible` and `incompatible` lists, each with counts and its own cap (configurable); plus the editable state `value_mapping`. A target type with no fit rule yet fits every value. Values never change the column mapping.
+  4. **Recompute is the same method called again with the consumer's edits.** There is no separate "reanalyze" method: `analyze_values(mapped_columns:)` takes one parameter: for each mapped source column, its target column, its type information and, when it has one, its `value_mapping`. With a `value_mapping`, each value is measured as the value it maps to (a value that maps to nil or a blank counts as empty), so the facts show what would be loaded; the mapping comes back in the result, inside the column, to be edited and passed in again. Because the value mapping lives in the column's entry, it can never be given for a column that is not mapped. The file is read again each time, and nothing is kept in the engine's memory. The header stage follows the same pattern for its editable state.
+  5. **`build_plan(header_analysis, value_analysis)` returns a `BuildResult`:** a `MigrationPlan` (P3, state only) or all errors at once, each with the column, a stable code and the reason. It reads only `source_column`, `lookup` and `value_mapping`; facts are ignored, even if edited or stale. Errors: a required target column (`NOT NULL`, no default, not filled by the database) with no `source_column`; a `source_column` or `lookup` column that does not exist; a `value_mapping` for a target column that is not mapped; a stale value result (item 6).
+  6. **Staleness rule.** For every source column in the value result, the `target_column` it was computed for must equal the target column that source column is mapped to in the current column mapping; otherwise `build_plan` fails for that column. Nothing else (such as the source file) is compared.
+  7. **No acknowledgement flag.** Calling `build_plan` is the consumer's explicit step. Review is consumer-owned; the engine never prompts or tracks it. The dry run is the answer to "will this load".
+  8. **Every stage boundary is a named contract.** An engine method takes and returns only contracts: value objects with documented fields that serialize to and from plain JSON (`to_h` and a hash constructor), so a consumer can store, show, edit and pass them back. A component depends on the contract, not on another component's class. Each contract is documented in `docs/architecture/protocols.md` with its producer, its consumers, and which fields are facts (regenerated, never read by the next stage) and which are state (editable, read by the next stage).
+
+    | Contract | Produced by | Consumed by | Consumer edits |
+    |---|---|---|---|
+    | `SourceHeaders` | header read (Source) | header stage | none |
+    | `TargetSchema` (P2) | target schema reader | header stage, value stage (column types), `build_plan` | none |
+    | `HeaderAnalysis` (header result) | `analyze_headers` | `analyze_values`, `build_plan` | `column_mapping` |
+    | `ValueAnalyzer::Result` (value result, P1) | `analyze_values` | `build_plan` | `value_mapping` |
+    | `BuildResult` / `MigrationPlan` (P3) | `build_plan` | `dry_run`, `run` | none |
+    | P4 to P8 | Runtime stages | Runtime stages | none |
+    | `RunReport` | `dry_run`, `run` | consumer | none |
+
+    The value result is what `ValueAnalyzer` returns and replaces the earlier `SourceSchema`. Names and numbering of `SourceHeaders` and `HeaderAnalysis` are provisional until Phase 1 freezes the contracts.
+  9. **Unchanged:** the Runtime accepts only `MigrationPlan`; the order of Runtime stages; the dry run (rolled-back transactions, `target-access.md`); only the resolver and the loader touch business rows.
+* **Consequences:**
+  * The consumer sees column mapping first and value work second; a wrong column match costs no value scan.
+  * Facts can be refreshed after any edit without losing the edits.
+  * Going back is allowed; a value result made for an older column mapping is refused at build.
+  * A consumer can call `build_plan` on unreviewed recommendations. The build errors and the dry run are the safety net.
+  * The Source Analyzer needs a header-only read and a scan restricted to a list of columns, in addition to the full scan.
+  * The acknowledgement flag, its error code and ADR-13's single draft JSON are removed. Affected documents (`overview.md`, `protocols.md`, `mvp-scope.md` Definition of Done items 5 and 6, `testing-strategy.md`, `recommendation-name-matching.md` D8 and the draft JSON decisions, the README) are updated in the same change as this ADR is applied.
+  * **Open:** a `version` field on the stored stage results (ADR-11 removed `protocol_version` from in-process objects, but these are persisted by consumers between sessions); whether `analyze_values` may be limited to a subset of target columns; whether `reanalyze_headers` keeps a `lookup` when its `source_column` is changed.

@@ -229,7 +229,7 @@ A **reference column** is a target column that points to a row in another (paren
 - **protocols.md:** P1 and P2 rewritten, the draft JSON, `BuildResult` codes and P3.
 - **recommendation-and-validation.md:** recommendation sections rewritten (name matching, draft contents, value mappings).
 - **configuration.md:** `inclusion_threshold`, `reorder_penalty`, `distinct_values_cap`, `synonyms`, `column_aliases`.
-- **overview.md, mvp-scope.md, README.md** (tracked, on the branch `docs-apply-name-matching-decisions`), **testing-strategy.md** (required name-matching scenarios), **roadmap-and-phases.md**, **CLAUDE.md** (principles 2 and 3, flow, doc table).
+- **overview.md, mvp-scope.md, README.md** (tracked, on the branch `docs-apply-name-matching-decisions`), **testing-strategy.md** (required name-matching scenarios), **roadmap-and-phases.md**.
 - **Research sources:** [Cupid](https://www.microsoft.com/en-us/research/publication/generic-schema-matching-with-cupid/), [COMA](https://old.dbs.uni-leipzig.de/file/vldb01.pdf), [Valentine benchmark](https://arxiv.org/pdf/2010.07386), [XML matchers survey](https://arxiv.org/pdf/1407.2845), [react-spreadsheet-import](https://docsearch.algolia.com/mcp/docs/repo/ugnissoftware/react-spreadsheet-import), [tableflow csv-import](https://docsearch.algolia.com/mcp/docs/repo/tableflowhq/csv-import), [Dromo mapping guide](https://dromo.io/blog/data-mapping-best-practices-csv-imports), [AMAP](https://sites.udel.edu/se-research/2008/05/05/amap-automatically-mining-abbreviation-expansions-in-programs/).
 
 ## 4. Open items for the next brainstorm
