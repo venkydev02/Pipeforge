@@ -49,7 +49,7 @@ module Pipeforge
   # +setting_not_encoding_name+.
   class ConfigurationError < Error; end
 
-  # Raised when the mapped columns given to the value analyzer are missing information a
+  # Raised when the mapped columns given to {Engine#analyze_values} are missing information a
   # column needs. Codes: +column_missing_target_column+ and +column_missing_type+, one entry
   # for each missing piece.
   class IncompleteColumnsError < Error; end

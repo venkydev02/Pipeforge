@@ -3,8 +3,6 @@
 require "json"
 
 RSpec.describe Pipeforge::ValueAnalyzer do
-  subject(:analyzer) { described_class.new(config: config) }
-
   let(:config) { build_configuration }
 
   # One mapping value: the target column of a source column and the type of that column.
@@ -13,7 +11,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
   end
 
   describe "#call" do
-    subject(:result) { analyzer.call(path: path, mapped_columns: mapped_columns) }
+    subject(:result) { described_class.new(config: config, path: path, mapped_columns: mapped_columns).call }
 
     let(:path) { csv_file(csv) }
     # Four data rows: a value spanning two lines, empty cells, a whitespace-only cell, a blank line.
@@ -279,77 +277,6 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       end
     end
 
-    context "when a mapping value is incomplete" do
-      let(:csv) { "A,B\n1,2\n" }
-
-      context "without a target column" do
-        let(:mapped_columns) { {"A" => {type: "string"}} }
-
-        it "raises IncompleteColumnsError, naming the source column" do
-          expect { result }.to raise_error(
-            Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: A has no target_column"
-          )
-        end
-
-        it "gives the code column_missing_target_column, with the column" do
-          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
-            expect(error.errors).to eq(
-              [{code: :column_missing_target_column, message: "A has no target_column", source_column: "A"}]
-            )
-          end
-        end
-      end
-
-      context "without a type" do
-        let(:mapped_columns) { {"A" => {target_column: "a"}} }
-
-        it "raises IncompleteColumnsError, naming the source column" do
-          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: A has no type")
-        end
-
-        it "gives the code column_missing_type, with the column" do
-          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
-              [{code: :column_missing_type, source_column: "A"}]
-            )
-          end
-        end
-      end
-
-      context "in several columns" do
-        let(:mapped_columns) do
-          {"A" => {type: "string"}, "B" => {}, "C" => {target_column: "c", type: "string"}}
-        end
-
-        it "lists every error in one error" do
-          expect { result }.to raise_error(
-            Pipeforge::IncompleteColumnsError,
-            "mapped columns are incomplete: A has no target_column, B has no target_column, B has no type"
-          )
-        end
-
-        it "has an entry for each missing piece, in order" do
-          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
-              [
-                {code: :column_missing_target_column, source_column: "A"},
-                {code: :column_missing_target_column, source_column: "B"},
-                {code: :column_missing_type, source_column: "B"}
-              ]
-            )
-          end
-        end
-      end
-
-      context "together with a column that is not in the file" do
-        let(:mapped_columns) { {"A" => {type: "string"}, "Gone" => {target_column: "g", type: "string"}} }
-
-        it "reports the incomplete column first, before the file is read" do
-          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError, /A has no target_column/)
-        end
-      end
-    end
-
     context "when a row cannot be parsed" do
       # The quote opened on line 3 is never closed, so it swallows lines 4 to 6.
       let(:csv) { "Name,Note\nAlice,30\nBob,\"two lines\nof text\nCara,25\nDan,40\n" }
@@ -430,7 +357,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
 
     context "with a different chunk size" do
       let(:default_result) do
-        described_class.new(config: build_configuration).call(path: path, mapped_columns: mapped_columns)
+        described_class.new(config: build_configuration, path: path, mapped_columns: mapped_columns).call
       end
 
       shared_examples "the same result as the default chunk size" do
@@ -638,7 +565,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       context "when the file is read in small chunks" do
         let(:config) { build_configuration(execution: {batch_size: 1}) }
         let(:default_result) do
-          described_class.new(config: build_configuration).call(path: path, mapped_columns: mapped_columns)
+          described_class.new(config: build_configuration, path: path, mapped_columns: mapped_columns).call
         end
 
         it "gives the same result as the default chunk size" do
@@ -672,10 +599,11 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     subject(:stored) { JSON.parse(JSON.generate(result.to_h)) }
 
     let(:result) do
-      analyzer.call(
+      described_class.new(
+        config: config,
         path: csv_file("Age\n30\nx\n\n"),
         mapped_columns: {"Age" => maps_to(target_column: "age", type: "integer")}
-      )
+      ).call
     end
 
     it "survives a round trip through JSON" do

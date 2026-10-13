@@ -123,6 +123,90 @@ RSpec.describe Pipeforge::Engine do
       end
     end
 
+    context "when a mapped column is incomplete" do
+      context "without a target column" do
+        let(:mapped_columns) { {"Status" => {type: "string"}} }
+
+        it "raises IncompleteColumnsError, naming the source column" do
+          expect { result }.to raise_error(
+            Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: Status has no target_column"
+          )
+        end
+
+        it "gives the code column_missing_target_column, with the column" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors).to eq(
+              [{code: :column_missing_target_column, message: "Status has no target_column", source_column: "Status"}]
+            )
+          end
+        end
+      end
+
+      context "without a type" do
+        let(:mapped_columns) { {"Status" => {target_column: "status"}} }
+
+        it "raises IncompleteColumnsError, naming the source column" do
+          expect { result }.to raise_error(
+            Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: Status has no type"
+          )
+        end
+
+        it "gives the code column_missing_type, with the column" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+              [{code: :column_missing_type, source_column: "Status"}]
+            )
+          end
+        end
+      end
+
+      context "in several columns" do
+        let(:mapped_columns) do
+          {"Status" => {type: "string"}, "Code" => {}, "Note" => {target_column: "note", type: "string"}}
+        end
+
+        it "lists every error in one error" do
+          expect { result }.to raise_error(
+            Pipeforge::IncompleteColumnsError,
+            "mapped columns are incomplete: Status has no target_column, Code has no target_column, Code has no type"
+          )
+        end
+
+        it "has an entry for each missing piece, in order" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+              [
+                {code: :column_missing_target_column, source_column: "Status"},
+                {code: :column_missing_target_column, source_column: "Code"},
+                {code: :column_missing_type, source_column: "Code"}
+              ]
+            )
+          end
+        end
+      end
+
+      context "together with a column that is not in the file" do
+        let(:mapped_columns) do
+          {"Status" => {type: "string"}, "Gone" => {target_column: "gone", type: "string"}}
+        end
+
+        it "reports the incomplete column first, before the file is read" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError, /Status has no target_column/)
+        end
+      end
+
+      context "when the columns are checked" do
+        let(:mapped_columns) { {"Status" => {type: "string"}} }
+
+        it "does not create a value analyzer" do
+          allow(Pipeforge::ValueAnalyzer).to receive(:new).and_call_original
+
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError)
+          expect(Pipeforge::ValueAnalyzer).not_to have_received(:new)
+        end
+      end
+    end
+
     context "with a value mapping on a column" do
       let(:mapped_columns) do
         {"Status" => {target_column: "status", type: "integer", value_mapping: value_mapping}}

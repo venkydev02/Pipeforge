@@ -13,6 +13,12 @@ module Pipeforge
   #     mapped_columns: {"Mail" => {target_column: "email", type: "string"}}
   #   )
   class Engine
+    # What a mapped column must carry, and the error code for each piece that is missing.
+    MISSING_PIECE_CODES = {
+      target_column: :column_missing_target_column,
+      type: :column_missing_type
+    }.freeze
+
     # @return [Configuration] the settings read from the configuration file
     attr_reader :config
 
@@ -45,14 +51,41 @@ module Pipeforge
     #   value that maps to nil or a blank is loaded as empty. The type keys are described in
     #   {ValueAnalyzer::TypeChecker}.
     # @return [ValueAnalyzer::Result]
-    # @raise [KeyError] a column has no +target_column+ or no +type+
+    # @raise [IncompleteColumnsError] a column has no +target_column+ or no +type+; every such
+    #   column is listed
     # @raise [Source::MissingColumnError] a mapped source column is not in the file
     # @raise [Source::MalformedSourceError] a row cannot be parsed
     def analyze_values(mapped_columns:)
-      ValueAnalyzer.new(config: @config).call(path: @source_path, mapped_columns: mapped_columns)
+      reject_incomplete_columns(mapped_columns: mapped_columns)
+
+      ValueAnalyzer.new(config: @config, path: @source_path, mapped_columns: mapped_columns).call
     end
 
     private
+
+    # Raises IncompleteColumnsError, listing every piece a mapped column is missing.
+    def reject_incomplete_columns(mapped_columns:)
+      errors = []
+
+      mapped_columns.each do |source_column, column_info|
+        MISSING_PIECE_CODES.each do |piece, code|
+          next if column_info.key?(piece)
+
+          errors << {
+            code: code,
+            message: "#{source_column} has no #{piece}",
+            source_column: source_column
+          }
+        end
+      end
+
+      return if errors.empty?
+
+      raise IncompleteColumnsError.new(
+        message: "mapped columns are incomplete: #{errors.map { |error| error[:message] }.join(", ")}",
+        errors: errors
+      )
+    end
 
     def build_config
       Configuration.new(path: @config_path)
