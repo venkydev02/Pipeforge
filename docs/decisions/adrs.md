@@ -145,7 +145,7 @@
   3. **The Builder reads only `source_column`, `value_mapping`, `lookup` and `acknowledgement_flag`.** Everything else (`findings`, `confidence`, `reason`, `type_compatibility`) is a fact and is ignored, even if edited or stale.
   4. **Build errors** include: acknowledgement missing; a required target column (`NOT NULL`, no default, not filled by the database) with no `source_column`; a `source_column` or `lookup` column that does not exist. All errors are returned at once.
   5. "No changes" remains valid: the consumer sets the flag without editing anything.
-* **Consequences:** Review is mandatory again, but as a plain flag and not a workflow. `MigrationPlan` (P3) stays state-only and the Runtime never sees facts. CLAUDE.md principles 2 and 3, `overview.md`, `protocols.md`, `mvp-scope.md`, the README and the test strategy were updated to match. *(Superseded by ADR-14.)*
+* **Consequences:** Review is mandatory again, but as a plain flag and not a workflow. `MigrationPlan` (P3) stays state-only and the Runtime never sees facts. `overview.md`, `protocols.md`, `mvp-scope.md`, the README and the test strategy were updated to match. *(Superseded by ADR-14.)*
 
 ---
 
@@ -180,5 +180,5 @@
   * Going back is allowed; a value result made for an older column mapping is refused at build.
   * A consumer can call `build_plan` on unreviewed recommendations. The build errors and the dry run are the safety net.
   * The Source Analyzer needs a header-only read and a scan restricted to a list of columns, in addition to the full scan.
-  * The acknowledgement flag, its error code and ADR-13's single draft JSON are removed. Affected documents (CLAUDE.md principle 3, `overview.md`, `protocols.md`, `mvp-scope.md` Definition of Done items 5 and 6, `testing-strategy.md`, `recommendation-name-matching.md` D8 and the draft JSON decisions, the README) are updated in the same change as this ADR is applied.
+  * The acknowledgement flag, its error code and ADR-13's single draft JSON are removed. Affected documents (`overview.md`, `protocols.md`, `mvp-scope.md` Definition of Done items 5 and 6, `testing-strategy.md`, `recommendation-name-matching.md` D8 and the draft JSON decisions, the README) are updated in the same change as this ADR is applied.
   * **Open:** a `version` field on the stored stage results (ADR-11 removed `protocol_version` from in-process objects, but these are persisted by consumers between sessions); whether `analyze_values` may be limited to a subset of target columns; whether `reanalyze_headers` keeps a `lookup` when its `source_column` is changed.
