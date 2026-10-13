@@ -33,7 +33,7 @@ RSpec.describe Pipeforge::Engine do
       let(:config_path) { "no/such/engine.yml" }
 
       it "stops with our own error" do
-        expect { engine }.to raise_error(Pipeforge::ConfigurationError, %r{configuration file not found: no/such/engine.yml})
+        expect { engine }.to raise_error(Pipeforge::ConfigurationError, %r{no/such/engine.yml: configuration file not found})
       end
     end
 
@@ -52,6 +52,14 @@ RSpec.describe Pipeforge::Engine do
         expect { engine }.to raise_error(
           Pipeforge::Source::MissingSourceError, %r{not found or not readable: no/such/file.csv}
         )
+      end
+
+      it "gives the code source_not_readable, with the path" do
+        expect { engine }.to raise_error(Pipeforge::Source::MissingSourceError) do |error|
+          expect(error.errors.map { |entry| entry.slice(:code, :path) }).to eq(
+            [{code: :source_not_readable, path: "no/such/file.csv"}]
+          )
+        end
       end
     end
 

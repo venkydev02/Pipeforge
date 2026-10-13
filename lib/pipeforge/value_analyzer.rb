@@ -37,6 +37,12 @@ module Pipeforge
       end
     end
 
+    # What a mapped column must carry, and the error code for each piece that is missing.
+    MISSING_PIECE_CODES = {
+      target_column: :column_missing_target_column,
+      type: :column_missing_type
+    }.freeze
+
     # @param config [Configuration] the engine settings (chunk size and distinct values cap)
     def initialize(config:)
       @config = config
@@ -57,7 +63,8 @@ module Pipeforge
     #   +value_mapping+ is optional, and a value that maps to nil or a blank is loaded as empty.
     #   The type keys are described in {TypeChecker}.
     # @return [Result]
-    # @raise [KeyError] a column has no +target_column+ or no +type+
+    # @raise [IncompleteColumnsError] a column has no +target_column+ or no +type+; every such
+    #   column is listed
     # @raise [Source::MissingColumnError] a mapped source column is not in the file header
     # @raise [Source::MalformedSourceError] a row cannot be parsed
     def call(path:, mapped_columns:)
@@ -91,15 +98,36 @@ module Pipeforge
 
     # One TypeChecker per mapped source column.
     def build_type_checkers(mapped_columns:)
+      reject_incomplete_columns(mapped_columns: mapped_columns)
+
       type_checkers = {}
 
       mapped_columns.each do |source_column, column_info|
-        raise KeyError, "source column #{source_column} has no target_column" unless column_info.key?(:target_column)
-
         type_checkers[source_column] = TypeChecker.new(type_info: column_info)
       end
 
       type_checkers
+    end
+
+    # Raises IncompleteColumnsError listing every column that has no +target_column+ or no
+    # +type+, so they are all fixed in one round.
+    def reject_incomplete_columns(mapped_columns:)
+      errors = []
+
+      mapped_columns.each do |source_column, column_info|
+        MISSING_PIECE_CODES.each do |piece, code|
+          next if column_info.key?(piece)
+
+          errors << {code: code, message: "#{source_column} has no #{piece}", source_column: source_column}
+        end
+      end
+
+      return if errors.empty?
+
+      sentences = errors.map { |error| error[:message] }
+      raise IncompleteColumnsError.new(
+        message: "mapped columns are incomplete: #{sentences.join(", ")}", errors: errors
+      )
     end
 
     # The value mapping of each mapped source column; {} when it has none.
@@ -118,7 +146,17 @@ module Pipeforge
       missing = mapped_columns.keys - header_names
       return if missing.empty?
 
-      raise Source::MissingColumnError, "mapped source columns not found in the file: #{missing.join(", ")}"
+      errors = missing.map do |source_column|
+        {
+          code: :mapped_column_not_in_file,
+          message: "mapped source column #{source_column} is not in the file",
+          source_column: source_column
+        }
+      end
+
+      raise Source::MissingColumnError.new(
+        message: "mapped source columns not found in the file: #{missing.join(", ")}", errors: errors
+      )
     end
 
     # Follows the header, so the result is in file order whatever the order of the mapping.

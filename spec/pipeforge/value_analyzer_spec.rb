@@ -165,10 +165,24 @@ RSpec.describe Pipeforge::ValueAnalyzer do
         }
       end
 
-      {"Id" => [2, 3], "Price" => [2, 3], "Active" => [3, 3], "Joined" => [1, 3], "Ref" => [2, 3]}.each do |source_column, (fits, total)|
-        it "counts #{fits} of #{total} #{source_column} values as fitting" do
-          expect(result.columns[source_column].type_compatibility).to eq(fits: fits, total: total)
-        end
+      it "counts 2 of 3 integer values as fitting" do
+        expect(result.columns["Id"].type_compatibility).to eq(fits: 2, total: 3)
+      end
+
+      it "counts 2 of 3 decimal values as fitting" do
+        expect(result.columns["Price"].type_compatibility).to eq(fits: 2, total: 3)
+      end
+
+      it "counts 3 of 3 boolean values as fitting" do
+        expect(result.columns["Active"].type_compatibility).to eq(fits: 3, total: 3)
+      end
+
+      it "counts 1 of 3 date values as fitting" do
+        expect(result.columns["Joined"].type_compatibility).to eq(fits: 1, total: 3)
+      end
+
+      it "counts 2 of 3 uuid values as fitting" do
+        expect(result.columns["Ref"].type_compatibility).to eq(fits: 2, total: 3)
       end
 
       it "lists the values that do not fit, so a value mapping can be written for them" do
@@ -245,6 +259,17 @@ RSpec.describe Pipeforge::ValueAnalyzer do
         )
       end
 
+      it "has an entry with the code mapped_column_not_in_file for each missing column" do
+        expect { result }.to raise_error(Pipeforge::Source::MissingColumnError) do |error|
+          expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+            [
+              {code: :mapped_column_not_in_file, source_column: "Nope"},
+              {code: :mapped_column_not_in_file, source_column: "Gone"}
+            ]
+          )
+        end
+      end
+
       context "and the file has no data rows" do
         let(:csv) { "A,B\n" }
 
@@ -255,21 +280,72 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     end
 
     context "when a mapping value is incomplete" do
-      let(:csv) { "A\n1\n" }
+      let(:csv) { "A,B\n1,2\n" }
 
       context "without a target column" do
         let(:mapped_columns) { {"A" => {type: "string"}} }
 
-        it "raises KeyError, naming the source column" do
-          expect { result }.to raise_error(KeyError, /source column A has no target_column/)
+        it "raises IncompleteColumnsError, naming the source column" do
+          expect { result }.to raise_error(
+            Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: A has no target_column"
+          )
+        end
+
+        it "gives the code column_missing_target_column, with the column" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors).to eq(
+              [{code: :column_missing_target_column, message: "A has no target_column", source_column: "A"}]
+            )
+          end
         end
       end
 
       context "without a type" do
         let(:mapped_columns) { {"A" => {target_column: "a"}} }
 
-        it "raises KeyError" do
-          expect { result }.to raise_error(KeyError)
+        it "raises IncompleteColumnsError, naming the source column" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError, "mapped columns are incomplete: A has no type")
+        end
+
+        it "gives the code column_missing_type, with the column" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+              [{code: :column_missing_type, source_column: "A"}]
+            )
+          end
+        end
+      end
+
+      context "in several columns" do
+        let(:mapped_columns) do
+          {"A" => {type: "string"}, "B" => {}, "C" => {target_column: "c", type: "string"}}
+        end
+
+        it "lists every error in one error" do
+          expect { result }.to raise_error(
+            Pipeforge::IncompleteColumnsError,
+            "mapped columns are incomplete: A has no target_column, B has no target_column, B has no type"
+          )
+        end
+
+        it "has an entry for each missing piece, in order" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError) do |error|
+            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+              [
+                {code: :column_missing_target_column, source_column: "A"},
+                {code: :column_missing_target_column, source_column: "B"},
+                {code: :column_missing_type, source_column: "B"}
+              ]
+            )
+          end
+        end
+      end
+
+      context "together with a column that is not in the file" do
+        let(:mapped_columns) { {"A" => {type: "string"}, "Gone" => {target_column: "g", type: "string"}} }
+
+        it "reports the incomplete column first, before the file is read" do
+          expect { result }.to raise_error(Pipeforge::IncompleteColumnsError, /A has no target_column/)
         end
       end
     end
@@ -357,14 +433,34 @@ RSpec.describe Pipeforge::ValueAnalyzer do
         described_class.new(config: build_configuration).call(path: path, mapped_columns: mapped_columns)
       end
 
-      [1, 2, 3, 100].each do |batch_size|
-        context "of #{batch_size} rows" do
-          let(:config) { build_configuration(execution: {batch_size: batch_size}) }
-
-          it "gives the same result as the default chunk size" do
-            expect(result.to_h).to eq(default_result.to_h)
-          end
+      shared_examples "the same result as the default chunk size" do
+        it "gives the same result as the default chunk size" do
+          expect(result.to_h).to eq(default_result.to_h)
         end
+      end
+
+      context "of 1 row" do
+        let(:config) { build_configuration(execution: {batch_size: 1}) }
+
+        include_examples "the same result as the default chunk size"
+      end
+
+      context "of 2 rows" do
+        let(:config) { build_configuration(execution: {batch_size: 2}) }
+
+        include_examples "the same result as the default chunk size"
+      end
+
+      context "of 3 rows" do
+        let(:config) { build_configuration(execution: {batch_size: 3}) }
+
+        include_examples "the same result as the default chunk size"
+      end
+
+      context "of 100 rows, more than the file has" do
+        let(:config) { build_configuration(execution: {batch_size: 100}) }
+
+        include_examples "the same result as the default chunk size"
       end
     end
 

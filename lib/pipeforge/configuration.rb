@@ -7,8 +7,13 @@ module Pipeforge
   # receives this one object and reads the settings it needs, at the same paths as in the
   # file. A setting the file does not mention keeps its default. Immutable once built.
   #
-  # It holds only the settings used so far; the other sections and the validation of values
-  # come later.
+  # It holds only the settings used so far; the other sections come later. Each value is
+  # checked when the file is read: a whole number of at least 1 for +batch_size+ and
+  # +distinct_values_cap+, and the name of an encoding Ruby knows for +encoding+.
+  #
+  # A file that cannot be read at all (missing, not valid YAML, not name: value entries) stops
+  # at once. Every other error is collected, so one ConfigurationError lists them all, each
+  # with its own code (see {ConfigurationError}).
   #
   # @example
   #   config = Pipeforge::Configuration.new(path: "config/engine.yml")
@@ -33,60 +38,161 @@ module Pipeforge
     attr_reader :source
 
     # @param path [String] path of the engine.yml file
-    # @raise [ConfigurationError] the file is missing, is not valid YAML, is not a mapping of
-    #   sections and settings, or holds a section or a setting that is not known
+    # @raise [ConfigurationError] the file is missing, is not valid YAML or is not made of
+    #   name: value entries (stops at once); or it holds errors in its sections and
+    #   settings (an unknown section or setting, a section that is not settings, a value of the
+    #   wrong type or range), all listed in one error
     def initialize(path:)
       @path = path
+      @errors = []
       @sections = read_sections
-      reject_unknown_sections
       @execution = build_execution
       @source = build_source
+      raise_errors
       freeze
     end
 
     private
 
-    # The sections under `engine:` in the file; empty when the file has none.
+    # The sections under `engine:` in the file; empty when the file has none. A section the
+    # engine does not know is recorded as an error, and the rest is still read.
     def read_sections
-      raise ConfigurationError, "configuration file not found: #{path}" unless File.file?(path)
+      unless File.file?(path)
+        fail_fast(code: :config_file_not_found, message: "configuration file not found")
+      end
 
       document = YAML.safe_load_file(path) || {}
-      raise ConfigurationError, "#{path} must hold a mapping at the top level" unless document.is_a?(Hash)
+      unless document.is_a?(Hash)
+        fail_fast(
+          code: :config_file_not_name_value_entries,
+          message: "must be made of name: value entries at the top level"
+        )
+      end
 
       sections = document["engine"] || {}
-      raise ConfigurationError, "engine in #{path} must be a mapping of sections" unless sections.is_a?(Hash)
+      unless sections.is_a?(Hash)
+        fail_fast(
+          code: :engine_not_sections,
+          message: "engine must hold sections, each written as a name with entries under it"
+        )
+      end
+
+      (sections.keys.map(&:to_s) - SECTION_NAMES).each do |section_name|
+        add_error(code: :unknown_section, message: "unknown section #{section_name}", section: section_name)
+      end
 
       sections
     rescue Psych::Exception => e
-      raise ConfigurationError, "#{path} is not valid YAML: #{e.message}"
+      fail_fast(code: :config_file_not_valid_yaml, message: "not valid YAML: #{e.message}")
     end
 
-    def reject_unknown_sections
-      unknown_sections = @sections.keys.map(&:to_s) - SECTION_NAMES
-      raise ConfigurationError, "unknown section #{unknown_sections.join(", ")} in #{path}" if unknown_sections.any?
+    # Records an error: its code, its sentence, and the fields that say where it is.
+    def add_error(code:, message:, **context)
+      @errors << {code: code, message: message, **context}
+    end
+
+    # Records the error and raises at once, through the one place that raises: nothing after
+    # this can be checked.
+    def fail_fast(code:, message:)
+      add_error(code: code, message: message)
+      raise_errors
     end
 
     def build_execution
-      build_section(settings_class: ExecutionSettings, section_name: "execution", defaults: {batch_size: 2000})
+      execution = build_section(
+        settings_class: ExecutionSettings, section_name: "execution", defaults: {batch_size: 2000}
+      )
+      require_positive_whole_number(setting_name: "execution.batch_size", value: execution.batch_size)
+
+      execution
     end
 
     def build_source
-      build_section(
+      source = build_section(
         settings_class: SourceSettings,
         section_name: "source",
         defaults: {encoding: "UTF-8", distinct_values_cap: 1000}
       )
+      require_encoding_name(setting_name: "source.encoding", value: source.encoding)
+      require_positive_whole_number(setting_name: "source.distinct_values_cap", value: source.distinct_values_cap)
+
+      source
     end
 
-    # The section's settings from the file, over the defaults given.
+    # The section's settings from the file, over the defaults given. A section that is not
+    # settings, or a setting that is not known, is recorded as an error and the rest is still
+    # read, so the values that can be checked are checked.
     def build_section(settings_class:, section_name:, defaults:)
       section = @sections[section_name] || {}
-      raise ConfigurationError, "section #{section_name} of #{path} must be a mapping of settings" unless section.is_a?(Hash)
+
+      unless section.is_a?(Hash)
+        add_error(
+          code: :section_not_settings,
+          message: "section #{section_name} must hold settings, each written as name: value",
+          section: section_name
+        )
+        return settings_class.new(**defaults)
+      end
 
       given_settings = section.transform_keys(&:to_sym)
-      settings_class.new(**defaults.merge(given_settings))
-    rescue ArgumentError => e
-      raise ConfigurationError, "unknown setting in section #{section_name} of #{path}: #{e.message}"
+
+      (given_settings.keys - settings_class.members).each do |setting_name|
+        add_error(
+          code: :unknown_setting,
+          message: "unknown setting #{setting_name} in section #{section_name}",
+          section: section_name,
+          setting: setting_name.to_s
+        )
+      end
+
+      settings_class.new(**defaults.merge(given_settings.slice(*settings_class.members)))
+    end
+
+    # A whole number (not a decimal, text, true or nothing) of at least 1.
+    def require_positive_whole_number(setting_name:, value:)
+      return if value.is_a?(Integer) && value >= 1
+
+      add_error(
+        code: :setting_not_positive_whole_number,
+        message: "#{setting_name} must be a whole number of at least 1, got #{value.inspect}",
+        setting: setting_name,
+        value: value
+      )
+    end
+
+    # A text that is the name of an encoding Ruby knows, for example UTF-8 or windows-1252.
+    def require_encoding_name(setting_name:, value:)
+      return if value.is_a?(String) && known_encoding?(name: value)
+
+      add_error(
+        code: :setting_not_encoding_name,
+        message: "#{setting_name} must be the name of an encoding, got #{value.inspect}",
+        setting: setting_name,
+        value: value
+      )
+    end
+
+    # Ruby has no native yes or no question for this: Encoding.find raises for an unknown name.
+    def known_encoding?(name:)
+      Encoding.find(name)
+      true
+    rescue ArgumentError
+      false
+    end
+
+    # One ConfigurationError for everything collected: the sentence itself for one, a list for
+    # several. The entries, with their codes, are on the error.
+    def raise_errors
+      return if @errors.empty?
+
+      if @errors.size == 1
+        message = "#{path}: #{@errors.first[:message]}"
+      else
+        lines = @errors.map { |error| "  - #{error[:message]}" }
+        message = "#{path} has #{@errors.size} errors:\n#{lines.join("\n")}"
+      end
+
+      raise ConfigurationError.new(message: message, errors: @errors)
     end
   end
 end

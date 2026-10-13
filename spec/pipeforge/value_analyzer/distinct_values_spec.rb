@@ -34,9 +34,13 @@ RSpec.describe Pipeforge::ValueAnalyzer::DistinctValues do
 
     context "without a cap" do
       it "lists every value" do
-        100.times { |number| distinct_values.record(value: number.to_s) }
+        distinct_values.record(value: "a")
+        distinct_values.record(value: "b")
+        distinct_values.record(value: "c")
+        distinct_values.record(value: "d")
+        distinct_values.record(value: "e")
 
-        expect(distinct_values.value_counts.size).to eq(100)
+        expect(distinct_values.value_counts.keys).to eq(%w[a b c d e])
       end
     end
 
@@ -44,19 +48,24 @@ RSpec.describe Pipeforge::ValueAnalyzer::DistinctValues do
       let(:cap) { 2 }
 
       it "lists a new value while there is room" do
-        %w[a b].each { |value| distinct_values.record(value: value) }
+        distinct_values.record(value: "a")
+        distinct_values.record(value: "b")
 
         expect(distinct_values.value_counts.keys).to eq(%w[a b])
       end
 
       it "leaves out a new value once the list is full" do
-        %w[a b c].each { |value| distinct_values.record(value: value) }
+        distinct_values.record(value: "a")
+        distinct_values.record(value: "b")
+        distinct_values.record(value: "c")
 
         expect(distinct_values.value_counts.keys).to eq(%w[a b])
       end
 
       it "keeps counting a value that is already listed after the list is full" do
-        %w[a b c].each { |value| distinct_values.record(value: value) }
+        distinct_values.record(value: "a")
+        distinct_values.record(value: "b")
+        distinct_values.record(value: "c")
         distinct_values.record(value: "a", count: 4)
 
         expect(distinct_values.value_counts).to eq("a" => 5, "b" => 1)

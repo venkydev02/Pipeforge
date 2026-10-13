@@ -70,6 +70,12 @@ RSpec.describe Pipeforge::ValueAnalyzer::ChunkReader do
           expect(error.line).to eq(3)
         end
       end
+
+      it "gives the code malformed_row, with the line" do
+        expect { read_chunks }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+          expect(error.errors.map { |entry| entry.slice(:code, :line) }).to eq([{code: :malformed_row, line: 3}])
+        end
+      end
     end
   end
 

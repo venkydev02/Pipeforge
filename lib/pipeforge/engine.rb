@@ -61,7 +61,11 @@ module Pipeforge
     def ensure_readable_source
       return if File.file?(@source_path) && File.readable?(@source_path)
 
-      raise Source::MissingSourceError, "source file not found or not readable: #{@source_path}"
+      raise Source::MissingSourceError.single(
+        code: :source_not_readable,
+        message: "source file not found or not readable: #{@source_path}",
+        path: @source_path
+      )
     end
   end
 end
