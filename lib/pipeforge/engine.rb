@@ -10,7 +10,7 @@ module Pipeforge
   # @example
   #   engine = Pipeforge::Engine.new(config_path: "config/engine.yml", source_path: "data/users.csv")
   #   result = engine.analyze_values(
-  #     column_mapping: {"Mail" => {target_column: "email", type: "string"}}
+  #     mapped_columns: {"Mail" => {target_column: "email", type: "string"}}
   #   )
   class Engine
     # @return [Configuration] the settings read from the configuration file
@@ -35,13 +35,21 @@ module Pipeforge
     # Measures the mapped columns of the source file: how many values are empty, how many fit
     # the type of the target column, and which distinct values do and do not fit.
     #
-    # @param column_mapping [Hash{String => Hash}] source column => {target_column:, type:, ...},
-    #   with the type keys described in {ValueAnalyzer::TypeChecker}
+    # Call it again after editing the +value_mapping+ of a column in the result to see the facts
+    # again: with a value mapping, each value is measured as the value it maps to, so the counts
+    # show what would be loaded, and the mapping comes back in the result to be edited once
+    # more. The file is read again each time, so a changed file or mapping is picked up as well.
+    #
+    # @param mapped_columns [Hash{String => Hash}] source column => {target_column:, type:, ...,
+    #   value_mapping: {value in the file => value to load}}. +value_mapping+ is optional, and a
+    #   value that maps to nil or a blank is loaded as empty. The type keys are described in
+    #   {ValueAnalyzer::TypeChecker}.
     # @return [ValueAnalyzer::Result]
+    # @raise [KeyError] a column has no +target_column+ or no +type+
     # @raise [Source::MissingColumnError] a mapped source column is not in the file
     # @raise [Source::MalformedSourceError] a row cannot be parsed
-    def analyze_values(column_mapping:)
-      ValueAnalyzer.new(config: @config).call(path: @source_path, column_mapping: column_mapping)
+    def analyze_values(mapped_columns:)
+      ValueAnalyzer.new(config: @config).call(path: @source_path, mapped_columns: mapped_columns)
     end
 
     private

@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::ValueAnalyzer::TypeChecker do
-  subject(:checker) { described_class.new(type_info: type_info) }
+  subject(:type_checker) { described_class.new(type_info: type_info) }
 
   # Each value becomes one example, so a failure names the value.
   shared_examples "values that fit" do |*texts|
     texts.each do |text|
       it "fits #{text.inspect}" do
-        expect(checker.fits?(text: text)).to be true
+        expect(type_checker.fits?(text: text)).to be true
       end
     end
   end
@@ -15,7 +15,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::TypeChecker do
   shared_examples "values that do not fit" do |*texts|
     texts.each do |text|
       it "does not fit #{text.inspect}" do
-        expect(checker.fits?(text: text)).to be false
+        expect(type_checker.fits?(text: text)).to be false
       end
     end
   end
@@ -77,7 +77,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::TypeChecker do
         include_examples "values that do not fit", "1234.5", "99999", "-1000"
 
         it "allows more digits after the point than the scale, because the database only rounds them" do
-          expect(checker.fits?(text: "1.23456")).to be true
+          expect(type_checker.fits?(text: "1.23456")).to be true
         end
       end
 

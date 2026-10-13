@@ -16,7 +16,8 @@ RSpec.describe Pipeforge::ValueAnalyzer::ChunkProfile do
       position: nil,
       empty: 0,
       type_compatibility: {fits: total, total: total},
-      distinct_values: {compatible: compatible, incompatible: distinct_values_class.new(cap: nil)}
+      distinct_values: {compatible: compatible, incompatible: distinct_values_class.new(cap: nil)},
+      value_mapping: {}
     )
 
     described_class.new(columns: {"A" => summary})

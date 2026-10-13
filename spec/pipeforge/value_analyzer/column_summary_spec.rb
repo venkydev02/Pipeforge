@@ -4,14 +4,15 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
   let(:distinct_values_class) { Pipeforge::ValueAnalyzer::DistinctValues }
 
   # A summary as a chunk is measured: it knows its counts and lists, not yet its column.
-  def summary_of(empty: 0, fits: 0, total: 0, compatible: {}, incompatible: {}, **attributes)
+  def summary_of(empty: 0, fits: 0, total: 0, compatible: {}, incompatible: {}, target_column: nil, position: nil,
+    value_mapping: {})
     described_class.new(
-      target_column: nil,
-      position: nil,
+      target_column: target_column,
+      position: position,
       empty: empty,
       type_compatibility: {fits: fits, total: total},
       distinct_values: {compatible: list_of(compatible), incompatible: list_of(incompatible)},
-      **attributes
+      value_mapping: value_mapping
     )
   end
 
@@ -34,6 +35,10 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
 
     it "has an empty list for each kind of value, with the cap" do
       expect(summary.distinct_values.values).to all(have_attributes(value_counts: {}, cap: 5))
+    end
+
+    it "has no value mapping" do
+      expect(summary.value_mapping).to eq({})
     end
   end
 
@@ -66,6 +71,12 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
       expect(merged).to have_attributes(target_column: "age", position: 2)
     end
 
+    it "keeps the value mapping of the earlier summary" do
+      earlier_with_mapping = earlier.with(value_mapping: {"Active" => "1"})
+
+      expect(earlier_with_mapping.merge(later: later).value_mapping).to eq("Active" => "1")
+    end
+
     it "does not change the earlier summary" do
       expect { merged }.not_to change { earlier.type_compatibility }
     end
@@ -74,7 +85,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
   describe "#to_h" do
     subject(:hash) do
       summary_of(empty: 1, fits: 1, total: 2, compatible: {"30" => 1}, incompatible: {"x" => 1},
-        target_column: "age", position: 2).to_h
+        target_column: "age", position: 2, value_mapping: {"x" => "0"}).to_h
     end
 
     it "is made of plain JSON types, with each list as an array of value and count" do
@@ -86,7 +97,8 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
         distinct_values: {
           compatible: [{value: "30", count: 1}],
           incompatible: [{value: "x", count: 1}]
-        }
+        },
+        value_mapping: {"x" => "0"}
       )
     end
   end

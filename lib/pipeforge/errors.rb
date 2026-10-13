@@ -8,6 +8,7 @@ module Pipeforge
   # not valid YAML, or it contains a section or setting the engine does not know.
   class ConfigurationError < Error; end
 
+  # The errors about the source file: the file itself, its header and its rows.
   module Source
     # Raised when the source path is not a file the engine can read (it does not exist, it
     # is a directory, or access is denied).

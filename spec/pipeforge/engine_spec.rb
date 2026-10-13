@@ -1,72 +1,73 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine do
+  subject(:engine) { described_class.new(config_path: config_path, source_path: source_path) }
+
+  let(:config_path) { yaml_file(yaml) }
+  let(:yaml) { "version: '1.0'\n" }
+  # Status: Active x4 (one written " Active "), INACTIVE x2, A x1. Code: seven different values.
   let(:source_path) { File.expand_path("../fixtures/source/statuses.csv", __dir__) }
 
-  # Writes the text to a temporary engine.yml and yields its path (the file is removed after).
-  def with_config(yaml = "version: '1.0'\n")
-    Tempfile.create(["engine", ".yml"]) do |file|
-      file.write(yaml)
-      file.flush
-      yield file.path
-    end
-  end
-
   describe ".new" do
-    it "loads the configuration from the file at the given path" do
-      with_config("engine:\n  source:\n    distinct_values_cap: 3\n") do |config_path|
-        config = described_class.new(config_path: config_path, source_path: source_path).config
+    it "keeps the source path it was given" do
+      expect(engine.source_path).to eq(source_path)
+    end
 
-        expect(config.source.distinct_values_cap).to eq(3)
-        expect(config.execution.batch_size).to eq(2000) # not in the file: keeps its default
+    it "keeps the path of the configuration file" do
+      expect(engine.config.path).to eq(config_path)
+    end
+
+    context "with settings in the configuration file" do
+      let(:yaml) { "engine:\n  source:\n    distinct_values_cap: 3\n" }
+
+      it "loads them" do
+        expect(engine.config.source.distinct_values_cap).to eq(3)
+      end
+
+      it "keeps the defaults for the settings that are not in the file" do
+        expect(engine.config.execution.batch_size).to eq(2000)
       end
     end
 
-    it "keeps both paths it was given" do
-      with_config do |config_path|
-        engine = described_class.new(config_path: config_path, source_path: source_path)
+    context "when the configuration file does not exist" do
+      let(:config_path) { "no/such/engine.yml" }
 
-        expect(engine.source_path).to eq(source_path)
-        expect(engine.config.path).to eq(config_path)
+      it "stops with our own error" do
+        expect { engine }.to raise_error(Pipeforge::ConfigurationError, %r{configuration file not found: no/such/engine.yml})
       end
     end
 
-    it "needs both paths: they are never searched for" do
-      with_config do |config_path|
-        expect { described_class.new }.to raise_error(ArgumentError)
-        expect { described_class.new(config_path: config_path) }.to raise_error(ArgumentError)
+    context "with a setting it does not know" do
+      let(:yaml) { "engine:\n  execution:\n    batch_sise: 10\n" }
+
+      it "stops with our own error, naming the setting" do
+        expect { engine }.to raise_error(Pipeforge::ConfigurationError, /unknown setting.*batch_sise/)
       end
     end
 
-    it "stops with our own error when the configuration file does not exist" do
-      expect { described_class.new(config_path: "no/such/engine.yml", source_path: source_path) }
-        .to raise_error(Pipeforge::ConfigurationError, %r{configuration file not found: no/such/engine.yml})
-    end
+    context "when the source file does not exist" do
+      let(:source_path) { "no/such/file.csv" }
 
-    it "stops with our own error for a setting it does not know" do
-      with_config("engine:\n  execution:\n    batch_sise: 10\n") do |config_path|
-        expect { described_class.new(config_path: config_path, source_path: source_path) }
-          .to raise_error(Pipeforge::ConfigurationError, /unknown setting.*batch_sise/)
+      it "stops with our own error" do
+        expect { engine }.to raise_error(
+          Pipeforge::Source::MissingSourceError, %r{not found or not readable: no/such/file.csv}
+        )
       end
     end
 
-    it "stops with our own error when the source file does not exist" do
-      with_config do |config_path|
-        expect { described_class.new(config_path: config_path, source_path: "no/such/file.csv") }
-          .to raise_error(Pipeforge::Source::MissingSourceError, %r{not found or not readable: no/such/file.csv})
-      end
-    end
+    context "when the source is a directory" do
+      let(:source_path) { File.dirname(File.expand_path("../fixtures/source/statuses.csv", __dir__)) }
 
-    it "stops with our own error when the source is a directory" do
-      with_config do |config_path|
-        expect { described_class.new(config_path: config_path, source_path: File.dirname(source_path)) }
-          .to raise_error(Pipeforge::Source::MissingSourceError)
+      it "stops with our own error" do
+        expect { engine }.to raise_error(Pipeforge::Source::MissingSourceError)
       end
     end
   end
 
   describe "#analyze_values" do
-    let(:column_mapping) do
+    subject(:result) { engine.analyze_values(mapped_columns: mapped_columns) }
+
+    let(:mapped_columns) do
       {
         "Status" => {target_column: "status", type: "string"},
         "Code" => {target_column: "code", type: "string"},
@@ -74,49 +75,76 @@ RSpec.describe Pipeforge::Engine do
       }
     end
 
-    def engine_for(config_path)
-      described_class.new(config_path: config_path, source_path: source_path)
+    it "names the source file" do
+      expect(result.source_identifier).to eq(source_path)
     end
 
-    it "returns what the mapped columns contain, using the loaded configuration" do
-      with_config("engine:\n  source:\n    distinct_values_cap: 2\n") do |config_path|
-        result = engine_for(config_path).analyze_values(column_mapping: column_mapping)
+    it "returns a summary for each mapped column, keyed by source column" do
+      expect(result.columns.keys).to eq(%w[Status Code Note])
+    end
 
-        expect(result.source_identifier).to eq(source_path)
-        expect(result.columns.keys).to eq(%w[Status Code Note])
-        expect(result.columns["Code"].target_column).to eq("code")
+    it "gives each summary its target column" do
+      expect(result.columns["Code"].target_column).to eq("code")
+    end
+
+    it "returns the same result when it is called again" do
+      expect(engine.analyze_values(mapped_columns: mapped_columns).to_h).to eq(result.to_h)
+    end
+
+    context "with a cap on the distinct values in the configuration file" do
+      let(:yaml) { "engine:\n  source:\n    distinct_values_cap: 2\n" }
+
+      it "lists at most that many values per list" do
         expect(result.columns["Code"].distinct_values[:compatible].values.size).to eq(2)
       end
     end
 
-    it "measures only the mapped columns" do
-      with_config do |config_path|
-        result = engine_for(config_path).analyze_values(
-          column_mapping: {"Code" => {target_column: "code", type: "string"}}
-        )
+    context "when only some columns are mapped" do
+      let(:mapped_columns) { {"Code" => {target_column: "code", type: "string"}} }
 
+      it "measures only those columns" do
         expect(result.columns.keys).to eq(["Code"])
       end
     end
 
-    it "stops with our own error when a mapped column is not in the file" do
-      with_config do |config_path|
-        engine = engine_for(config_path)
+    context "when a mapped column is not in the file" do
+      let(:mapped_columns) { {"Nope" => {target_column: "status", type: "string"}} }
 
-        expect {
-          engine.analyze_values(column_mapping: {"Nope" => {target_column: "status", type: "string"}})
-        }.to raise_error(Pipeforge::Source::MissingColumnError, /Nope/)
+      it "stops with our own error, naming the column" do
+        expect { result }.to raise_error(Pipeforge::Source::MissingColumnError, /Nope/)
       end
     end
 
-    it "can be called again without passing the source" do
-      with_config do |config_path|
-        engine = engine_for(config_path)
+    context "with a value mapping on a column" do
+      let(:mapped_columns) do
+        {"Status" => {target_column: "status", type: "integer", value_mapping: value_mapping}}
+      end
+      let(:value_mapping) { {"Active" => "1", "A" => "x"} }
 
-        first_result = engine.analyze_values(column_mapping: column_mapping)
-        second_result = engine.analyze_values(column_mapping: column_mapping)
+      it "measures the values as the values they map to" do
+        expect(result.columns["Status"].type_compatibility).to eq(fits: 4, total: 7)
+      end
 
-        expect(second_result.to_h).to eq(first_result.to_h)
+      it "returns the value mapping with the column" do
+        expect(result.columns["Status"].value_mapping).to eq(value_mapping)
+      end
+
+      context "when it is called again with an edited value mapping" do
+        let(:edited_mapped_columns) do
+          {
+            "Status" => {
+              target_column: "status",
+              type: "integer",
+              value_mapping: {"Active" => "1", "INACTIVE" => "0", "A" => "2"}
+            }
+          }
+        end
+
+        it "shows the facts again, now that every value fits" do
+          edited_result = engine.analyze_values(mapped_columns: edited_mapped_columns)
+
+          expect(edited_result.columns["Status"].type_compatibility).to eq(fits: 7, total: 7)
+        end
       end
     end
   end

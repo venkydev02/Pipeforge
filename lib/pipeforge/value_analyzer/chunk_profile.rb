@@ -11,7 +11,12 @@ module Pipeforge
     #   empty               how many cells are empty
     #   type_compatibility  {fits:, total:}: how many of the non-empty values fit the target type
     #   distinct_values     {compatible:, incompatible:}, each a DistinctValues
-    ColumnSummary = Data.define(:target_column, :position, :empty, :type_compatibility, :distinct_values) do
+    #   value_mapping       the consumer's mapping of source values to the values to load; the
+    #                       counts and the lists above describe the values after applying it,
+    #                       that is, what would be loaded
+    ColumnSummary = Data.define(
+      :target_column, :position, :empty, :type_compatibility, :distinct_values, :value_mapping
+    ) do
       # A column with nothing counted yet.
       #
       # @param cap [Integer, nil] how many different values each list keeps; nil keeps every value
@@ -25,12 +30,14 @@ module Pipeforge
           distinct_values: {
             compatible: DistinctValues.new(cap: cap),
             incompatible: DistinctValues.new(cap: cap)
-          }
+          },
+          value_mapping: {}
         )
       end
 
       # Adds the summary of a later part of the file to this one: the numbers are added and the
-      # distinct values are merged.
+      # distinct values are merged. The target column, the position and the value mapping stay
+      # those of this summary.
       #
       # @param later [ColumnSummary] the same column, measured on rows after this summary's rows
       # @return [ColumnSummary] a new summary; neither input changes
@@ -58,7 +65,8 @@ module Pipeforge
           distinct_values: {
             compatible: distinct_values[:compatible].values,
             incompatible: distinct_values[:incompatible].values
-          }
+          },
+          value_mapping: value_mapping
         }
       end
     end

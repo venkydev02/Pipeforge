@@ -11,9 +11,9 @@ module Pipeforge
     # (json, inet, and so on) is not checked: every value fits it.
     #
     # @example
-    #   checker = TypeChecker.new(type_info: {type: "integer", limit: 4})
-    #   checker.fits?(text: "42")   # => true
-    #   checker.fits?(text: "42x")  # => false
+    #   type_checker = TypeChecker.new(type_info: {type: "integer", limit: 4})
+    #   type_checker.fits?(text: "42")   # => true
+    #   type_checker.fits?(text: "42x")  # => false
     class TypeChecker
       WHOLE_NUMBER = /\A[+-]?\d+\z/
       DECIMAL = /\A[+-]?\d+(\.\d+)?\z/
@@ -57,6 +57,8 @@ module Pipeforge
 
       private
 
+      # Sets the smallest and largest whole number a column of +limit+ bytes holds (4 bytes when
+      # no limit is given), which the whole number rule compares with.
       def set_integer_range(limit:)
         bits = 8 * (limit || 4)
         @largest = 2**(bits - 1) - 1
