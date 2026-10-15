@@ -1,60 +1,54 @@
 # Architecture Overview & System Topology
 
 > **Document Location:** `docs/architecture/overview.md`
-> **Status:** Draft v3.1 — updated 2026-10-10 (ADR-10 to ADR-13)
+> **Status:** Draft v4.0 — updated 2026-10-15 for ADR-14 to ADR-17 (staged engine methods, no lookups, framework-agnostic core, one runtime entry point)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
 
 ## 1. Foundational Principles
 
-The **Relational Data Migration Engine** is a Rails-oriented gem that migrates data from a source file into a relational database through ActiveRecord. The consumer states *how a migration should behave*; the engine discovers, recommends, validates, resolves relationships and loads.
+The **Relational Data Migration Engine** migrates data from a source file into a relational database. The consumer states *how a migration should behave*; the engine checks the source against the target, measures the values and loads the rows.
 
-CSV is the **current MVP source format**. It is not the system identity; other source formats may be added later without changing the Planner → Builder → Runtime design.
+CSV is the **current MVP source format**. It is not the system identity; other source formats may be added later without changing the stage design.
+
+The engine is split into a **framework-agnostic core** (`pipeforge`) and one **adapter distribution per database library** (`pipeforge-activerecord` for the MVP). The consumer installs only the adapter (ADR-16).
 
 ### 1.1 Minimal Consumer Effort
-The consumer does not write connections, resolvers, or loaders. They supply a source, name the target (a model or table), and set behavior options. Everything else is built in. Custom components exist only as an advanced extension point (see `target-access.md`).
+The consumer does not write connections or loaders. They supply a source, name the target model, and set behavior options. The adapter is built in. Custom adapters are an advanced extension point (see `target-access.md`).
 
-### 1.2 The Row-Access Boundary (Zero Target-Row Access, as a Module Boundary)
-Planning must never depend on what is already in the target database.
+### 1.2 The Row-Access Boundary
+Analysis must never depend on what is already in the target database.
 
-* **Allowed everywhere in the engine (metadata only):** columns, types, nullability, defaults, primary/foreign keys, unique indexes, and model metadata (enums, associations, virtual attributes, validators).
-* **Forbidden outside the two row-access modules:** reading existing target rows, value distributions, value overlaps, existing parent entities, or "is this table empty?" checks.
-* **Row-access modules:** only the **relationship resolver** (reads parent rows) and the **loader** (writes rows) may touch business rows. A test verifies that the Planner, Builder and pre-resolution stages never query rows.
+* **Allowed everywhere (metadata only):** columns, types, nullability, defaults, primary and foreign keys, unique indexes, and model metadata (enums, associations, virtual attributes, validators).
+* **Forbidden outside the loader:** reading existing target rows, value distributions of the target, or "is this table empty?" checks.
+* **Row-access module:** only the **loader** touches business rows, and it does so inside the model's own validations (ADR-15). The header stage and the value stage read only the source file and target metadata. The value stage reads source values, which is not target access.
 
 ### 1.3 Schema Is Structural Truth, Not Business Truth
 The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values are allowed. Allowed values are known only from model metadata (for example an `enum` declaration), never inferred from stored data.
 
-### 1.4 Planner → Builder → Runtime, One Plan Format (ADR-01 amended by ADR-10 and ADR-13)
+### 1.4 Staged Engine Methods (ADR-14, ADR-17)
 
 ```text
-MigrationPlanner
-        ↓
-Planner response (JSON draft: findings + draft_plan + acknowledgement_flag = false)
-        ↓
-Consumer review / edit  →  sets acknowledgement_flag = true
-        ↓
-MigrationPlanBuilder   (draft → BuildResult; accepts only an acknowledged draft; reads only the mapping state)
-        ↓
-MigrationPlan (P3, state only)
-        ↓
-MigrationRuntime
+analyze_headers(target_model:)            → HeaderAnalysis      (names only, no values)
+analyze_values(mapped_columns:)           → ValueAnalyzer::Result (values, facts, value mappings)
+run(mode: :dry_run | :run, header_analysis:, value_analysis:)    → summary and failed rows
 ```
 
-1. **`MigrationPlanner`** reads the source and target schemas and returns the **draft**: `findings` (what the source and target contain), `draft_plan.column_mapping` (one entry per writable target column, with a recommended source column, confidence and reason) and `acknowledgement_flag`, set to `false`.
-2. **`MigrationPlanBuilder`** turns a draft into a `BuildResult`: the state-only `MigrationPlan`, or a list of errors (code, column, reason). It reads only `source_column`, `value_mapping`, `lookup` and `acknowledgement_flag`; facts (`findings`, `confidence`, `reason`, `type_compatibility`) are ignored. It is used internally by the Planner and as a public API.
-3. **`MigrationRuntime`** executes a `MigrationPlan`. It knows nothing about the Planner, the Builder, or facts.
+1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns facts and the editable `column_mapping`.
+2. **`analyze_values`** takes the mapping the consumer settled and measures the mapped source columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
+3. **`run`** is the one public runtime entry point. It checks that the two results agree, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits.
 
-The consumer reviews the draft and edits it if needed (remap a column, add value mappings, choose lookup columns), then sets `acknowledgement_flag` to `true`. **`build` refuses any draft whose flag is missing or `false`.** "No changes" is valid, but the consumer still sets the flag. How the review happens (a UI, a script, a glance at the JSON) is the consumer's business; the engine never resets the flag.
+There is no separate build step: the consumer already has the header and value results, which show the plan. Review is the consumer's own step; the engine never prompts and never resets anything.
 
-### 1.5 Plan as Domain Object
-`MigrationPlan` is an immutable in-memory object consumed directly by the Runtime. JSON or YAML are optional serializations for storage or transport. The Runtime never parses formats.
+### 1.5 Results Are Plain Values
+Each stage returns an immutable value object that can be stored, shown and passed back. Facts are regenerated each time; state (the mapping and the value mappings) is what the consumer edits.
 
 ### 1.6 Contracts Between Components
-Stages communicate through explicit value objects (P1–P8, `PlanDraft`, `BuildResult`) and not through shared mutable state or ad hoc hashes. Only artifacts that cross a process or storage boundary (`SourceSchema`, `TargetSchema`, `PlanDraft`, `MigrationPlan`, the run report) carry a `protocol_version`. In-process objects (P4 to P8) do not. See `protocols.md`.
+Stages communicate through explicit value objects (P1–P2, `HeaderAnalysis`, `ValueAnalyzer::Result`, checkpoints) and not through shared mutable state or ad hoc hashes. Only artifacts that cross a process or storage boundary carry a `protocol_version`. See `protocols.md`.
 
 ### 1.7 Deterministic Core
-Recommendations are **deterministic**, **explainable**, **reproducible** and **testable**. Identical inputs and `EngineConfiguration` produce identical drafts. No LLM or external AI service participates in correctness.
+Recommendations are **deterministic**, **explainable**, **reproducible** and **testable**. Identical inputs and configuration produce identical results. No LLM or external AI service participates in correctness.
 
 ---
 
@@ -63,32 +57,31 @@ Recommendations are **deterministic**, **explainable**, **reproducible** and **t
 ```mermaid
 flowchart TD
     Source[Source: CSV]
-    DB[(Target database via ActiveRecord)]
-    Config[engine.yml → EngineConfiguration]
+    DB[(Target database)]
+    Config[engine.yml]
 
-    subgraph Engine["Engine"]
-        Analyzer[SourceAnalyzer → P1]
-        Schema["Target::Schema reader → P2<br/>(metadata only)"]
-        Planner[MigrationPlanner]
-        Builder[MigrationPlanBuilder]
-        Runtime[MigrationRuntime]
-        subgraph Rows["Row-access modules"]
-            Resolver[Relationship Resolver]
-            Loader[Loader]
-        end
+    subgraph Core["Core gem: pipeforge"]
+        Headers["analyze_headers → HeaderAnalysis"]
+        Values["analyze_values → ValueAnalyzer::Result"]
+        Runtime["run (dry run or run)"]
     end
 
-    Consumer{{"Consumer review + acknowledge"}}
+    subgraph Adapter["Adapter gem: pipeforge-activerecord"]
+        Schema["schema → TargetSchema (metadata only)"]
+        Loader["Loader (transactions, insert_all!, save)"]
+    end
 
-    Source --> Analyzer --> Planner
-    DB -. "schema + model metadata" .-> Schema --> Planner
-    Config --> Planner
-    Planner -->|"draft JSON"| Consumer
-    Consumer -->|"draft + acknowledgement_flag = true"| Builder
-    Builder -->|"MigrationPlan (P3)"| Runtime
-    Runtime -->|"P5a / P5b"| Resolver
-    Runtime -->|"P7 / P8"| Loader
-    Resolver -. reads parent rows .-> DB
+    Consumer{{"Consumer review and edits"}}
+
+    Source --> Headers
+    DB -. "schema + model metadata" .-> Schema --> Headers
+    Config --> Headers
+    Headers -->|"column_mapping"| Consumer
+    Consumer -->|"column_mapping"| Values
+    Source --> Values
+    Values -->|"value_mapping"| Consumer
+    Consumer --> Runtime
+    Runtime --> Loader
     Loader -. writes rows .-> DB
 ```
 
@@ -96,71 +89,66 @@ Source analysis and target schema reading are independent and may run concurrent
 
 ---
 
-## 3. Planning, Plan Construction, and Execution Boundary
+## 3. Stage Responsibilities
 
-### 3.1 `MigrationPlanner`
-* **Input:** `SourceSchema` (P1), `TargetSchema` (P2, with model metadata and one-hop parent schemas for foreign keys), and `EngineConfiguration` recommendation settings (inclusion threshold, reorder penalty, synonyms and aliases).
-* **Responsibility:**
-  * Ranks target-to-source pairs **by column names only** (ADR-12) and assigns them greedily, one to one.
-  * Puts into the plan the pairs at or above the inclusion threshold; lists below-threshold candidates as doubtful.
-  * Lists every writable target column; never recommends database-filled or not-writable columns.
-  * Fills in only safe value mappings; lists distinct values (up to `source.distinct_values_cap` per source column) so the customer can map the rest.
-* **Non-responsibilities:** no UI, no persistence, no execution, no data-based ranking, no invented value mappings, no guessed lookup columns.
+### 3.1 `analyze_headers`
+* **Input:** the source file and the target model (named by class name).
+* **Reads:** the source header row only, and the target model's metadata.
+* **Output:** `HeaderAnalysis`: facts (unmatched columns on both sides, candidates per target column, doubtful candidates, foreign keys with their parent model and whether they are required) and the editable `column_mapping`.
+* **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
-### 3.2 `MigrationPlanBuilder`
-* **Input:** the draft JSON (the Planner's response, edited or not) and the `TargetSchema`.
-* **Output:** a `BuildResult`: the `MigrationPlan`, or a list of errors, each with a stable code, the affected column and the reason. All errors are reported at once.
-* **Rejects:** a draft whose `acknowledgement_flag` is not `true`; a required target column (`NOT NULL`, no default, not filled by the database) with no `source_column`; unknown source or lookup columns; unsupported relationships (composite foreign keys).
-* **Required properties:** determinism (same mapping state, same plan); fact-independence (editing or removing facts never changes the result); no plan without the acknowledgement flag.
-* **Non-responsibilities:** no recommendations, no heuristics, no execution.
+### 3.2 `analyze_values`
+* **Input:** the mapped columns (source column, target column, type, optional value mapping) and the engine's offset and limit.
+* **Reads:** the mapped source columns only, in one streaming pass with bounded memory.
+* **Output:** `ValueAnalyzer::Result`: per column, empty count, type compatibility (`fits` of `total`), distinct values split into compatible and incompatible lists (capped per list), and the value mapping the facts were measured with.
+* **Non-responsibilities:** no writes, no target rows, no changes to the mapping.
 
-### 3.3 Shared Plan Primitives
-Planner and Builder share value objects for mappings, lookups and transform steps, and the validation rules for them, so drafts from either author obey identical invariants.
+### 3.3 `run`
+* **Input:** `mode`, `HeaderAnalysis`, `ValueAnalyzer::Result`, and the optional offset, limit and per-call options.
+* **Checks first:** the value result is current for the mapping; every mapped column exists in the source and the target; every required target column is mapped. All errors are reported at once, before any row is read.
+* **Loads:** streams the source in batches. Each batch is loaded through the adapter, a failed batch is retried row by row, and each committed batch leaves a checkpoint.
+* **Output:** a summary (`mode`, loaded and failed counts, checkpoint) and the failed rows, one JSON line each.
+* **Dry run:** the same path, inside one outer transaction that is rolled back at the end (`target-access.md` §4).
 
 ### 3.4 The Consumer Boundary
-The consumer owns: how plans are presented or edited (if at all), where drafts and plans are stored, and **when** to invoke the Runtime. The engine never prompts and never becomes a web app; the only thing it requires from the consumer's review is the acknowledgement flag. Progress is surfaced through consumer-supplied hooks, not terminal UI.
+The consumer owns: reviewing and editing the stage results, where they are stored, **when** to call each method, the choice of offset slices, and the decision to run during low traffic (the dry run holds locks). The engine never prompts and never becomes a web app. Progress is surfaced through consumer-supplied hooks, not terminal UI.
 
 ---
 
 ## 4. End-to-End Information Flow
 
-Runtime stage order is fixed:
-
-```text
-Extraction → Mapping → Transformation → Pre-resolution validation
-→ Relationship resolution → Post-resolution validation → Loading → Reporting
-```
-
 ```mermaid
 sequenceDiagram
     autonumber
     participant Src as Source (CSV)
-    participant Planner as MigrationPlanner
+    participant Core as Core (pipeforge)
     participant Consumer as Consumer (review)
-    participant Builder as MigrationPlanBuilder
-    participant Runtime as MigrationRuntime
-    participant Resolver as Resolver (row access)
-    participant Loader as Loader (row access)
+    participant Adapter as Adapter (pipeforge-activerecord)
     participant Rep as Reporter
 
-    Note over Planner: Phase A: Planning
-    Planner->>Planner: Analyze P1 + P2 (metadata only), score candidates
-    Planner->>Consumer: Draft JSON (findings, draft_plan, acknowledgement_flag = false)
+    Note over Core: Stage 1: names
+    Core->>Src: Read header row only
+    Core->>Adapter: schema(target_model:)
+    Adapter-->>Core: TargetSchema (metadata only)
+    Core->>Consumer: HeaderAnalysis (facts, column_mapping)
 
-    Note over Consumer: Phase B: Review and acknowledge
-    Consumer->>Builder: Draft (edited or not) with acknowledgement_flag = true
+    Note over Consumer: Review the mapping
+    Consumer->>Core: analyze_values(mapped_columns:)
 
-    Note over Builder: Phase C: Construction
-    Builder->>Consumer: BuildResult: MigrationPlan (P3) or errors
-    Consumer->>Runtime: MigrationPlan + source
+    Note over Core: Stage 2: values
+    Core->>Src: One streaming pass over the mapped columns
+    Core->>Consumer: ValueAnalyzer::Result (facts, value_mapping)
 
-    Note over Runtime: Phase D: Streaming execution (serial chunks)
-    Src->>Runtime: Raw chunk (default 2,000 rows)
-    Runtime->>Runtime: Extract, map, transform, pre-resolution validation → P4
-    Runtime->>Resolver: P5a (distinct lookup values)
-    Resolver-->>Runtime: P5b (resolved / unresolved / ambiguous / failure)
-    Runtime->>Runtime: Post-resolution validation → P6 (4-state)
-    Runtime->>Loader: P7 LoadRequest + ExecutionContext
-    Loader-->>Runtime: P8 LoadResult (per-record outcomes)
-    Runtime->>Rep: Progress, metrics, dead-letter records, accounting
+    Note over Consumer: Review the values
+    Consumer->>Core: run(mode: :dry_run, ...)
+
+    Note over Core: Stage 3: run
+    Core->>Core: Contract check (all errors at once)
+    loop each batch
+        Src->>Core: Rows (batch_size)
+        Core->>Adapter: transaction(scope: :batch) and load_batch
+        Adapter-->>Core: Outcomes (failed batch: retry rows one by one)
+        Core->>Rep: Checkpoint, failed rows, counts
+    end
+    Core->>Consumer: Summary and failed rows
 ```

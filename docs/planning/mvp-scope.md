@@ -1,7 +1,7 @@
 # MVP Scope & Definition of Done
 
 > **Document Location:** `docs/planning/mvp-scope.md`
-> **Status:** Draft v3.1 — updated 2026-10-10 (ADR-10 to ADR-13)
+> **Status:** Draft v4.0 — updated 2026-10-15 (ADR-14 to ADR-17)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -9,57 +9,52 @@
 ## 1. Current Scope
 
 ### 1.1 Source
-- CSV
+- CSV (read with an offset and limit, optionally)
 
 ### 1.2 Target
-- Rails applications using ActiveRecord
+- Rails applications using ActiveRecord, through the `pipeforge-activerecord` distribution (ADR-16)
 - PostgreSQL (first), SQLite
-- Target named as a model class or a table
+- Target named as a model class name (for example `"User"`)
 
 ### 1.3 Migration Scope
 - Single primary entity per migration job
-- 1:1 and N:1 lookups
+- Foreign key columns hold the parent's primary key; names are mapped to ids in the value stage (ADR-15)
 - Single-attribute primary, foreign and unique keys
 
 ### 1.4 Configuration & Interaction
-- Consumed as a Ruby library inside a Rails application; no gem-shipped CLI in MVP
+- Consumed as a Ruby library: the core gem comes with the adapter gem; no gem-shipped CLI in MVP
 - One-time engine configuration through `engine.yml`; behavior is chosen by options, not code
-- Migration-specific input: source, target, and the plan
-- Programmatic overrides for individual runs
-- The Planner returns a JSON draft; the consumer reviews or edits it and sets the acknowledgement flag, without which `build` refuses (ADR-13). Any review UI or workflow is consumer-owned
+- Per-call input: the header and value results, the mode, and the optional offset, limit and loading options
+- Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
 
 ### 1.5 Migration Pipeline
-1. Analyze source CSV (concurrently with step 2)
-2. Read target schema and model metadata
-3. Generate deterministic recommendations (ranked by column names only) as a JSON draft
-4. Review or edit the draft and set `acknowledgement_flag` to `true`
-5. Build the validated, state-only `MigrationPlan`
-6. Stream source records in chunks
-7. Map and transform; pre-resolution validation
-8. Resolve relationships
-9. Post-resolution validation (4-state)
-10. Load (bulk or per-record), with optional dry run
-11. Produce the run report and dead-letter log
+1. `analyze_headers`: read the source header and the target model's metadata; rank by names only; return the editable column mapping
+2. The consumer reviews and edits the column mapping
+3. `analyze_values`: one streaming pass over the mapped columns; return facts and the editable value mapping
+4. The consumer reviews and edits the value mapping, and may call `analyze_values` again
+5. `run(mode: :dry_run)`: the contract check, then the batches inside one outer transaction that is rolled back
+6. `run(mode: :run)`: the contract check, then the batches, each committed; checkpoint after each commit
+7. Failed rows (JSON Lines) and the summary
 
 ### 1.6 Core Guarantees
 - Deterministic, explainable recommendations (reproducible from column names alone)
-- No guessing on ambiguous relationships
-- Explicit unresolved-reference handling
+- No guessing: a foreign key is never matched by name in the engine
 - Streaming, bounded-memory processing
-- Row access confined to the resolver and loader
-- Complete accounting of every processed record
+- Row access confined to the loader (ADR-15)
+- Complete accounting of every processed row
 
 ---
 
 ## 2. Post-MVP
 
 - **Source formats:** JSON, Parquet, XML
-- **Databases:** MySQL and other ActiveRecord adapters (not verified in MVP)
+- **Databases:** MySQL and other ActiveRecord adapters (not verified in MVP); other adapters as their own distributions (ADR-16)
+- **Relationships:** lookup of a foreign key by a parent column, and creating missing parents (ADR-15 defers both)
 - **Schema features:** composite keys, many-to-many splitting, CHECK constraints, partial indexes, generated columns, triggers, partitioning
 - **Load modes:** upsert / update (MVP is insert only)
-- **Execution:** whole-job transactions, concurrency greater than 1, resume after partial load, distributed execution
+- **Execution:** whole-job transactions (the dry run is the only outer transaction), concurrency greater than 1, distributed execution
 - **Interaction:** gem-shipped CLI or rake tasks, interactive reviewer, web/GUI
-- **Extensibility:** documented custom resolver/loader components
+- **Extensibility:** documented third-party adapters once Phase 1 freezes the adapter contract
 - **Other:** LLM-assisted recommendations, scripting DSL, native extensions
 
 ---
@@ -68,14 +63,14 @@
 
 1. A Rails consumer can configure the engine and run a migration from their own code with only options and a source file.
 2. CSV files are analyzed without loading the whole file into memory.
-3. PostgreSQL and SQLite schemas and model metadata are read.
-4. Deterministic recommendations are produced as a JSON draft with findings, a mapping per writable target column (confidence, reason, type compatibility), distinct values for value mappings, and `acknowledgement_flag: false`.
-5. A consumer can edit the draft (remap columns, add value mappings, choose lookup columns) or leave it unchanged, and sets the acknowledgement flag.
-6. A valid state-only `MigrationPlan` is built from an acknowledged draft; a draft without the flag, or with a required target column unmapped, returns errors naming each column and the reason.
-7. The runtime processes CSV data through transformation, relationship resolution, validation and loading.
-8. Resolved, unresolved and ambiguous references are handled correctly.
-9. Loading supports bulk insert with row-level fallback, and per-record model-path loading.
-10. Dry run reports outcomes without persisting.
-11. Rejected records are captured with exact row numbers and reasons.
-12. The final report accounts for every processed record.
-13. Row-access boundaries are verified by tests.
+3. The target model's columns and model metadata are read (PostgreSQL and SQLite).
+4. `analyze_headers` returns facts and a column mapping, using names only.
+5. `analyze_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
+6. The consumer can edit either result and call the method again; the facts reflect the edit.
+7. `run` refuses a value result that does not match the mapping, and reports every missing column or required column together.
+8. A dry run reports the same failed rows as a real run against an unchanged database, and persists nothing.
+9. Batches load with `insert_all!`, or row by row through the model; a failed batch is retried row by row.
+10. Failed rows are written with exact row numbers, the source values and each error's stage, column and code.
+11. A checkpoint is written after each committed batch, and a run from a checkpoint continues the row numbers.
+12. The summary accounts for every processed row.
+13. Row access is confined to the loader, and the core gem names no ActiveRecord class (tested).

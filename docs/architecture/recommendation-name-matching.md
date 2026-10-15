@@ -85,7 +85,9 @@ The draft's facts contain one row per target column: best candidate, score, reas
 **Why.** A target column with no recommendation looks as if the engine forgot it. Visibility lives in the facts and does not depend on whether the candidate is in the plan state.
 **Open:** whether weak candidates (below the configurable inclusion threshold, default 0.55) also go into the state (section 4).
 
-### D8. Acknowledgement flag is required to build
+### D8. Acknowledgement flag is required to build (superseded)
+> **Superseded by ADR-14 (item 7) and ADR-17.** There is no build step and no acknowledgement flag; the consumer reviews the stage results and calls `run`. The text below is the record of the earlier decision.
+
 `PlanDraft.state` carries an acknowledgement flag. The Planner emits it as `false`. `MigrationPlanBuilder` accepts a draft **only if the flag is `true`**; if it is missing or `false`, `build` fails with an error (suggested code `ACKNOWLEDGEMENT_MISSING`). The flag is the single source of truth. There is no threshold logic. When to set or reset the flag after edits is the consumer's responsibility; the engine does not reset it automatically.
 
 **Why.** Review is the safeguard against weak or wrong recommendations, and a plain required flag is simple and reliable. A conditional gate based on confidence tiers was rejected as more complex and because a lowered inclusion threshold could remove the gate exactly when it is most needed. "No changes" remains valid: the consumer sets the flag without editing anything.
@@ -152,7 +154,9 @@ NOT MAPPED, REQUIRED -> build fails until fixed
 **Why.** It gives the customer one place to read each recommendation: the mapping, how confident the name match is, and what the data looks like, with every target column visible (D7). Only reasonably confident mappings run by default, and the acknowledgement flag (D8) means someone has looked at the whole draft. Type fit is included because it is cheap to compute in the same pass as the distinct values (D11); the real answer on whether data will load still comes from the dry run.
 **Open:** the exact threshold default (55% proposed), whether it applies to the name score only (yes, per D6), and the name of the call that adopts a doubtful candidate.
 
-### D15. The Planner's JSON response (the draft)
+### D15. The Planner's JSON response (the draft) (superseded)
+> **Superseded by ADR-14 and ADR-17.** The header stage returns a `HeaderAnalysis` (facts and an editable `column_mapping`), and the value stage returns a `ValueAnalyzer::Result`. The draft JSON and the `BuildResult` are no longer produced. The text below is the record of the earlier decision.
+
 The Planner returns one JSON document (no UI is involved). The consumer edits it (remap a column, add value mappings) and sends it back to the Builder.
 
 ```json
@@ -198,7 +202,9 @@ The Planner returns one JSON document (no UI is involved). The consumer edits it
 **Why.** One document with a clear split between what the consumer can see (`findings`), what will run (`draft_plan`), and the confirmation (`acknowledgement_flag`). Distinct values sit once per source column so they stay correct after a remap, and source columns that are not mapped yet still show theirs. Listing every writable target column keeps all of them visible (D7) and turns "map this column" into filling one field. `type_compatibility` is two numbers so it is easy to read from code; it is measured on raw values before value mappings (D11).
 **Open:** the exact `constraints` fields, the wording of `reason`, and `value_mapping` handling for values that map to several targets or to null.
 
-### D16. Reference columns: ranked by name like other columns; the customer chooses the lookup column
+### D16. Reference columns: ranked by name like other columns; the customer chooses the lookup column (lookup superseded)
+> **Partly superseded by ADR-15.** The name ranking still applies to foreign key columns. The lookup column, the `lookup` field and the resolver are removed for the MVP: a foreign key column holds the parent's primary key, and the consumer maps names to ids in the value stage. The text below is the record of the earlier decision.
+
 A **reference column** is a target column that points to a row in another (parent) table, i.e. a real foreign key such as `users.company_id`.
 
 1. **Which source column feeds it** is ranked by name with the same rules as every other column (D1 to D5, D9, D14), with one adjustment: for reference columns only, a trailing `id` is a **reference marker** and is ignored. It is dropped from the target name and from each source name before matching. Ordinary columns keep their `id` (`external_id`).
