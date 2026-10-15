@@ -182,3 +182,74 @@
   * The Source Analyzer needs a header-only read and a scan restricted to a list of columns, in addition to the full scan.
   * The acknowledgement flag, its error code and ADR-13's single draft JSON are removed. Affected documents (`overview.md`, `protocols.md`, `mvp-scope.md` Definition of Done items 5 and 6, `testing-strategy.md`, `recommendation-name-matching.md` D8 and the draft JSON decisions, the README) are updated in the same change as this ADR is applied.
   * **Open:** a `version` field on the stored stage results (ADR-11 removed `protocol_version` from in-process objects, but these are persisted by consumers between sessions); whether `analyze_values` may be limited to a subset of target columns; whether `reanalyze_headers` keeps a `lookup` when its `source_column` is changed.
+
+### ADR-15: Foreign Keys Are Plain Columns; Lookup Deferred; Row-by-Row Validated Saves Through the Model
+* **Status:** Accepted (2026-10-14). **Narrows ADR-11** (built-in relationship resolution, P5a/P5b) and **ADR-10 item 6 and ADR-14 items 2 and 5** (`lookup`) for the MVP. Supersedes nothing else; the row-access boundary and the stage order are unchanged.
+* **Context:** The consumer already edits `value_mapping` in the value stage, so a name in the source (`"Acme Corp"`) can be mapped to the id of the parent row (`42`) without any engine feature. The engine cannot create a parent row that is missing, so a lookup that fails is an error whether the engine looked it up or the consumer mapped it. The lookup therefore adds convenience, not capability, and it is the only part that reads parent rows. The target model already checks that a required `belongs_to` parent exists when it validates a record.
+* **Decision:**
+  1. **A foreign key column is an ordinary target column.** Its source values are the primary key of the parent row. A consumer who has names maps them to ids with `value_mapping`, which the value stage already measures and returns. The MVP has no `lookup` in `column_mapping` or in the `MigrationPlan`, and no resolver (P5a/P5b).
+  2. **The loader saves one record at a time, through the model**, so the model's validations run. Bulk inserts that skip validations (`insert_all`, `upsert_all`) are not supported in the MVP.
+  3. **Parent existence is checked by the model at load time.** A required `belongs_to` adds the error `"<Association> must exist"` when the parent row is not found; the record is dead-lettered with that message. An association marked `optional: true` is not checked by the model, and the database foreign key constraint, if any, is the last guard. The engine does not change the model's settings.
+  4. **The header facts describe foreign keys from model metadata only:** for each target column that is the foreign key of a `belongs_to`, the association name, the parent model, and whether it is required. No rows are read.
+  5. **The value stage's type rules apply to the foreign key column** like any other column, so a name given where an id is expected is flagged before load.
+* **Consequences:**
+  * The MVP engine is smaller: no resolver, no `UnresolvedReference` (ADR-04) and no `lookup` build errors. Only the loader reads business rows, and it does so inside the model's validation.
+  * The error for a missing parent arrives at load, per record, with the model's message, and not before. The dry run (rolled-back transactions) shows it without writing.
+  * Each record costs one extra read for the existence check. The loader may turn on the ActiveRecord query cache to avoid repeats.
+  * A consumer whose model has no required association gets no existence check beyond the database constraint.
+  * Deferred, not excluded: lookup by a parent column, creating missing parents, and bulk loading. Each would be a new ADR.
+  * Affected documents (`overview.md`, `protocols.md`, `target-access.md`, `mvp-scope.md`, `testing-strategy.md`, `recommendation-name-matching.md` reference-column decisions, CLAUDE.md principles 1 and 3 and the flow diagram) are updated when this ADR is applied.
+  * **Open:** whether the Runtime's relationship-resolution stage is removed from the stage order or stays as a no-op; whether the post-resolution validation (ADR-03, ADR-05) still runs as a separate stage when it has nothing to resolve.
+
+### ADR-16: Framework-Agnostic Core; One Distribution per Adapter
+* **Status:** Accepted (2026-10-15). **Narrows ADR-11 item 2 and CLAUDE.md principle 4** for packaging: target access is still built in and still needs no consumer code, but it ships as an adapter distribution, not inside the core. Implements ADR-08.
+* **Context:** The engine should not depend on one database library. The first adapter is ActiveRecord; Sequel or others may follow. Each adapter has its own schema reader, loader and error mapping, and the rest of the engine is the same for all of them.
+* **Decision:**
+  1. **Two gems from one repository.** The core gem (`pipeforge`) has no database library in its gemspec. An adapter gem (`pipeforge-activerecord`) depends on the core. A consumer installs only the adapter gem; the core comes with it.
+  2. **Core owns:** `Configuration`, `Engine`, the contracts (P1–P8 value objects), `ValueAnalyzer` and `TypeChecker`, the source reading (CSV), the runtime loop, batch splitting, error collection, `Utilities`.
+  3. **Adapter owns:** the target schema (P2), the loader (P7/P8), transaction scopes, the pre-check rules derived from the schema, and the mapping of database errors to codes.
+  4. **Adapter contract** (names provisional until Phase 1 freezes the contracts):
+     * `schema(target_model:)` returns `TargetSchema` (P2). `target_model` is a class-name string; the adapter resolves it.
+     * `transaction(scope:) { ... }`, where `scope` is `:run`, `:batch` or `:row`. A nested scope is a savepoint, so an exception rolls back only that scope.
+     * `load_batch(rows:)` and `load_row(row:)` return a per-row outcome.
+     * `precheck_rules(target_column:)` returns rules the adapter can state with certainty, or none.
+     * `map_error(error)` returns the stage and the code (ADR-17 item 9).
+     The core calls these methods; it never names an ActiveRecord class.
+  5. **Boundary test.** A spec fails if any core file references `ActiveRecord`. The runtime is tested with a fake adapter that follows the same contract.
+* **Consequences:**
+  * A second adapter needs no change to the core, only a new gem that implements the contract.
+  * The consumer's setup is one gem line for the adapter. The core's gemspec has no Rails or ActiveRecord dependency.
+  * The adapter contract is a public API from the first release, so changing it is a breaking change.
+  * **Open:** the final method names; whether `schema` is one call or split into columns and associations.
+
+### ADR-17: One Runtime Entry Point; Checkpoints; Dry Run and Run Share One Path
+* **Status:** Accepted (2026-10-15). **Supersedes ADR-13, and ADR-14 items 1 (the `dry_run` method), 5 (`build_plan`) and 9 (the runtime accepts only `MigrationPlan`).** **Narrows ADR-15 items 2 and 3:** batch loading (`insert_all!`) is now allowed, and the model-level save is the row path. **Deviates from CLAUDE.md principle 6** for `offset` and `limit` on purpose (item 3).
+* **Context:** A separate `build_plan` step added a stage that the consumer could not act on, because the header and value results already show the plan. The runtime is the public API, so it should take the two stage results directly, check them, and do the work. A large file that fails midway needs a way to continue, and a dry run that holds locks needs a time limit the consumer can see.
+* **Decision:**
+  1. **One method for the runtime:** `Engine#run(mode:, header_analysis:, value_analysis:, offset: nil, limit: nil, skip_callbacks: nil, strategy: nil, failed_rows:, report:)`. `mode` is `:dry_run` or `:run`. `offset`, `limit`, `skip_callbacks` and `strategy` given to the call override the engine configuration for that call. `failed_rows` and `report` are IO-like objects (item 12). `build_plan` and `dry_run` are removed.
+  2. **Contract check first, all errors at once.** Before any row is read, `run` checks: the value result matches the header analysis for every mapped column (ADR-14 item 6); each mapped source column is in the file header; each mapped target column is in the target schema; every required target column (`NOT NULL`, no default, not filled by the database) is mapped. Errors are collected and reported together (CLAUDE.md rule 22).
+  3. **`offset` and `limit` belong to the engine, not to a migration.** `Engine.new(config_path:, source_path:, offset: nil, limit: nil)` sets them for both `analyze_values` and `run`, because the value stage and the runtime must read the same slice. This departs from CLAUDE.md principle 6, which puts per-migration intent in the migration input; the decision is deliberate, and the call-level override in item 1 keeps the per-run choice available.
+  4. **`offset` is a checkpoint, not a plain number.** It is the pair `{byte_offset:, row_number:}` from an earlier run's checkpoint (item 5). A run without it starts at the top of the file. Seeking to a byte offset needs `seek` on the source IO (item 12).
+  5. **Checkpoint after every batch.** After each batch is committed, the report records the last processed row's `row_number` and `byte_offset`. A dry run never commits, so its checkpoint is a progress marker, not a resume point.
+  6. **Row numbers are absolute.** A row number is its 1-based data record number in the whole file, header excluded, so failed rows keep the same number after a resume. A quoted field can span lines, so it is not the line number. Blank and all-empty rows are not counted, as in `ValueAnalyzer`.
+  7. **One code path, two transaction layouts.**
+     * **Dry run:** one `:run` transaction around everything, rolled back at the end. Each batch runs in a `:batch` scope inside it.
+     * **Run:** each batch is its own `:batch` transaction, committed on success.
+     * **Batch failure, in either mode:** the batch scope is rolled back and its rows are retried one by one, each in a `:row` scope.
+  8. **Load strategy.** `strategy: auto | batch | per_record` in `engine.yml`, overridable per call. `batch` uses `insert_all!`, which raises on a duplicate; plain `insert_all` would skip duplicates silently and count them as loaded. `per_record` calls `save`. `auto` picks `batch` only when callbacks are skipped and the model has no validators.
+  9. **Error codes are a subject plus what is wrong.** The adapter's `map_error` returns one of: `value_not_unique`, `value_too_long`, `value_wrong_type`, `value_missing`, `parent_missing`, `value_breaks_check`, or `database_error` (which keeps the native code and message). Each error records its `stage`: `precheck` or `database`. These codes are proposed here and need rows in the codes table in `protocols.md`.
+  10. **Pre-checks.** The adapter supplies rules derived from the schema, applied after type casting. A rule is returned only when the adapter is certain; otherwise the row goes to the database. The value stage (ADR-14) may be stricter than the pre-check, because it only reports facts.
+  11. **Callbacks.** `skip_callbacks: true | false` in `engine.yml`, overridable per call. `batch` always skips validations and callbacks; `strategy: batch` with `skip_callbacks: false` is refused before the run, with its own code.
+  12. **IO-like objects.** Each option takes any object that has the methods it needs, and the engine checks them at construction or call time, collecting every missing method: the source needs `read`, `rewind` and `seek`; `report` and `failed_rows` need `write`. Error codes name the object and method, for example `source_io_missing_seek`.
+  13. **Dry run lock timeout.** `dry_run.lock_timeout` in `engine.yml`, in seconds, is set by the adapter on the dry run's transaction. A dry run holds its row locks, and the share locks that foreign key checks take on parent rows, until it ends; `configuration.md` and the operations notes document this so the consumer can choose full or offset runs when traffic is low.
+  14. **Result.** `run` returns a summary `{mode:, loaded_rows_count:, failed_rows_count:, checkpoint:}`. The failed rows go to `failed_rows` as JSON Lines, one failed row per line: row number, the original source values, and every error with `stage`, `column`, `code` and `message`.
+  15. **Determinism.** The same input, mapping and options give the same summary and the same failed rows, in file order.
+* **Consequences:**
+  * The consumer makes one call for each mode. The dry run is the only preview of what a run will do.
+  * A checkpoint allows a restart after a crash, but only with an unchanged file and mapping. The consumer checks that; the engine does not (consumer-owned, per the decision that file changes are not the engine's concern).
+  * A dry run with an offset starts from the same state as a run with that offset, so the two report the same failures when the database is unchanged.
+  * Model-level saves through `per_record` remain the only path that runs callbacks and validations; `batch` is the fast path for tables without them.
+  * **Open:**
+    * **Cast behavior (accepted).** ActiveRecord casts a value before it writes it: `"abc"` for an integer column becomes `0` and loads. The adapter does not reject it, because the database never receives the original text and so has nothing to reject. The value stage reports the mismatch before the run, and the consumer decides. This is documented for the ActiveRecord distribution, and a spec pins the behavior (`"abc"` loads as `0`) so a change in Rails shows up as a failure. Other adapters decide for themselves under the pre-check rule in item 10.
+    * **Checkpoint shape.** Passing the checkpoint pair as `offset:` is less friendly than a plain number. A plain byte offset plus a separate `row_number:` would also work.
+    * **Stage order.** Whether the post-resolution validation (ADR-03, ADR-05) stays as a stage now that there is no resolver (ADR-15).
