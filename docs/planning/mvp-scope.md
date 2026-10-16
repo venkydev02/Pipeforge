@@ -14,7 +14,7 @@
 ### 1.2 Target
 - Rails applications using ActiveRecord, through the `pipeforge-activerecord` distribution (ADR-16)
 - PostgreSQL (first), SQLite
-- Target named as a model class name (for example `"User"`)
+- Target named by its table name (for example `"users"`); the ActiveRecord adapter requires a model for it (ADR-20)
 
 ### 1.3 Migration Scope
 - Single primary entity per migration job

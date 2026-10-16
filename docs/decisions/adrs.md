@@ -302,3 +302,18 @@
   * The core stays free of database libraries; the source side has no database dependency.
   * **Decided:** one class per source format, sharing one interface (`headers`, `each_chunk`, `row_count`), so a new format is a new class (open/closed, CLAUDE.md rule 15). The CSV class is `Pipeforge::Source::CsvReader`.
   * **Open:** `raw_lines` and the fingerprint are not built by this refactor; they come with the source fingerprint work (ADR-18 item 11).
+
+### ADR-20: The Target Is a Table Name; the Adapter Finds the Model
+* **Status:** Accepted (2026-10-16). **Replaces `target_model:` with `target_table:`** in ADR-16 item 4 and ADR-19 item 2 (`schema(target_table:)`), and reverses the earlier choice to name the target by model class.
+* **Context:** The core is framework agnostic (ADR-16). A model class is an ActiveRecord idea, but every database library has tables. A table name is the one name every adapter understands, so the core and the stage results name the target by its table.
+* **Decision:**
+  1. **The consumer names the target by its table**, for example `target_table: "users"`. The core, the stage results and the error entries use that name.
+  2. **The adapter turns the table into whatever it loads through.** The ActiveRecord adapter finds the application model whose `table_name` is that table, and builds record instances from it. Validations, callbacks, enums, `belongs_to` checks and `ignored_columns` therefore always apply. If it finds no model, it stops with `active_record_model_not_found`. If several models share the table (single table inheritance), it uses the base class. There is no anonymous-model fallback: this rule belongs to the ActiveRecord adapter, and another adapter decides for itself.
+  3. **`TargetSchema` names the model it was read from** (`model`: the class name), because with the ActiveRecord adapter a model always exists.
+  4. **Codes that belong to one adapter carry its name as a prefix.** The core does not know them. A concept that only one adapter has, such as a model, gets a prefixed code: `active_record_model_not_found` (field `table`). A concept every adapter has, such as a missing table, keeps a plain code: `target_table_not_found` (field `table`). The prefix is the adapter's name (`active_record_`, and for example `sequel_` for a future adapter), so a consumer can tell which adapter an error came from.
+* **Consequences:**
+  * The core never names a model class, so a second adapter has nothing to translate.
+  * With the ActiveRecord adapter, the parent-existence check at `save` (ADR-15 item 3) and the callbacks always apply, because a model always exists. A table with no model cannot be loaded by this adapter until the application defines one.
+  * `strategy: auto` (ADR-17 item 8) picks `batch` when the model has no validators.
+  * Affected docs (`protocols.md`, `configuration.md`, `target-access.md`, `overview.md`) replace `target_model` with `target_table` when this is applied.
+  * **Open:** how the ActiveRecord adapter finds the model (scan the application's model classes, or a list in `engine.yml`), and the prefix rule for codes an adapter adds beyond the shared ones.

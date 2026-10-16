@@ -30,7 +30,7 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 ### 1.4 Staged Engine Methods (ADR-14, ADR-17)
 
 ```text
-analyze_headers(target_model:)            → HeaderAnalysis      (names only, no values)
+analyze_headers(target_table:)            → HeaderAnalysis      (names only, no values)
 analyze_values(mapped_columns:)           → ValueAnalyzer::Result (values, facts, value mappings)
 run(mode: :dry_run | :run, header_analysis:, value_analysis:)    → summary and failed rows
 ```
@@ -92,7 +92,7 @@ Source analysis and target schema reading are independent and may run concurrent
 ## 3. Stage Responsibilities
 
 ### 3.1 `analyze_headers`
-* **Input:** the source file and the target model (named by class name).
+* **Input:** the source file and the target table (named by table name).
 * **Reads:** the source header row only, and the target model's metadata.
 * **Output:** `HeaderAnalysis`: facts (unmatched columns on both sides, candidates per target column, doubtful candidates, foreign keys with their parent model and whether they are required) and the editable `column_mapping`.
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
@@ -128,7 +128,7 @@ sequenceDiagram
 
     Note over Core: Stage 1: names
     Core->>Src: Read header row only
-    Core->>Adapter: schema(target_model:)
+    Core->>Adapter: schema(target_table:)
     Adapter-->>Core: TargetSchema (metadata only)
     Core->>Consumer: HeaderAnalysis (facts, column_mapping)
 
