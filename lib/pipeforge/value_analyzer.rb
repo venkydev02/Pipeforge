@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require_relative "fingerprint"
 require_relative "value_analyzer/type_checker"
 require_relative "value_analyzer/chunk_profile"
 require_relative "source/csv_reader"
@@ -27,7 +29,9 @@ module Pipeforge
     #   row_count          data rows read; blank and all-empty rows are not counted
     #   columns            a ColumnSummary per mapped source column, keyed by its header and
     #                      in the order of the columns in the file
-    Result = Data.define(:source_identifier, :row_count, :columns) do
+    #   source_fingerprint the fingerprint of the parsed rows (see {Fingerprint}), or nil when
+    #                      the source fingerprint setting is off
+    Result = Data.define(:source_identifier, :row_count, :columns, :source_fingerprint) do
       # @return [Hash] the result as plain JSON types, ready to store or send
       def to_h
         columns_as_hashes = {}
@@ -36,7 +40,12 @@ module Pipeforge
           columns_as_hashes[source_column] = column_summary.to_h
         end
 
-        {source_identifier: source_identifier, row_count: row_count, columns: columns_as_hashes}
+        {
+          source_identifier: source_identifier,
+          row_count: row_count,
+          source_fingerprint: source_fingerprint,
+          columns: columns_as_hashes
+        }
       end
     end
 
@@ -74,6 +83,7 @@ module Pipeforge
         config: @config, type_checkers: type_checkers, value_mappings: build_value_mappings
       )
       profile = chunk_analyzer.empty_profile
+      fingerprint = @config.source.fingerprint ? Fingerprint.new : nil
       header_checked = false
 
       reader.each_chunk do |rows|
@@ -83,13 +93,14 @@ module Pipeforge
           header_checked = true
         end
 
+        add_rows_to_fingerprint(fingerprint: fingerprint, rows: rows) if fingerprint
         profile = profile.merge(later: chunk_analyzer.call(rows: rows))
       end
 
       # A file with no data rows has no chunk, so its header is checked here.
       reject_missing_columns(header_names: reader.headers) unless header_checked
 
-      build_result(reader: reader, profile: profile)
+      build_result(reader: reader, profile: profile, source_fingerprint: fingerprint&.value)
     end
 
     private
@@ -134,8 +145,17 @@ module Pipeforge
       )
     end
 
+    # Adds each row to the fingerprint as one line: its values as a JSON array, in header order.
+    # JSON keeps the values apart (a comma inside a value is not a separator) and writes an
+    # empty cell as null.
+    def add_rows_to_fingerprint(fingerprint:, rows:)
+      rows.each do |row|
+        fingerprint.add(text: "#{JSON.generate(row.values)}\n")
+      end
+    end
+
     # Follows the header, so the result is in file order whatever the order of the mapping.
-    def build_result(reader:, profile:)
+    def build_result(reader:, profile:, source_fingerprint:)
       columns = {}
 
       reader.headers.each_with_index do |source_column, index|
@@ -150,7 +170,12 @@ module Pipeforge
         )
       end
 
-      Result.new(source_identifier: source_identifier, row_count: reader.row_count, columns: columns)
+      Result.new(
+        source_identifier: source_identifier,
+        row_count: reader.row_count,
+        columns: columns,
+        source_fingerprint: source_fingerprint
+      )
     end
 
     # The file path of the source when it has one, else the name of its class.

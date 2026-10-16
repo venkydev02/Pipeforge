@@ -23,8 +23,9 @@ module Pipeforge
     ExecutionSettings = Data.define(:batch_size)
 
     # The +source+ section: +encoding+ is the character encoding of the source file, and
-    # +distinct_values_cap+ is the most different values listed per column of the source.
-    SourceSettings = Data.define(:encoding, :distinct_values_cap)
+    # +distinct_values_cap+ is the most different values listed per column of the source, and
+    # +fingerprint+ turns on the fingerprint of the source rows (true or false).
+    SourceSettings = Data.define(:encoding, :distinct_values_cap, :fingerprint)
 
     SECTION_NAMES = %w[execution source].freeze
 
@@ -111,10 +112,11 @@ module Pipeforge
       source = build_section(
         settings_class: SourceSettings,
         section_name: "source",
-        defaults: {encoding: "UTF-8", distinct_values_cap: 1000}
+        defaults: {encoding: "UTF-8", distinct_values_cap: 1000, fingerprint: false}
       )
       require_encoding_name(setting_name: "source.encoding", value: source.encoding)
       require_positive_whole_number(setting_name: "source.distinct_values_cap", value: source.distinct_values_cap)
+      require_true_or_false(setting_name: "source.fingerprint", value: source.fingerprint)
 
       source
     end
@@ -155,6 +157,18 @@ module Pipeforge
       add_error(
         code: :setting_not_positive_whole_number,
         message: "#{setting_name} must be a whole number of at least 1, got #{value.inspect}",
+        setting: setting_name,
+        value: value
+      )
+    end
+
+    # The word true or false, as YAML writes a yes or no setting.
+    def require_true_or_false(setting_name:, value:)
+      return if value == true || value == false
+
+      add_error(
+        code: :setting_not_true_or_false,
+        message: "#{setting_name} must be true or false, got #{value.inspect}",
         setting: setting_name,
         value: value
       )

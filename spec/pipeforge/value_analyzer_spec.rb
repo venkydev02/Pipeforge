@@ -597,6 +597,59 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     end
   end
 
+  describe "source_fingerprint" do
+    subject(:result) { described_class.new(config: config, source_io: csv_io(csv), mapped_columns: mapped_columns).call }
+
+    let(:mapped_columns) { {"A" => maps_to(target_column: "a", type: "string")} }
+
+    context "when the setting is off" do
+      let(:csv) { "A\n1\n2\n" }
+
+      it "is nil" do
+        expect(result.source_fingerprint).to be_nil
+      end
+    end
+
+    context "when the setting is on" do
+      let(:config) { build_configuration(source: {fingerprint: true}) }
+      let(:csv) { "A\n1\n2\n" }
+
+      it "is the fingerprint of each row as a JSON array of its values, one row per line" do
+        expected = Pipeforge::Fingerprint.new.add(text: "[\"1\"]\n").add(text: "[\"2\"]\n").value
+
+        expect(result.source_fingerprint).to eq(expected)
+      end
+
+      it "is the same however the file is read in chunks" do
+        small_chunks = build_configuration(source: {fingerprint: true}, execution: {batch_size: 1})
+        other = described_class.new(config: small_chunks, source_io: csv_io(csv), mapped_columns: mapped_columns).call
+
+        expect(other.source_fingerprint).to eq(result.source_fingerprint)
+      end
+
+      it "changes when a value changes" do
+        changed = described_class.new(config: config, source_io: csv_io("A\n1\n3\n"), mapped_columns: mapped_columns).call
+
+        expect(changed.source_fingerprint).not_to eq(result.source_fingerprint)
+      end
+
+      context "when a comma inside a value could be mistaken for a separator" do
+        let(:mapped_columns) do
+          {"A" => maps_to(target_column: "a", type: "string"), "B" => maps_to(target_column: "b", type: "string")}
+        end
+        let(:csv) { "A,B\n\"a,b\",c\n" }
+
+        it "gives a different fingerprint from the same values split the other way" do
+          split_the_other_way = described_class.new(
+            config: config, source_io: csv_io("A,B\na,\"b,c\"\n"), mapped_columns: mapped_columns
+          ).call
+
+          expect(split_the_other_way.source_fingerprint).not_to eq(result.source_fingerprint)
+        end
+      end
+    end
+  end
+
   describe "Result#to_h" do
     subject(:stored) { JSON.parse(JSON.generate(result.to_h)) }
 
@@ -612,6 +665,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       expect(stored).to eq(
         "source_identifier" => result.source_identifier,
         "row_count" => 2,
+        "source_fingerprint" => nil,
         "columns" => {
           "Age" => {
             "target_column" => "age",

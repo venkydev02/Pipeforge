@@ -23,6 +23,10 @@ RSpec.describe Pipeforge::Configuration do
     it "uses the default distinct values cap" do
       expect(configuration.source.distinct_values_cap).to eq(1000)
     end
+
+    it "turns the source fingerprint off" do
+      expect(configuration.source.fingerprint).to eq(false)
+    end
   end
 
   shared_examples "a file the engine refuses" do |code, message|
@@ -295,6 +299,23 @@ RSpec.describe Pipeforge::Configuration do
         it "is accepted" do
           expect(configuration.execution.batch_size).to eq(100_000)
         end
+      end
+    end
+
+    describe "source.fingerprint" do
+      context "set to true" do
+        let(:yaml) { setting_yaml(section: "source", setting: "fingerprint", value: "true") }
+
+        it "reads it" do
+          expect(configuration.source.fingerprint).to eq(true)
+        end
+      end
+
+      context "set to a word that is not true or false" do
+        let(:yaml) { setting_yaml(section: "source", setting: "fingerprint", value: "maybe") }
+
+        include_examples "a file the engine refuses", :setting_not_true_or_false,
+          /source\.fingerprint must be true or false, got "maybe"/
       end
     end
 
