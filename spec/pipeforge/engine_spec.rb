@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine do
-  subject(:engine) { described_class.new(config_path: config_path, source_path: source_path) }
+  subject(:engine) { described_class.new(config_path: config_path, source_io: source_io) }
 
   let(:config_path) { yaml_file(yaml) }
   let(:yaml) { "version: '1.0'\n" }
   # Status: Active x4 (one written " Active "), INACTIVE x2, A x1. Code: seven different values.
-  let(:source_path) { File.expand_path("../fixtures/source/statuses.csv", __dir__) }
+  let(:source_io) { File.open(File.expand_path("../fixtures/source/statuses.csv", __dir__)) }
 
   describe ".new" do
-    it "keeps the source path it was given" do
-      expect(engine.source_path).to eq(source_path)
+    it "keeps the source it was given" do
+      expect(engine.source_io).to eq(source_io)
     end
 
     it "keeps the path of the configuration file" do
@@ -45,29 +45,17 @@ RSpec.describe Pipeforge::Engine do
       end
     end
 
-    context "when the source file does not exist" do
-      let(:source_path) { "no/such/file.csv" }
+    context "when the source is missing a method" do
+      let(:source_io) { Object.new }
 
-      it "stops with our own error" do
-        expect { engine }.to raise_error(
-          Pipeforge::Source::MissingSourceError, %r{not found or not readable: no/such/file.csv}
-        )
+      it "stops with our own error, naming the missing methods" do
+        expect { engine }.to raise_error(Pipeforge::Source::UnsupportedSourceError, /source is missing: read, rewind, seek/)
       end
 
-      it "gives the code source_not_readable, with the path" do
-        expect { engine }.to raise_error(Pipeforge::Source::MissingSourceError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :path) }).to eq(
-            [{code: :source_not_readable, path: "no/such/file.csv"}]
-          )
+      it "gives a code for each missing method" do
+        expect { engine }.to raise_error(Pipeforge::Source::UnsupportedSourceError) do |error|
+          expect(error.codes).to eq(%i[source_io_missing_read source_io_missing_rewind source_io_missing_seek])
         end
-      end
-    end
-
-    context "when the source is a directory" do
-      let(:source_path) { File.dirname(File.expand_path("../fixtures/source/statuses.csv", __dir__)) }
-
-      it "stops with our own error" do
-        expect { engine }.to raise_error(Pipeforge::Source::MissingSourceError)
       end
     end
   end
@@ -84,7 +72,7 @@ RSpec.describe Pipeforge::Engine do
     end
 
     it "names the source file" do
-      expect(result.source_identifier).to eq(source_path)
+      expect(result.source_identifier).to eq(source_io.path)
     end
 
     it "returns a summary for each mapped column, keyed by source column" do

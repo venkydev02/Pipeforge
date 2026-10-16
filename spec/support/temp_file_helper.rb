@@ -1,11 +1,18 @@
 # frozen_string_literal: true
 
+require "stringio"
+
 # Writes text to a temporary file and returns its path. The file is removed after the example,
 # so a spec only states the text it needs.
 #
-#   let(:path) { csv_file("A,B\n1,2\n") }
+#   let(:source_io) { csv_io("A,B\n1,2\n") }
 #   let(:config_path) { yaml_file("engine:\n  execution:\n    batch_size: 10\n") }
 module TempFileHelper
+  # An in-memory source with the same methods as a file (read, rewind, seek).
+  def csv_io(text)
+    StringIO.new(text)
+  end
+
   def csv_file(text)
     temp_file(text: text, extension: ".csv")
   end

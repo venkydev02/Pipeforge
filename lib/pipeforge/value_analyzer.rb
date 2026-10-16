@@ -2,7 +2,7 @@
 
 require_relative "value_analyzer/type_checker"
 require_relative "value_analyzer/chunk_profile"
-require_relative "value_analyzer/chunk_reader"
+require_relative "source/csv_reader"
 require_relative "value_analyzer/chunk_analyzer"
 
 module Pipeforge
@@ -18,12 +18,12 @@ module Pipeforge
   #
   # @example
   #   mapping = {"Mail" => {target_column: "email", type: "string", max_length: 255}}
-  #   analyzer = Pipeforge::ValueAnalyzer.new(config: config, path: "data/users.csv", mapped_columns: mapping)
+  #   analyzer = Pipeforge::ValueAnalyzer.new(config: config, source_io: File.open("data/users.csv"), mapped_columns: mapping)
   #   result = analyzer.call
   #   result.columns["Mail"].type_compatibility # => {fits: 1170, total: 1188}
   class ValueAnalyzer
     # The outcome of one analysis.
-    #   source_identifier  the path that was analyzed
+    #   source_identifier  the file path of the source, or its class name when it has no path
     #   row_count          data rows read; blank and all-empty rows are not counted
     #   columns            a ColumnSummary per mapped source column, keyed by its header and
     #                      in the order of the columns in the file
@@ -48,14 +48,14 @@ module Pipeforge
     # created.
     #
     # @param config [Configuration] the engine settings (chunk size and distinct values cap)
-    # @param path [String] path of a CSV file; streams are not supported
+    # @param source_io [IO] the CSV source; it must respond to +read+, +rewind+ and +seek+
     # @param mapped_columns [Hash{String => Hash}] source column => {target_column:, type:, ...,
     #   value_mapping: {value in the file => value to load}}. Only these columns are measured.
     #   +value_mapping+ is optional, and a value that maps to nil or a blank is loaded as empty.
     #   The type keys are described in {TypeChecker}.
-    def initialize(config:, path:, mapped_columns:)
+    def initialize(config:, source_io:, mapped_columns:)
       @config = config
-      @path = path
+      @source_io = source_io
       @mapped_columns = mapped_columns
     end
 
@@ -69,7 +69,7 @@ module Pipeforge
     # @raise [Source::MalformedSourceError] a row cannot be parsed
     def call
       type_checkers = build_type_checkers
-      reader = ChunkReader.new(path: @path, config: @config)
+      reader = Source::CsvReader.new(source_io: @source_io, config: @config)
       chunk_analyzer = ChunkAnalyzer.new(
         config: @config, type_checkers: type_checkers, value_mappings: build_value_mappings
       )
@@ -150,7 +150,14 @@ module Pipeforge
         )
       end
 
-      Result.new(source_identifier: @path.to_s, row_count: reader.row_count, columns: columns)
+      Result.new(source_identifier: source_identifier, row_count: reader.row_count, columns: columns)
+    end
+
+    # The file path of the source when it has one, else the name of its class.
+    def source_identifier
+      return @source_io.path.to_s if @source_io.respond_to?(:path)
+
+      @source_io.class.name
     end
   end
 end

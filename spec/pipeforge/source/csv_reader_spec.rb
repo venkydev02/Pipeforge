@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-RSpec.describe Pipeforge::ValueAnalyzer::ChunkReader do
-  subject(:reader) { described_class.new(path: path, config: config) }
+RSpec.describe Pipeforge::Source::CsvReader do
+  subject(:reader) { described_class.new(source_io: source_io, config: config) }
 
-  let(:path) { csv_file(csv) }
+  let(:source_io) { csv_io(csv) }
   let(:csv) { "A,B\n1,2\n3,4\n5,6\n" }
   let(:config) { build_configuration(execution: {batch_size: batch_size}) }
   let(:batch_size) { 2000 }

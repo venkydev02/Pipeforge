@@ -56,9 +56,10 @@ module Pipeforge
 
   # The errors about the source file: the file itself, its header and its rows.
   module Source
-    # Raised when the source path is not a file the engine can read (it does not exist, it
-    # is a directory, or access is denied). Code: +source_not_readable+.
-    class MissingSourceError < Pipeforge::Error; end
+    # Raised when the source object lacks a method the engine needs (+read+, +rewind+ or +seek+).
+    # Codes: +source_io_missing_read+, +source_io_missing_rewind+, +source_io_missing_seek+, one
+    # entry for each missing method.
+    class UnsupportedSourceError < Pipeforge::Error; end
 
     # Raised by the header stage when the source file has no content at all, so there is no
     # header to read. A file with a header and no data rows is not an error. Code:

@@ -11,9 +11,9 @@ RSpec.describe Pipeforge::ValueAnalyzer do
   end
 
   describe "#call" do
-    subject(:result) { described_class.new(config: config, path: path, mapped_columns: mapped_columns).call }
+    subject(:result) { described_class.new(config: config, source_io: source_io, mapped_columns: mapped_columns).call }
 
-    let(:path) { csv_file(csv) }
+    let(:source_io) { csv_io(csv) }
     # Four data rows: a value spanning two lines, empty cells, a whitespace-only cell, a blank line.
     let(:csv) do
       <<~CSV
@@ -35,8 +35,10 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     end
 
     context "with a typical file" do
+      let(:source_io) { File.open(csv_file(csv)) }
+
       it "names the source file" do
-        expect(result.source_identifier).to eq(path)
+        expect(result.source_identifier).to eq(source_io.path)
       end
 
       it "counts the data rows, not the blank line" do
@@ -347,17 +349,17 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       end
     end
 
-    context "when the path is a Pathname" do
-      let(:path) { Pathname.new(csv_file(csv)) }
+    context "when the source is a file" do
+      let(:source_io) { File.open(csv_file(csv)) }
 
-      it "names the source as a String" do
-        expect(result.source_identifier).to eq(path.to_s)
+      it "names the source by its file path" do
+        expect(result.source_identifier).to eq(source_io.path)
       end
     end
 
     context "with a different chunk size" do
       let(:default_result) do
-        described_class.new(config: build_configuration, path: path, mapped_columns: mapped_columns).call
+        described_class.new(config: build_configuration, source_io: csv_io(csv), mapped_columns: mapped_columns).call
       end
 
       shared_examples "the same result as the default chunk size" do
@@ -565,7 +567,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       context "when the file is read in small chunks" do
         let(:config) { build_configuration(execution: {batch_size: 1}) }
         let(:default_result) do
-          described_class.new(config: build_configuration, path: path, mapped_columns: mapped_columns).call
+          described_class.new(config: build_configuration, source_io: csv_io(csv), mapped_columns: mapped_columns).call
         end
 
         it "gives the same result as the default chunk size" do
@@ -601,7 +603,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     let(:result) do
       described_class.new(
         config: config,
-        path: csv_file("Age\n30\nx\n\n"),
+        source_io: csv_io("Age\n30\nx\n\n"),
         mapped_columns: {"Age" => maps_to(target_column: "age", type: "integer")}
       ).call
     end

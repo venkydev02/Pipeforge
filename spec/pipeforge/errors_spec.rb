@@ -10,8 +10,8 @@ RSpec.describe Pipeforge::Error do
       expect(Pipeforge::IncompleteColumnsError.ancestors).to include(described_class)
     end
 
-    it "includes Source::MissingSourceError" do
-      expect(Pipeforge::Source::MissingSourceError.ancestors).to include(described_class)
+    it "includes Source::UnsupportedSourceError" do
+      expect(Pipeforge::Source::UnsupportedSourceError.ancestors).to include(described_class)
     end
 
     it "includes Source::EmptySourceError" do

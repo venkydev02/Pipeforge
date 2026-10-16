@@ -1,20 +1,23 @@
 # frozen_string_literal: true
 
 require "smarter_csv"
+require_relative "reusable_io"
 
 module Pipeforge
-  class ValueAnalyzer
-    # Reads a CSV file in chunks of raw rows, using smarter_csv.
+  module Source
+    # The CSV source reader. It reads a CSV file in chunks of raw rows, using smarter_csv, and
+    # gives the core the source interface: +headers+, +each_chunk+ and +row_count+. Every stage
+    # (header analysis, value analysis, run) reads the file through it.
     #
     # Text is kept as written, with these exceptions: surrounding spaces and tabs are trimmed
     # from values and headers, and a cell that is empty or only whitespace arrives as nil. No
     # numbers are converted. Blank lines and rows whose cells are all empty are dropped before
     # they reach the caller.
     #
-    # The reader does not validate the file or its columns; the header stage does that. A blank
-    # header cell, or a row with more cells than the header, comes through under a made-up name
-    # that no mapping can use.
-    class ChunkReader
+    # The adapter does not validate the file or its columns; the core does that. A blank header
+    # cell, or a row with more cells than the header, comes through under a made-up name that no
+    # mapping can use.
+    class CsvReader
       EMPTY_VALUE = /\A[[:space:]]*\z/
 
       # Called by the gem for a row it cannot parse. Stops the scan with our own error and the
@@ -22,7 +25,7 @@ module Pipeforge
       # the row would silently drop good rows.
       STOP_ON_BAD_ROW = lambda do |bad_row|
         line = bad_row[:file_line_number]
-        raise Source::MalformedSourceError.new(
+        raise MalformedSourceError.new(
           message: "malformed CSV at line #{line}: #{bad_row[:error_message]}",
           line: line
         )
@@ -42,10 +45,15 @@ module Pipeforge
         verbose: :quiet
       }.freeze
 
-      # @param path [String] path of a CSV file
+      # Rewinds the source, so a new adapter always reads the file from its first line.
+      #
+      # @param source_io [IO] the CSV source; it must respond to +rewind+
       # @param config [Configuration] +execution.batch_size+ is the chunk size
-      def initialize(path:, config:)
-        @reader = SmarterCSV::Reader.new(path, OPTIONS.merge(chunk_size: config.execution.batch_size))
+      def initialize(source_io:, config:)
+        source_io.rewind
+        @reader = SmarterCSV::Reader.new(
+          ReusableIO.new(io: source_io), OPTIONS.merge(chunk_size: config.execution.batch_size)
+        )
         @row_count = 0
       end
 

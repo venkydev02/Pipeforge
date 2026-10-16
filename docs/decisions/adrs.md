@@ -253,3 +253,52 @@
     * **Cast behavior (accepted).** ActiveRecord casts a value before it writes it: `"abc"` for an integer column becomes `0` and loads. The adapter does not reject it, because the database never receives the original text and so has nothing to reject. The value stage reports the mismatch before the run, and the consumer decides. This is documented for the ActiveRecord distribution, and a spec pins the behavior (`"abc"` loads as `0`) so a change in Rails shows up as a failure. Other adapters decide for themselves under the pre-check rule in item 10.
     * **Checkpoint shape.** Passing the checkpoint pair as `offset:` is less friendly than a plain number. A plain byte offset plus a separate `row_number:` would also work.
     * **Stage order.** Whether the post-resolution validation (ADR-03, ADR-05) stays as a stage now that there is no resolver (ADR-15).
+
+### ADR-18: Stage Input Is Validated Against Current Truth; Types Come from the Schema
+* **Status:** Accepted (2026-10-16). **Amends ADR-14 item 4** (the consumer no longer sends a type for each mapped column) and **ADR-14 item 3** (the value stage takes no type). Drift detection is decided in part (item 10): each reader owns its fingerprint. Extends ADR-14 item 6 (staleness) with new error codes.
+* **Context:** Each request builds a new `Engine`, so a stage's input is a hash the consumer may have edited, stored, or produced by an older gem version. The engine must check that input against the current source and target schema on every call, and must not trust types or facts sent back to it.
+* **Decision:**
+  1. **State and facts.** The consumer sends state only: `source_column` per target column, `value_mapping`, and any split (item 5). Facts (types, constraints, enums, counts, confidence, reasons, compatibility) are never read from input; they are recomputed on every call. Edited facts have no effect.
+  2. **Types come from the target schema.** `analyze_values` takes `target_column` and optional `value_mapping`. The engine looks up the type, limit, length, precision and scale from the current `TargetSchema` on each call. The consumer cannot send a type.
+  3. **Two validation layers, shape first.** Shape validation (required keys, JSON types, a supported `version`, no unknown keys) runs before any file or database access. Semantic validation runs next, against the current source headers and the current `TargetSchema`.
+  4. **Unknown keys are rejected.** A typo in a key is reported, not ignored.
+  5. **One source column may feed several target columns only with a split.** Each such entry names the separator and the index of the piece it takes (for example `{ source_column: "Name", separator: " ", index: 0 }`). A source column used without a split may feed only one target column. A split piece is measured like any other mapped value (its measurement rules are open, see below).
+  6. **Mapped-to values are not validated.** The value stage reports which values fit the target type (`TypeChecker`), and the consumer fixes the rest. A value that does not fit is a fact, not an error.
+  7. **Errors carry a `path`.** Each error entry has `path` (for example `column_mapping.email.source_column`), `code`, `message` and the fields that locate it. The `path` is added to the error table in `protocols.md`.
+  8. **Every stage validates its own input** through one shared validator, so the rules are identical in every stage.
+  9. **`run` requires both results** and checks them as ADR-17 item 2 describes, with the new codes. All errors are returned together.
+  10. **Each reader owns its fingerprint.** The source reader produces `source_fingerprint` (SHA-256 of the file's raw bytes, computed while streaming), only when `source.fingerprint` is on (item 11). The target schema reader (the adapter's `schema`, ADR-16) produces `schema_fingerprint` (a stable hash of the relevant columns, types and constraints, independent of column order). Each stage result carries the fingerprints of the inputs it was built from. A stage compares the fingerprint it receives with the one its reader computes now, and reports `source_changed` or `schema_changed` (with `path`) on mismatch. A stage never computes a fingerprint for an input it does not read.
+  11. **The source fingerprint is optional, set in `engine.yml`** (`source.fingerprint: true | false`). The engine does not decide it per call.
+      * **Off (default, proposed):** no source fingerprint is computed or compared. The consumer owns the question of whether the file changed (ADR-17). The value result has no `source_fingerprint`.
+      * **On:** the value stage builds the SHA-256 batch by batch during its existing pass, over the raw bytes as they are read, and returns `source_fingerprint` at the end. No extra read is needed for that. `run` then reads the whole file once more, before any batch is processed, and compares the fingerprint with the value result's. A mismatch stops the run with `source_changed` before any row is loaded. If the value result has no fingerprint, `run` refuses with `source_fingerprint_missing`.
+      * The schema fingerprint is checked on every call whichever way the option is set, because it is cheap.
+* **Error codes (proposed):** `version_not_supported`, `key_not_known`, `key_missing`, `value_wrong_json_type`, `source_column_not_in_file`, `target_column_not_in_schema`, `target_column_not_writable`, `source_column_used_without_split`, `split_separator_missing`, `split_index_not_whole_number`, `value_mapping_for_unmapped_column`, `value_mapping_not_text`, `required_column_unmapped`, `value_result_out_of_date`.
+* **Consequences:**
+  * The UI can store the results as plain JSON and send them back, and the engine rejects anything that no longer matches the file or the schema.
+  * Types can no longer be wrong, because the consumer does not send them.
+  * A split adds a mapping shape the value stage must measure. Its rules are part of the open items.
+  * **Open:**
+    * **Default for `source.fingerprint`:** shipped as off (proposed). Confirm in Phase 1.
+    * **Fingerprint input:** the hash must cover the raw bytes, not the parsed values, so the value stage must hash the lines the reader gets from the file. The exact way to tee the reader's input is part of the implementation.
+    * **Split measurement:** whether each piece's values are measured after the split, and how the `index` counts (from 0 or from 1).
+    * **Version rules:** which versions the engine accepts, and what happens to results from an older gem.
+
+### ADR-19: Source and Target Adapters Own Their Input and Their Fingerprints
+* **Status:** Accepted (2026-10-16); the refactor moves the reader without new behavior. **Extends ADR-16** with a source side. An adapter gives the core a common interface to the data (source rows, source headers, the target schema). Adapters do not validate; all validation and fingerprinting stay in the core. Naming: the option, the value and the error use `fingerprint` (ADR-18 item 11), not `checksum`.
+* **Context:** The header stage, the value stage and the run each read the source file, and the run also reads the target schema. Today the chunk reader lives inside `ValueAnalyzer`, and each stage would otherwise re-implement the reading and the checks.
+* **Decision:**
+  1. **Source reader** (one class per source format; CSV for the MVP). It is the only object that reads the file, and it gives the core this interface:
+     * `headers`: the trimmed header names in file order.
+     * `each_chunk`: the chunks of raw rows, as the current chunk reader gives them. The chunk reader moves out of `ValueAnalyzer` to this shared place, so the header stage, the value stage and the run use the same reading code.
+     * `raw_lines`: the raw lines of the file, exactly as read, for the core to fingerprint. Used only when `source.fingerprint` is on.
+  2. **Target adapter** (per distribution, ADR-16). It provides:
+     * `schema(target_model:)`: the `TargetSchema` (ADR-16 contract).
+     * The core computes the schema fingerprint from this schema, so the adapter does not compute it.
+  3. **The core does all validation.** Column checks (source and target), fingerprint computation and comparison, and the errors all live in the core. Adapters never validate; they only give access to data. This keeps each rule in one place for every adapter.
+  4. **Every stage uses the core's readers.** The header stage reads `headers`; the value stage reads `each_chunk`; `run` fingerprints `raw_lines` (when on) and compares it before any batch, then reads `each_chunk` for the rows.
+* **Consequences:**
+  * One place reads the source, so the rules about trimming, blank rows, row numbers and malformed rows hold for every stage.
+  * A new target adapter must supply the schema, and nothing else.
+  * The core stays free of database libraries; the source side has no database dependency.
+  * **Decided:** one class per source format, sharing one interface (`headers`, `each_chunk`, `row_count`), so a new format is a new class (open/closed, CLAUDE.md rule 15). The CSV class is `Pipeforge::Source::CsvReader`.
+  * **Open:** `raw_lines` and the fingerprint are not built by this refactor; they come with the source fingerprint work (ADR-18 item 11).

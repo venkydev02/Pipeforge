@@ -8,11 +8,18 @@ module Pipeforge
   # each action.
   #
   # @example
-  #   engine = Pipeforge::Engine.new(config_path: "config/engine.yml", source_path: "data/users.csv")
+  #   engine = Pipeforge::Engine.new(config_path: "config/engine.yml", source_io: File.open("data/users.csv"))
   #   result = engine.analyze_values(
   #     mapped_columns: {"Mail" => {target_column: "email", type: "string"}}
   #   )
   class Engine
+    # The methods the source must have, and the error code for each one that is missing.
+    SOURCE_IO_METHODS = {
+      read: :source_io_missing_read,
+      rewind: :source_io_missing_rewind,
+      seek: :source_io_missing_seek
+    }.freeze
+
     # What a mapped column must carry, and the error code for each piece that is missing.
     MISSING_PIECE_CODES = {
       target_column: :column_missing_target_column,
@@ -22,20 +29,21 @@ module Pipeforge
     # @return [Configuration] the settings read from the configuration file
     attr_reader :config
 
-    # @return [String] the path of the source file
-    attr_reader :source_path
+    # @return [IO] the source: any object with +read+, +rewind+ and +seek+ (ADR-17 item 12)
+    attr_reader :source_io
 
-    # Both paths are always given explicitly; they are never searched for.
+    # The configuration path is always given explicitly; it is never searched for.
     #
     # @param config_path [String] path of the engine.yml file
-    # @param source_path [String] path of the CSV file
+    # @param source_io [IO] the CSV source, for example +File.open("data/users.csv")+. It is
+    #   rewound before each read, so the same object can be used again.
     # @raise [ConfigurationError] the configuration file cannot be used
-    # @raise [Source::MissingSourceError] the source is not a readable file
-    def initialize(config_path:, source_path:)
+    # @raise [Source::UnsupportedSourceError] the source is missing a method the engine needs
+    def initialize(config_path:, source_io:)
       @config_path = config_path
-      @source_path = source_path
+      @source_io = source_io
       @config = build_config
-      ensure_readable_source
+      ensure_source_methods
     end
 
     # Measures the mapped columns of the source file: how many values are empty, how many fit
@@ -58,7 +66,7 @@ module Pipeforge
     def analyze_values(mapped_columns:)
       reject_incomplete_columns(mapped_columns: mapped_columns)
 
-      ValueAnalyzer.new(config: @config, path: @source_path, mapped_columns: mapped_columns).call
+      ValueAnalyzer.new(config: @config, source_io: @source_io, mapped_columns: mapped_columns).call
     end
 
     private
@@ -91,13 +99,25 @@ module Pipeforge
       Configuration.new(path: @config_path)
     end
 
-    def ensure_readable_source
-      return if File.file?(@source_path) && File.readable?(@source_path)
+    # Raises Source::UnsupportedSourceError, listing every method the source does not have.
+    def ensure_source_methods
+      errors = []
 
-      raise Source::MissingSourceError.single(
-        code: :source_not_readable,
-        message: "source file not found or not readable: #{@source_path}",
-        path: @source_path
+      SOURCE_IO_METHODS.each do |method_name, code|
+        next if @source_io.respond_to?(method_name)
+
+        errors << {
+          code: code,
+          message: "source does not respond to #{method_name}",
+          method: method_name
+        }
+      end
+
+      return if errors.empty?
+
+      raise Source::UnsupportedSourceError.new(
+        message: "source is missing: #{errors.map { |error| error[:method] }.join(", ")}",
+        errors: errors
       )
     end
   end
