@@ -60,9 +60,8 @@ module Pipeforge
       # @param target_schema [TargetSchema] the schema of the target table
       # @return [Result]
       def call(source_headers:, source_identifier:, target_schema:)
-        matcher_result = build_matcher.call(
-          source_columns: source_headers, target_columns: target_schema.columns
-        )
+        target_column_names = target_schema.columns.map(&:name)
+        matcher_result = build_matcher.call(source_columns: source_headers, target_columns: target_column_names)
 
         build_result(
           source_identifier: source_identifier, target_schema: target_schema, matcher_result: matcher_result
@@ -81,25 +80,25 @@ module Pipeforge
       end
 
       def build_result(source_identifier:, target_schema:, matcher_result:)
-        metadata_by_target = {}
+        metadata_by_target_column = {}
 
         target_schema.columns.each do |target_column|
-          metadata_by_target[target_column.name] = metadata_of(target_column: target_column)
+          metadata_by_target_column[target_column.name] = metadata_of(target_column: target_column)
         end
 
         Result.new(
           source_identifier: source_identifier,
           target_table: target_schema.table_name,
           model: target_schema.model,
-          matches: build_matches(matcher_result: matcher_result, metadata_by_target: metadata_by_target),
+          matches: build_matches(matcher_result: matcher_result, metadata_by_target_column: metadata_by_target_column),
           unmatched_source_columns: matcher_result.unmatched_source_columns,
-          unmatched_target_columns: build_unmatched_targets(
-            matcher_result: matcher_result, metadata_by_target: metadata_by_target
+          unmatched_target_columns: build_unmatched_target_entries(
+            matcher_result: matcher_result, metadata_by_target_column: metadata_by_target_column
           )
         )
       end
 
-      def build_matches(matcher_result:, metadata_by_target:)
+      def build_matches(matcher_result:, metadata_by_target_column:)
         matches = {}
 
         matcher_result.matches.each do |match|
@@ -107,21 +106,21 @@ module Pipeforge
             source_column: match.source_column,
             score: match.score,
             tied_with: match.tied_with,
-            metadata: metadata_by_target.fetch(match.target_column)
+            metadata: metadata_by_target_column.fetch(match.target_column)
           }
         end
 
         matches
       end
 
-      def build_unmatched_targets(matcher_result:, metadata_by_target:)
-        unmatched_targets = []
+      def build_unmatched_target_entries(matcher_result:, metadata_by_target_column:)
+        unmatched_target_entries = []
 
         matcher_result.unmatched_target_columns.each do |target_column_name|
-          unmatched_targets << {name: target_column_name, metadata: metadata_by_target.fetch(target_column_name)}
+          unmatched_target_entries << {name: target_column_name, metadata: metadata_by_target_column.fetch(target_column_name)}
         end
 
-        unmatched_targets
+        unmatched_target_entries
       end
 
       # The state of a target column as it is in the schema, as plain data: every field of the

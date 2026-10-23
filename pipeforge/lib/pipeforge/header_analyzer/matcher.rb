@@ -29,16 +29,16 @@ module Pipeforge
     # Every word of a name counts, a trailing +id+ included: +company_id+ matches +Company Id+
     # fully and +Company+ less well.
     #
-    # The target columns can be any objects that respond to +name+. They are only the columns
-    # that can be given a source column: the target adapter leaves out the others (the primary
-    # key, ignored and generated columns).
+    # The target columns are given by name. They are only the columns that can be given a source
+    # column: the target adapter leaves out the others (the primary key, ignored and generated
+    # columns).
     #
     # @example
     #   matcher = Pipeforge::HeaderAnalyzer::Matcher.new(
     #     inclusion_threshold: 55,
     #     pair_scorer: Pipeforge::HeaderAnalyzer::PairScorer.new(reorder_penalty: 10)
     #   )
-    #   matcher.call(source_columns: ["First Name"], target_columns: target_columns).matches
+    #   matcher.call(source_columns: ["First Name"], target_columns: ["first_name"]).matches
     class Matcher
       # A source column matched to a target column.
       #   tied_with  the other source columns that had the same score for this target column and
@@ -52,8 +52,10 @@ module Pipeforge
       Result = Data.define(:matches, :unmatched_source_columns, :unmatched_target_columns)
 
       # A column name with its tokens, for a source column or a target column.
-      Entry = Data.define(:name, :tokens)
-      Candidate = Data.define(:source, :target, :score)
+      ColumnTokens = Data.define(:name, :tokens)
+
+      # A source column and a target column that have a score above 0 together.
+      Candidate = Data.define(:source_column, :target_column, :score)
 
       # @param inclusion_threshold [Numeric] the lowest score of a match
       # @param pair_scorer [PairScorer] scores one target column against one source column
@@ -65,111 +67,104 @@ module Pipeforge
       end
 
       # @param source_columns [Array<String>] the header names of the source, in file order
-      # @param target_columns [Array<#name>] the target columns, in table order
+      # @param target_columns [Array<String>] the column names of the target table, in table order
       # @return [Result]
       def call(source_columns:, target_columns:)
-        target_names = target_columns.map(&:name)
-        sources = build_entries(names: source_columns)
-        targets = build_entries(names: target_names)
-        ranked = rank(candidates: build_candidates(sources: sources, targets: targets))
-        picks = pick_matches(ranked: ranked)
-        picked_in_table_order = in_target_order(picked: picks[:candidates], target_names: target_names)
+        tokenized_sources = tokenize_columns(column_names: source_columns)
+        tokenized_targets = tokenize_columns(column_names: target_columns)
+        candidates = build_candidates(tokenized_sources: tokenized_sources, tokenized_targets: tokenized_targets)
+        picked = pick_matches(ranked_candidates: rank(candidates: candidates))
 
         Result.new(
-          matches: picked_in_table_order.map do |candidate|
-            to_match(candidate: candidate, tied_with: picks[:tied_sources].fetch(candidate.target.name))
-          end,
-          unmatched_source_columns: source_columns - picks[:source_names],
-          unmatched_target_columns: target_names - picks[:target_names]
+          matches: in_table_order(matches: picked[:matches], target_columns: target_columns),
+          unmatched_source_columns: source_columns - picked[:matched_source_columns],
+          unmatched_target_columns: target_columns - picked[:matched_target_columns]
         )
       end
 
       private
 
-      def build_entries(names:)
-        entries = []
+      def tokenize_columns(column_names:)
+        tokenized_columns = []
 
-        names.each do |name|
-          entries << Entry.new(name: name, tokens: @tokenizer.call(name: name))
+        column_names.each do |column_name|
+          tokenized_columns << ColumnTokens.new(name: column_name, tokens: @tokenizer.call(name: column_name))
         end
 
-        entries
+        tokenized_columns
       end
 
       # Every pair of a target column and a source column with a score above 0.
-      def build_candidates(sources:, targets:)
+      def build_candidates(tokenized_sources:, tokenized_targets:)
         candidates = []
 
-        targets.each do |target|
-          sources.each do |source|
-            score = score_pair(source: source, target: target)
+        tokenized_targets.each do |tokenized_target|
+          tokenized_sources.each do |tokenized_source|
+            score = @pair_scorer.call(target_tokens: tokenized_target.tokens, source_tokens: tokenized_source.tokens)
             next unless score.positive?
 
-            candidates << Candidate.new(source: source, target: target, score: score)
+            candidates << Candidate.new(
+              source_column: tokenized_source.name, target_column: tokenized_target.name, score: score
+            )
           end
         end
 
         candidates
       end
 
-      def score_pair(source:, target:)
-        @pair_scorer.call(target_tokens: target.tokens, source_tokens: source.tokens)
-      end
-
       # Best score first. The names only fix the order of pairs with the same score: a target
       # column name and a source column name are each unique, so no two pairs have the same key.
       def rank(candidates:)
-        candidates.sort_by { |candidate| [-candidate.score, candidate.target.name, candidate.source.name] }
+        candidates.sort_by { |candidate| [-candidate.score, candidate.target_column, candidate.source_column] }
       end
 
-      # Walks the ranked pairs down to the inclusion threshold and picks the matches.
+      # Walks the ranked candidates down to the inclusion threshold and picks the matches. Each
+      # match is built when it is picked, with an empty +tied_with+ list; a later candidate that
+      # ties with it (the same target column, the same score, an available source column) adds
+      # its source column to that list.
       #
-      # @return [Hash] +candidates+ (the picked pairs, in the order they were picked) with the
-      #   names of the +source_names+ and +target_names+ that were picked, and +tied_sources+
-      #   ({target name => names of the free sources that tied with its match})
-      def pick_matches(ranked:)
-        picked_target_scores = {}
-        tied_sources = {}
-        source_scores = {}
-        picked = []
+      # @return [Hash] the +matches+ (in the order they were picked), and the names of the
+      #   +matched_source_columns+ and +matched_target_columns+ that have a match
+      def pick_matches(ranked_candidates:)
+        match_by_target_column = {}
+        match_score_by_source_column = {}
 
-        ranked.each do |candidate|
+        ranked_candidates.each do |candidate|
           break if candidate.score < @inclusion_threshold
 
-          target_name = candidate.target.name
-          source_name = candidate.source.name
-          source_score = source_scores[source_name]
-          source_free = source_score.nil? || source_score == candidate.score
+          source_match_score = match_score_by_source_column[candidate.source_column]
+          source_available = source_match_score.nil? || source_match_score == candidate.score
+          existing_match = match_by_target_column[candidate.target_column]
 
-          if picked_target_scores.key?(target_name)
-            tied_sources[target_name] << source_name if source_free && picked_target_scores[target_name] == candidate.score
+          if existing_match
+            tied = source_available && existing_match.score == candidate.score
+            existing_match.tied_with << candidate.source_column if tied
             next
           end
-          next unless source_free
+          next unless source_available
 
-          picked << candidate
-          picked_target_scores[target_name] = candidate.score
-          tied_sources[target_name] = []
-          source_scores[source_name] = candidate.score if source_score.nil?
+          match_by_target_column[candidate.target_column] = to_match(candidate: candidate)
+          match_score_by_source_column[candidate.source_column] = candidate.score if source_match_score.nil?
         end
 
         {
-          candidates: picked, source_names: source_scores.keys, target_names: picked_target_scores.keys,
-          tied_sources: tied_sources
+          matches: match_by_target_column.values,
+          matched_source_columns: match_score_by_source_column.keys,
+          matched_target_columns: match_by_target_column.keys
         }
       end
 
       # Each target column has at most one match, so the positions are all different.
-      def in_target_order(picked:, target_names:)
-        picked.sort_by { |candidate| target_names.index(candidate.target.name) }
+      def in_table_order(matches:, target_columns:)
+        matches.sort_by { |match| target_columns.index(match.target_column) }
       end
 
-      def to_match(candidate:, tied_with:)
+      def to_match(candidate:)
         Match.new(
-          source_column: candidate.source.name,
-          target_column: candidate.target.name,
+          source_column: candidate.source_column,
+          target_column: candidate.target_column,
           score: candidate.score,
-          tied_with: tied_with
+          tied_with: []
         )
       end
     end
