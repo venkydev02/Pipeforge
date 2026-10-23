@@ -56,14 +56,16 @@ module Pipeforge
       # so it can be edited and passed in again.
       #
       # The mapped columns are trusted: the engine checks them against the file header and the
-      # target schema (MappedDataValidator) before this is called. The header is checked by the
+      # target schema (MappedDataValidator) and prepares them (type metadata, text keys) before
+      # this is called. The header is checked by the
       # reader before any row is read. A file with no data rows is not an error: its mapped
       # columns come back with zero counts.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
       # @param mapped_columns [Hash{String => Hash}] source column => {target_column:, type:, ...,
       #   value_mapping: {value in the file => value to load}}. Only these columns are measured.
-      #   +value_mapping+ is optional, and a value that maps to nil or a blank is loaded as empty.
+      #   +value_mapping+ is optional, its keys are text (the values of the file are text), and a
+      #   value that maps to nil or a blank is loaded as empty.
       #   The type keys are described in {TypeChecker}.
       # @return [Result]
       # @raise [Source::EmptySourceError] the file has no header line

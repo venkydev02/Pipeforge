@@ -15,7 +15,7 @@ module Pipeforge
   # It holds only the settings used so far; the other sections come later. Each value is checked
   # when the file is read: a whole number of at least 1 for +batch_size+ and
   # +distinct_values_cap+, a whole number from 0 to 100 for the recommendation settings, true or
-  # false for +fingerprint+, and the name of an encoding Ruby knows for +encoding+.
+  # false for +fingerprint+.
   #
   # A file that cannot be read at all (not valid YAML, not name: value entries) stops at once.
   # Every other error is collected, so one ConfigurationError lists them all, each with its own
@@ -30,10 +30,9 @@ module Pipeforge
     # The +execution+ section: +batch_size+ is how many rows are read and processed at a time.
     ExecutionSettings = Data.define(:batch_size)
 
-    # The +source+ section: +encoding+ is the character encoding of the source file, and
-    # +distinct_values_cap+ is the most different values listed per column of the source, and
-    # +fingerprint+ turns on the fingerprint of the source rows (true or false).
-    SourceSettings = Data.define(:encoding, :distinct_values_cap, :fingerprint)
+    # The +source+ section: +distinct_values_cap+ is the most different values listed per column of
+    # the source, and +fingerprint+ turns on the fingerprint of the source rows (true or false).
+    SourceSettings = Data.define(:distinct_values_cap, :fingerprint)
 
     # The +recommendation+ section: +inclusion_threshold+ is the lowest score (a whole number of
     # at least 1) a pair of columns needs to be a match, and +reorder_penalty+ is how many points
@@ -133,9 +132,8 @@ module Pipeforge
         source = build_section(
           settings_class: SourceSettings,
           section_name: "source",
-          defaults: {encoding: "UTF-8", distinct_values_cap: 1000, fingerprint: false}
+          defaults: {distinct_values_cap: 1000, fingerprint: false}
         )
-        require_encoding_name(setting_name: "source.encoding", value: source.encoding)
         require_positive_whole_number(setting_name: "source.distinct_values_cap", value: source.distinct_values_cap)
         require_true_or_false(setting_name: "source.fingerprint", value: source.fingerprint)
 
@@ -221,26 +219,6 @@ module Pipeforge
           setting: setting_name,
           value: value
         )
-      end
-
-      # A text that is the name of an encoding Ruby knows, for example UTF-8 or windows-1252.
-      def require_encoding_name(setting_name:, value:)
-        return if value.is_a?(String) && known_encoding?(name: value)
-
-        add_error(
-          code: :setting_not_encoding_name,
-          message: "#{setting_name} must be the name of an encoding, got #{value.inspect}",
-          setting: setting_name,
-          value: value
-        )
-      end
-
-      # Ruby has no native yes or no question for this: Encoding.find raises for an unknown name.
-      def known_encoding?(name:)
-        Encoding.find(name)
-        true
-      rescue ArgumentError
-        false
       end
 
       # One ConfigurationError for everything collected: the sentence itself for one, a list for

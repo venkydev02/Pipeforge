@@ -49,7 +49,7 @@ module Pipeforge
       HeaderAnalyzer.call(
         source_headers: @source_reader.headers,
         source_identifier: @source_reader.identifier,
-        target_schema: TargetAdapter.schema(target_table: @target_table)
+        target_schema: target_schema
       )
     end
 
@@ -65,9 +65,11 @@ module Pipeforge
     # the engine exists.
     #
     # @param mapped_columns [Hash{String => Hash}] source column => {target_column:,
-    #   value_mapping: {value in the file => value to load}}. +value_mapping+ is optional, and a
-    #   value that maps to nil or a blank is loaded as empty. The entries must not be frozen: the
-    #   schema metadata of each target column is added to them (see {#add_schema_metadata}).
+    #   value_mapping: {value in the file => value to load}}. +value_mapping+ is optional, its keys
+    #   are turned into text (the values of the file are text, so +1+ and +"1"+ are the same key),
+    #   and a value that maps to nil or a blank is loaded as empty. The entries must not be frozen:
+    #   the type metadata of each target column is added to them (see {#add_type_metadata})
+    #   and the keys of their value mapping are replaced by text.
     # @return [ValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [Source::EmptySourceError] the source has no header row
@@ -76,7 +78,6 @@ module Pipeforge
     #   or a target column that is not in the schema; every such mistake is listed
     # @raise [Source::MalformedSourceError] a row cannot be parsed
     def analyze_values(mapped_columns:)
-      target_schema = TargetAdapter.schema(target_table: @target_table)
       target_columns = {}
       target_schema.columns.each { |target_column| target_columns[target_column.name] = target_column }
 
@@ -86,18 +87,41 @@ module Pipeforge
         target_table: @target_table
       ).call(mapped_columns: mapped_columns)
 
-      add_schema_metadata(mapped_columns: mapped_columns, target_columns: target_columns)
+      add_type_metadata(mapped_columns: mapped_columns, target_columns: target_columns)
+      convert_value_mapping_keys(mapped_columns: mapped_columns)
 
       ValueAnalyzer.call(source_reader: @source_reader, mapped_columns: mapped_columns)
     end
 
     private
 
-    # Adds the metadata of the target column, taken from the schema (its type, limit, length,
-    # precision and scale), to each entry of the mapped columns, which is how the value stage
+    # The schema of the target table. The adapter is asked once and the answer is kept, like the
+    # header of the source: an engine is built for one source and one table, and neither is
+    # expected to change during its life. A failed read is not kept, so the next call asks again.
+    def target_schema
+      if @target_schema.nil?
+        @target_schema = TargetAdapter.schema(target_table: @target_table)
+      end
+
+      @target_schema
+    end
+
+    # The values of the file are text, so the keys of every value mapping are turned into text
+    # (+1+ and +"1"+ are the same key; when two keys give the same text, the later one is used).
+    # It replaces the value mapping in the entries it is given.
+    def convert_value_mapping_keys(mapped_columns:)
+      mapped_columns.each_value do |mapped_column|
+        next if mapped_column[:value_mapping].nil?
+
+        mapped_column[:value_mapping] = mapped_column[:value_mapping].transform_keys(&:to_s)
+      end
+    end
+
+    # Adds the type metadata of the target column (its type, limit, length, precision and scale),
+    # taken from the schema, to each entry of the mapped columns, which is how the value stage
     # reads them. It changes the entries it is given: a +type+ the caller sent is replaced by
     # the type of the schema.
-    def add_schema_metadata(mapped_columns:, target_columns:)
+    def add_type_metadata(mapped_columns:, target_columns:)
       mapped_columns.each_value do |mapped_column|
         target_column = target_columns.fetch(mapped_column[:target_column])
 

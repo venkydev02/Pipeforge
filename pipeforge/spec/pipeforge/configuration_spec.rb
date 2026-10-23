@@ -23,10 +23,6 @@ RSpec.describe Pipeforge::Configuration do
       expect(configuration.execution.batch_size).to eq(2000)
     end
 
-    it "uses the default encoding" do
-      expect(configuration.source.encoding).to eq("UTF-8")
-    end
-
     it "uses the default distinct values cap" do
       expect(configuration.source.distinct_values_cap).to eq(1000)
     end
@@ -65,17 +61,12 @@ RSpec.describe Pipeforge::Configuration do
             execution:
               batch_size: 500
             source:
-              encoding: "windows-1252"
               distinct_values_cap: 50
         YAML
       end
 
       it "reads the batch size" do
         expect(configuration.execution.batch_size).to eq(500)
-      end
-
-      it "reads the encoding" do
-        expect(configuration.source.encoding).to eq("windows-1252")
       end
 
       it "reads the distinct values cap" do
@@ -91,7 +82,7 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       it "keeps the defaults of the settings the file does not mention" do
-        expect(configuration.source).to have_attributes(encoding: "UTF-8", distinct_values_cap: 1000)
+        expect(configuration.source).to have_attributes(distinct_values_cap: 1000, fingerprint: false)
       end
     end
 
@@ -99,7 +90,7 @@ RSpec.describe Pipeforge::Configuration do
       let(:yaml) { "engine:\n  source:\n    distinct_values_cap: 50\n" }
 
       it "keeps the default of the other setting of that section" do
-        expect(configuration.source.encoding).to eq("UTF-8")
+        expect(configuration.source.fingerprint).to eq(false)
       end
     end
 
@@ -492,75 +483,6 @@ RSpec.describe Pipeforge::Configuration do
       end
     end
 
-    describe "source.encoding" do
-      context "set to a number" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "123") }
-
-        include_examples "a file the engine refuses", :setting_not_encoding_name,
-          /source\.encoding must be the name of an encoding, got 123/
-      end
-
-      context "set to true" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "true") }
-
-        include_examples "a file the engine refuses", :setting_not_encoding_name,
-          /source\.encoding must be the name of an encoding/
-      end
-
-      context "set to nothing" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "") }
-
-        include_examples "a file the engine refuses", :setting_not_encoding_name,
-          /source\.encoding must be the name of an encoding/
-      end
-
-      context "set to a list" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "[UTF-8]") }
-
-        include_examples "a file the engine refuses", :setting_not_encoding_name,
-          /source\.encoding must be the name of an encoding/
-      end
-
-      context "set to a name Ruby does not know" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "not-an-encoding") }
-
-        include_examples "a file the engine refuses", :setting_not_encoding_name,
-          /source\.encoding must be the name of an encoding, got "not-an-encoding"/
-      end
-
-      context "set to UTF-8" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "UTF-8") }
-
-        it "is accepted" do
-          expect(configuration.source.encoding).to eq("UTF-8")
-        end
-      end
-
-      context "set to windows-1252" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "windows-1252") }
-
-        it "is accepted" do
-          expect(configuration.source.encoding).to eq("windows-1252")
-        end
-      end
-
-      context "set to ISO-8859-1" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "ISO-8859-1") }
-
-        it "is accepted" do
-          expect(configuration.source.encoding).to eq("ISO-8859-1")
-        end
-      end
-
-      context "set to a name written in lower case" do
-        let(:yaml) { setting_yaml(section: "source", setting: "encoding", value: "utf-8") }
-
-        it "is accepted" do
-          expect(configuration.source.encoding).to eq("utf-8")
-        end
-      end
-    end
-
     describe "when there are several errors" do
       context "with a wrong value, an unknown setting and an unknown section" do
         let(:yaml) do
@@ -570,7 +492,7 @@ RSpec.describe Pipeforge::Configuration do
                 batch_size: abc
                 batch_sise: 10
               source:
-                encoding: 123
+                fingerprint: maybe
               loging:
                 level: info
           YAML
@@ -586,7 +508,7 @@ RSpec.describe Pipeforge::Configuration do
               "- unknown section loging",
               "- unknown setting batch_sise in section execution",
               "- execution.batch_size must be a whole number of at least 1, got \"abc\"",
-              "- source.encoding must be the name of an encoding, got 123"
+              "- source.fingerprint must be true or false, got \"maybe\""
             )
           end
         end
@@ -598,7 +520,7 @@ RSpec.describe Pipeforge::Configuration do
         it "has one entry for each, in the order they are found" do
           expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
             expect(error.codes).to eq(
-              %i[unknown_section unknown_setting setting_not_positive_whole_number setting_not_encoding_name]
+              %i[unknown_section unknown_setting setting_not_positive_whole_number setting_not_true_or_false]
             )
           end
         end
@@ -615,11 +537,11 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       context "with a section that is not settings next to a section with a wrong value" do
-        let(:yaml) { "engine:\n  execution: 5\n  source:\n    encoding: 123\n" }
+        let(:yaml) { "engine:\n  execution: 5\n  source:\n    fingerprint: maybe\n" }
 
         it "still checks the other section" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /section execution must hold settings.*source\.encoding must be the name/m
+            Pipeforge::ConfigurationError, /section execution must hold settings.*source\.fingerprint must be true or false/m
           )
         end
       end

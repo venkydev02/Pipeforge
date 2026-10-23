@@ -280,6 +280,43 @@ RSpec.describe Pipeforge::Engine do
       end
     end
 
+    context "with a value mapping whose keys are not text" do
+      let(:source_io) { csv_io("Count\n1\n2\n") }
+      let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
+      let(:mapped_columns) do
+        {"Count" => {target_column: "count", value_mapping: {1 => "x", 2 => "20"}}}
+      end
+
+      it "applies the mapping, because the keys are turned into text" do
+        # 1 maps to x, which does not fit an integer; 2 maps to 20, which fits.
+        expect(result.columns["Count"].type_compatibility).to eq(fits: 1, total: 2)
+      end
+
+      it "returns the mapping with its keys as text" do
+        expect(result.columns["Count"].value_mapping).to eq("1" => "x", "2" => "20")
+      end
+
+      context "when two keys give the same text" do
+        let(:mapped_columns) do
+          {"Count" => {target_column: "count", value_mapping: {1 => "x", "1" => "20"}}}
+        end
+
+        it "makes them one key, and the later one is used" do
+          expect(result.columns["Count"].value_mapping).to eq("1" => "20")
+        end
+      end
+    end
+
+    context "with a column that has no value mapping" do
+      let(:source_io) { csv_io("Count\n1\n") }
+      let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
+      let(:mapped_columns) { {"Count" => {target_column: "count"}} }
+
+      it "returns an empty value mapping for it" do
+        expect(result.columns["Count"].value_mapping).to eq({})
+      end
+    end
+
     context "with a value mapping on a column" do
       let(:target_columns) { [build_target_column(name: "status", type: "integer")] }
       let(:mapped_columns) { {"Status" => {target_column: "status", value_mapping: value_mapping}} }
@@ -308,6 +345,36 @@ RSpec.describe Pipeforge::Engine do
 
           expect(edited_result.columns["Status"].type_compatibility).to eq(fits: 7, total: 7)
         end
+      end
+    end
+  end
+
+  describe "the schema of the target table" do
+    let(:source_io) { csv_io("Status,Code\n1,2\n") }
+    let(:target_columns) { [build_target_column(name: "status"), build_target_column(name: "code")] }
+
+    before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
+
+    it "is read from the adapter once, however many times the stages are called" do
+      engine.analyze_headers
+      engine.analyze_values(mapped_columns: {"Status" => {target_column: "status"}})
+      engine.analyze_values(mapped_columns: {"Code" => {target_column: "code"}})
+
+      expect(Pipeforge::TargetAdapter).to have_received(:schema).once
+    end
+
+    context "when reading it fails" do
+      let(:schema_error) do
+        Pipeforge::TargetSchemaError.single(code: :target_table_not_found, message: "no such table", table: "records")
+      end
+
+      it "asks the adapter again on the next call" do
+        allow(Pipeforge::TargetAdapter).to receive(:schema).and_raise(schema_error)
+        expect { engine.analyze_headers }.to raise_error(Pipeforge::TargetSchemaError)
+
+        allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
+
+        expect(engine.analyze_headers.matches.keys).to eq(%w[status code])
       end
     end
   end

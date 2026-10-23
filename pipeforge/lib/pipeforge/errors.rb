@@ -53,14 +53,13 @@ module Pipeforge
   # not an error: every setting then has its default. Each code is a subject and what is wrong
   # with it: +config_file_not_valid_yaml+,
   # +config_file_not_name_value_entries+, +engine_not_sections+, +unknown_section+,
-  # +section_not_settings+, +unknown_setting+, +setting_not_positive_whole_number+,
-  # +setting_not_encoding_name+.
+  # +section_not_settings+, +unknown_setting+, +setting_not_positive_whole_number+.
   class ConfigurationError < Error; end
 
   # Raised when the mapped columns given to {Engine#analyze_values} cannot be used (checked by
-  # {MappedDataValidator}). Codes: +mapped_column_not_in_file+, +column_missing_target_column+
-  # and +target_column_not_in_schema+ (the target column is not a column of the table that can
-  # be loaded), one entry for each mistake.
+  # {MappedDataValidator}). Codes: +mapped_column_not_in_file+, +column_missing_target_column+,
+  # +target_column_not_in_schema+ (the target column is not a column of the table that can be
+  # loaded), one entry for each mistake.
   class InvalidMappedColumnsError < Error; end
 
   # Raised when the engine needs a target adapter and none is installed
