@@ -1,0 +1,5 @@
+-I pipeforge-activerecord/lib
+-I pipeforge-activerecord/spec
+--require spec_helper
+--format documentation
+--color

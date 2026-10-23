@@ -30,12 +30,13 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 ### 1.4 Staged Engine Methods (ADR-14, ADR-17)
 
 ```text
-analyze_headers(target_table:)            → HeaderAnalysis      (names only, no values)
+Engine.new(source_io:, target_table:)      the source and the target table, given once
+analyze_headers                           → HeaderAnalysis      (names only, no values)
 analyze_values(mapped_columns:)           → ValueAnalyzer::Result (values, facts, value mappings)
 run(mode: :dry_run | :run, header_analysis:, value_analysis:)    → summary and failed rows
 ```
 
-1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns facts and the editable `column_mapping`.
+1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, keyed by target column, with the metadata of each target column, and the columns left unmatched.
 2. **`analyze_values`** takes the mapping the consumer settled and measures the mapped source columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
 3. **`run`** is the one public runtime entry point. It checks that the two results agree, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits.
 
@@ -58,7 +59,7 @@ Recommendations are **deterministic**, **explainable**, **reproducible** and **t
 flowchart TD
     Source[Source: CSV]
     DB[(Target database)]
-    Config[engine.yml]
+    Config[pipeforge.yml]
 
     subgraph Core["Core gem: pipeforge"]
         Headers["analyze_headers → HeaderAnalysis"]
@@ -76,8 +77,8 @@ flowchart TD
     Source --> Headers
     DB -. "schema + model metadata" .-> Schema --> Headers
     Config --> Headers
-    Headers -->|"column_mapping"| Consumer
-    Consumer -->|"column_mapping"| Values
+    Headers -->|"matches"| Consumer
+    Consumer -->|"mapped_columns"| Values
     Source --> Values
     Values -->|"value_mapping"| Consumer
     Consumer --> Runtime
@@ -92,14 +93,14 @@ Source analysis and target schema reading are independent and may run concurrent
 ## 3. Stage Responsibilities
 
 ### 3.1 `analyze_headers`
-* **Input:** the source file and the target table (named by table name).
+* **Input:** the source file and the target table (named by table name), both given to `Engine.new`.
 * **Reads:** the source header row only, and the target model's metadata.
-* **Output:** `HeaderAnalysis`: facts (unmatched columns on both sides, candidates per target column, doubtful candidates, foreign keys with their parent model and whether they are required) and the editable `column_mapping`.
+* **Output:** `HeaderAnalysis`: `matches` keyed by target column (source column, score, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (name and metadata). A source column is shared by the targets that have the same score for it, and the consumer chooses.
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_values`
-* **Input:** the mapped columns (source column, target column, type, optional value mapping) and the engine's offset and limit.
-* **Reads:** the mapped source columns only, in one streaming pass with bounded memory.
+* **Input:** the mapped columns (source column, target column, optional value mapping) and the engine's offset and limit. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
+* **Reads:** the mapped source columns only, in one streaming pass with bounded memory, and the schema of the target table (metadata only).
 * **Output:** `ValueAnalyzer::Result`: per column, empty count, type compatibility (`fits` of `total`), distinct values split into compatible and incompatible lists (capped per list), and the value mapping the facts were measured with.
 * **Non-responsibilities:** no writes, no target rows, no changes to the mapping.
 
@@ -130,7 +131,7 @@ sequenceDiagram
     Core->>Src: Read header row only
     Core->>Adapter: schema(target_table:)
     Adapter-->>Core: TargetSchema (metadata only)
-    Core->>Consumer: HeaderAnalysis (facts, column_mapping)
+    Core->>Consumer: HeaderAnalysis (matches, unmatched columns, metadata)
 
     Note over Consumer: Review the mapping
     Consumer->>Core: analyze_values(mapped_columns:)

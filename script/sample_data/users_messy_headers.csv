@@ -1,0 +1,4 @@
+e-mail,FirstName,last_name,Years,Bal,State,Is Active,Notes,Employer,Zip
+kim.park@example.com,Kim,Park,34,120.50,active,true,Enjoys hiking,Acme Corp,10001
+leo.wong@example.com,Leo,Wong,28,0,active,true,,Globex,20002
+mia.cruz@example.com,Mia,Cruz,41,980.25,inactive,false,Team lead,Initech,30003

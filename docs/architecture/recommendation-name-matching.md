@@ -20,12 +20,14 @@ Available inputs: source column names and observed values; target column names, 
 Split a column name into lowercase tokens:
 - split on spaces, `_`, `-`, `.` and other non-alphanumerics;
 - split camelCase, digit boundaries and acronym runs (`HTTPServer` -> `http`, `server`; `address2` -> `address`, `2`);
-- singularize tokens with ActiveSupport (`companies` -> `company`);
-- strip the table-name prefix from target columns (`users.user_email` -> `email`);
+- keep each token as written, lowercased: plurals are **not** turned into singulars (see below);
+- keep the table name in target column names: no table-name prefix is removed (`users.user_email` stays `user`, `email`);
 - no stop words for now.
 
 **Why.** This is how identifier-splitting tools work and how schema-matching systems normalize names. Both sides must use the same process or tokens will not line up. Stop words (`no`, `of`, `number`) are easy to get wrong, so they are left out until a real need appears.
 **Gap closed after research:** the first draft missed acronym runs.
+**Considered and not chosen: removing the table-name prefix.** A rule that dropped the table's own words from the front of a target column name (`users.user_email` -> `email`) was built and removed for now (2026-10-21). With no singularizing it needed a "start of the table word" test (`user` starts `users`), which also strips a word that only happens to start the table word (`use_count` on `users` becomes `count`). A column that repeats the table name still matches a source column that does the same (`User Email` against `user_email`); one that does not scores lower. Revisit with real data.
+**Considered and not chosen: singularizing.** A short built-in rule list (`companies` -> `company`) was built first and removed (2026-10-21). No short list is right for every English word (`buses` -> `buse`, `news` -> `new`, `people` stays), and a wrong cut can make two different words equal, which is a false match the consumer cannot predict. A word and its plural still score well by the prefix rule of D2 (`name` against `names` is 80%); where they do not (`company` against `companies`), the consumer maps the column by hand or adds a synonym (D3).
 
 ### D2. Token-pair score: full prefix only
 For a target token `t` and a source token `s`: if the shorter is a **full prefix** of the longer, score = `length(shorter) / length(longer)`; otherwise 0.
@@ -36,7 +38,7 @@ For a target token `t` and a source token `s`: if the shorter is a **full prefix
 | first | f | 20% | 1 / 5 |
 | address | addr | 57% | 4 / 7 |
 | number | num | 50% | 3 / 6 |
-| name | names | 100% | identical after singularizing |
+| name | names | 80% | 4 / 5, one extra letter |
 | name | namesake | 50% | 4 / 8, extra letters penalized |
 | name | username | 0% | not a prefix |
 | phone | photo | 0% | only `pho` shared |
@@ -46,7 +48,7 @@ For a target token `t` and a source token `s`: if the shorter is a **full prefix
 **Considered and not chosen for v1:** suffix matching (would catch `phone` inside `telephone`) and character n-gram / Jaro-Winkler fuzzy scores (catch typos and compounds). Research shows strong systems combine several measures, but fuzzy scores are harder to explain. Prefix-only was chosen for explainability; revisit if real data needs more.
 
 ### D3. Abbreviations and synonyms are configured by the customer
-No built-in abbreviation dictionary. The customer declares synonyms in `engine.yml` at two levels: global token synonyms (`qty` -> `quantity`) and optional per-target-column aliases (`users.first_name: [fname, given name]`).
+No built-in abbreviation dictionary. The customer declares synonyms in `pipeforge.yml` at two levels: global token synonyms (`qty` -> `quantity`) and optional per-target-column aliases (`users.first_name: [fname, given name]`).
 
 **Why.** Abbreviations vary by business and data source. The open-source importers surveyed (react-spreadsheet-import `alternateMatches`, tableflow `suggested_mappings`, Dromo aliases) all use alias lists declared by whoever owns the target fields, and no open-source library ships a general column-name synonym dictionary. Research on automatic abbreviation expansion mines large code bases and is neither small nor deterministic enough for this engine.
 **Consequence.** Out of the box `qty` will not match `quantity`. The draft's facts must list unmatched source and target columns so the customer can see what to add, then re-plan. One-off cases can be fixed by editing the draft.
@@ -65,9 +67,9 @@ Name score = `2 x (sum of best token-pair scores) / (target tokens + source toke
 
 **Why.** A sum over the target's tokens only means extra source tokens are free, so `Name`, `User Name` and `Company Name` all tie at 100 for target `Name`. The symmetric form keeps the original ranking (`First Name` > `F Name` > `User Name`), always stays between 0 and 100%, and is comparable across targets.
 
-### D5. Ties and conflicts: fixed tie-break order, greedy one-to-one
-Tie-break order: (1) higher score; (2) more exactly matched tokens; (3) fewer unmatched source tokens; (4) source column position in the file; (5) target column position in the table definition.
-Assignment: sort all eligible pairs by that order and assign best-first; each source and each target is used at most once. Losing candidates appear in the facts as alternatives.
+### D5. Ties and conflicts: sort by score, greedy match per target, a source is shared only at the same score
+Sort order: higher score first. Pairs with the same score are ordered by target column name and then source column name; that only makes the result the same on every run, and it does not depend on where the columns sit in the file or the table.
+Assignment: walk the sorted pairs from the top, down to the inclusion threshold. A target that already has a match is skipped. A source that was matched with a **different** score is skipped, so the target with the better score for it keeps it. Any other pair is a match. A source matched with the **same** score by an earlier pair is **shared**: it appears in the matches of every target that ties for it, and the consumer chooses which one to keep. Sharing looks at the score only. A tie inside one target (`Phone 1` and `Phone 2` for `phone`) is decided by the column names (`Phone 1`), and the other source is unmatched. Everything below the threshold is unmatched; there is no doubtful list (ADR-12 amendment of 2026-10-23).
 
 **Why.** A plain `Name` source scores 67% against `first_name`, `last_name` and `full_name`, so independent per-target ranking would give one source to all three. Greedy best-first is deterministic and easy to explain ("the highest score claimed it first"). Optimal assignment (Hungarian) can score higher in rare cases but is harder to explain, and allowing reuse risks mapping one column twice by default.
 
@@ -76,7 +78,7 @@ Which source column is recommended for a target column is decided **only** by th
 
 **Why.** It keeps the ranking simple, predictable and fully explainable: the customer can reproduce any recommendation from the column names alone, and nothing is hidden in an adjustment. A single dirty value in a million (for example `twenty` in an `Age` column) must not remove or demote the obviously right column. The earlier idea (hard gates plus capped adjustments of about +-15 points from types and values) and the old weighted formula (0.45 name, 0.25 type, 0.20 values, 0.10 structure) are both dropped.
 **Consequences accepted.**
-- When two pairs tie on names (`Name` against `first_name` and `last_name`), the data cannot break the tie; only the fixed tie-break order does (D5).
+- When two pairs tie on names (`Name` against `first_name` and `last_name`), the data cannot break the tie: the source is shared and the consumer chooses (D5).
 - A pair with a clear data mismatch (a column of emails into a whole-number column) can still be recommended if the names match. The facts must flag it prominently. At run time those records fail individually and go to the dead-letter log; nothing loads silently wrong.
 
 ### D7. Every target column is visible in the facts
@@ -103,9 +105,11 @@ Words are paired anywhere (as in D4), but if the matched words appear in a diffe
 | Birth Date | Date of Birth | 80% | 70% |
 
 **Why.** The same meaning is often written in a different order (`Date of Birth` / `Birth Date`, `Mobile Phone` / `Phone Mobile`), so ignoring order would be forgiving but would also let a reordered name tie with the exact one. Strict order (matched words must stay in order or earn nothing) was rejected because it scores harmless reorderings far too low (`Birth Date` against `Date of Birth` would drop to 40%) and could push the right column under the inclusion threshold. A small penalty keeps reordered names matching well while the same-order column always wins a tie.
-**Open:** the penalty size (10 points proposed) and whether it is configurable in `engine.yml`.
+**Open:** the penalty size (10 points proposed) and whether it is configurable in `pipeforge.yml`.
 
-### D10. Columns the database fills or refuses to write are never recommended
+### D10. Columns the database fills or refuses to write are never recommended (visibility superseded)
+> **Partly superseded by ADR-22.** The columns are still never recommended, but the target adapter now leaves them out of the schema, so they are no longer listed with a status (D7 no longer applies to them). The text below is the record of the earlier decision.
+
 Target columns that are **filled by the database** (auto-numbered keys, identity columns) or **not writable** (generated, virtual, read-only columns) never receive a source column. The facts show them with a status such as "filled by the database" or "not writable", so they are still visible (D7).
 
 **Why.** It is the safest default: a generated column rejects every row, and an auto-numbered key can clash with ids the database hands out later. This is a structural property of the target column, not a judgement about the data, so it does not conflict with D6.
@@ -120,7 +124,7 @@ Whether the data will actually load is answered by the **dry run** of the final 
 **Open:** the cap on distinct values per column, what is shown next to them (counts, the target column's allowed values), and how value mappings are suggested (section 4).
 
 ### D12. Distinct values: capped at 1,000 per column, configurable
-For each source column the scan keeps up to **1,000 distinct values**, each with how often it appears. Beyond the cap the column is marked "too many distinct values to list". The cap is a setting in `engine.yml`.
+For each source column the scan keeps up to **1,000 distinct values**, each with how often it appears. Beyond the cap the column is marked "too many distinct values to list". The cap is a setting in `pipeforge.yml`.
 
 **Why.** Value mappings only matter for columns with few distinct values (statuses, countries, categories); 1,000 covers every realistic code list. Listing every distinct email or id would grow memory with the data and break the bounded-memory promise (ADR-02). A smaller cap (100) would cut off country or category lists; no cap is not bounded.
 
@@ -134,10 +138,11 @@ Everything else is listed as **unmapped** next to the target's allowed values, f
 **Why.** A wrong guess can slip through if nobody checks, and a wrong value mapping corrupts data silently, while an unmapped value is visible and the dry run shows what happens to it. The boolean list is small, standard and fixed, so it does not go against D3 (no built-in vocabulary): it is part of reading yes/no values, not a business vocabulary.
 **Open:** exactly which words are in the boolean list, and how mappings are written in the draft.
 
-### D14. Draft layout: mappings with confidence and their own facts; doubtful candidates listed separately
+### D14. Draft layout: mappings with confidence and their own facts; doubtful candidates listed separately (superseded)
+> **Superseded by the ADR-12 amendment of 2026-10-23.** The header result has `matches` keyed by target column (source column, score, metadata of the target column), `unmatched_source_columns` and `unmatched_target_columns` (name and metadata). There is no doubtful list. The text below is the record of the earlier decision.
 The draft is a list of **mappings** (`target column <- source column`). Each mapping shows its **confidence** (the name match score) and, directly underneath, its **facts**, such as the **type fit** (the share of the source column's values that fit the target column's type, measured on the raw values before any value mappings or transforms).
 
-- **In the plan (state):** mappings at or above the inclusion threshold (default 55%, configurable in `engine.yml`), the "okay-ish" ones. These will run once the draft is acknowledged (D8).
+- **In the plan (state):** mappings at or above the inclusion threshold (default 55%, configurable in `pipeforge.yml`), the "okay-ish" ones. These will run once the draft is acknowledged (D8).
 - **Doubtful (facts only):** candidates below the threshold. They are shown with their facts but are not in the state unless the customer adopts one with an explicit call. Pairs with a 0% name score are not candidates.
 - **Required target columns with no mapping** (`NOT NULL`, no default, not filled by the database) make `build` fail with an error naming the column, so the Runtime never receives such a plan.
 
@@ -207,7 +212,7 @@ The Planner returns one JSON document (no UI is involved). The consumer edits it
 
 A **reference column** is a target column that points to a row in another (parent) table, i.e. a real foreign key such as `users.company_id`.
 
-1. **Which source column feeds it** is ranked by name with the same rules as every other column (D1 to D5, D9, D14), with one adjustment: for reference columns only, a trailing `id` is a **reference marker** and is ignored. It is dropped from the target name and from each source name before matching. Ordinary columns keep their `id` (`external_id`).
+1. **Which source column feeds it** is ranked by name with the same rules as every other column (D1 to D5, D9). *The reference-marker adjustment that followed here was removed on 2026-10-23: a trailing `id` is an ordinary word, so `company_id` keeps `id`, `Company Id` matches it fully (100%) and `Company` less well (67%). The marker column of the table below is the record of the earlier decision.*
 2. **The lookup column** (the column of the parent table used to find the row, for example `companies.code`) is **chosen by the customer**. The Planner never picks it.
 3. **In the JSON (extends D15):**
    - `findings.target_columns` shows, for each reference column, its parent table and the parent's columns with a flag for unique ones, so the customer can choose.

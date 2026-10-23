@@ -1,0 +1,9 @@
+Email,First Name,Last Name,Age,Balance,Status,Active,Bio,Company
+kim.park@example.com,Kim,Park,34,120.50,active,true,Enjoys hiking,1
+leo.wong@example.com,Leo,Wong,28,0,active,true,,2
+mia.cruz@example.com,Mia,Cruz,41,980.25,inactive,false,Team lead,3
+noah.fox@example.com,Noah,Fox,52,15.00,active,true,,4
+ola.berg@example.com,Ola,Berg,23,310.75,suspended,false,New starter,5
+pia.nair@example.com,Pia,Nair,37,45.10,active,true,,1
+quin.tran@example.com,Quin,Tran,45,2200.00,active,true,Likes chess,2
+rae.holm@example.com,Rae,Holm,30,0,inactive,false,,3

@@ -40,7 +40,7 @@ flowchart TD
 
     Source --> Headers
     DB -. "metadata only" .-> Schema --> Headers
-    Headers -->|"column mapping"| Edit
+    Headers -->|"matches"| Edit
     Edit --> Values
     Source --> Values
     Values -->|"value mapping"| Edit
@@ -52,3 +52,41 @@ flowchart TD
 Header and value analysis never read existing target rows. Only the loader writes rows, and the model's own validations check parent records as they load.
 
 This is a simplified view. The full topology, the stage contracts and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md); every other doc refers back to that file.
+
+## Trying it by hand
+
+The repository has a small sample database and sample source files, so you can try the engine without setting anything up. From the repository root:
+
+```bash
+bundle install
+bundle exec script/console
+```
+
+This creates `tmp/development.sqlite3` (two tables: `users`, the target, and `companies`, the table its foreign key points to), then opens a Ruby console with the engine and the models loaded. Running it again recreates the database, so the data is always the same. Try:
+
+```ruby
+engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users.csv"), target_table: "users")
+result = engine.analyze_headers
+result.matches                   # target column => {source_column:, score:, metadata:}
+result.unmatched_source_columns  # source columns that matched no target column
+result.unmatched_target_columns  # [{name:, metadata:}] for the target columns left without a match
+```
+
+| Sample file | What it shows |
+|---|---|
+| `script/sample_data/users.csv` | Clean headers and values that fit: every column matches, and the `Company` column holds company ids |
+| `script/sample_data/users_messy_headers.csv` | Headers that are only partly recognizable: some matches, some columns left unmatched |
+| `script/sample_data/users_bad_values.csv` | The right headers, but values that do not fit their columns (`forty` for an age, `maybe` for a boolean, a name where an id is expected) |
+
+To measure the values of a file, pass the columns you mapped to `analyze_values`:
+
+```ruby
+engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users_bad_values.csv"), target_table: "users")
+values = engine.analyze_values(mapped_columns: {"Age" => {target_column: "age"}})
+values.columns["Age"].type_compatibility   # {fits: 3, total: 4}
+values.columns["Age"].distinct_values[:incompatible].values   # the values that do not fit
+```
+
+The engine finds the model of the target table among the models that are loaded and never loads any itself. Loading them, and how, is your choice; the model of the target table must be loaded before `analyze_headers`, otherwise it stops with `active_record_model_not_found`.
+
+The seed script alone is `bundle exec ruby script/seed_development.rb`. The settings are read from `config/pipeforge.yml` if you add one; without it every setting has its default.

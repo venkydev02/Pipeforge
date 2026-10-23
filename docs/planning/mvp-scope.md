@@ -23,7 +23,7 @@
 
 ### 1.4 Configuration & Interaction
 - Consumed as a Ruby library: the core gem comes with the adapter gem; no gem-shipped CLI in MVP
-- One-time engine configuration through `engine.yml`; behavior is chosen by options, not code
+- One-time engine configuration through `pipeforge.yml`; behavior is chosen by options, not code
 - Per-call input: the header and value results, the mode, and the optional offset, limit and loading options
 - Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
 

@@ -1,29 +1,37 @@
 # frozen_string_literal: true
 
-# Runs the whole suite with Ruby's built-in line and branch coverage, then prints, for each file
-# under lib/, the lines and branches that no example executes.
+# Runs the suite of one gem with Ruby's built-in line and branch coverage, then prints, for each
+# file under that gem's lib/, the lines and branches that no example executes. Run it from the
+# repository root and name the gem folder:
 #
-#   bundle exec ruby script/coverage.rb
+#   bundle exec ruby script/coverage.rb pipeforge
+#   bundle exec ruby script/coverage.rb pipeforge-activerecord
 #
 # Coverage has to start before the library is loaded, which is why this is a script and not an
 # option of rspec (spec_helper loads the library first). It needs no extra gem.
 
 require "coverage"
 
+gem_folder = ARGV.fetch(0) do
+  abort "usage: bundle exec ruby script/coverage.rb <pipeforge | pipeforge-activerecord>"
+end
+
 Coverage.start(lines: true, branches: true)
 
 require "rspec/core"
 
-exit_status = RSpec::Core::Runner.run(["spec", "--format", "progress"])
+exit_status = RSpec::Core::Runner.run(
+  ["--options", File.join(gem_folder, ".rspec"), File.join(gem_folder, "spec"), "--format", "progress"]
+)
 
-library_root = File.join(Dir.pwd, "lib") + File::SEPARATOR
+library_root = File.join(Dir.pwd, gem_folder, "lib") + File::SEPARATOR
 lines_total = 0
 lines_covered = 0
 branches_total = 0
 branches_covered = 0
 
 puts
-puts "Coverage of lib/"
+puts "Coverage of #{gem_folder}/lib/"
 
 Coverage.result.sort.each do |file, counts|
   next unless file.start_with?(library_root)

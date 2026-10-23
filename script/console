@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Seeds the development database (script/seed_development.rb) and opens a Ruby console with the
+# engine and the sample models loaded, for trying the engine by hand. Run it from the repository
+# root:
+#
+#   bundle exec script/console
+
+require "irb"
+
+load File.expand_path("seed_development.rb", __dir__)
+
+puts <<~TEXT
+
+  Pipeforge console. The sample database is seeded: Sample::User and Sample::Company.
+  Sample source files are in script/sample_data. Try:
+
+    engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users.csv"), target_table: "users")
+    engine.analyze_headers
+
+TEXT
+
+IRB.start(__FILE__)

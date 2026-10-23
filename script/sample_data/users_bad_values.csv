@@ -1,0 +1,6 @@
+Email,First Name,Last Name,Age,Balance,Status,Active,Bio,Company
+kim.park@example.com,Kim,Park,34,120.50,active,true,Enjoys hiking,1
+leo.wong@example.com,Leo,Wong,forty,0,active,maybe,,2
+mia.cruz@example.com,Mia,Cruz,41,"1,200.50",inactive,false,Team lead,Initech
+noah.fox@example.com,Noah,Fox,52,15.00,this status is far too long to fit,true,,4
+ola.berg@example.com,Ola,Berg,,310.75,suspended,false,New starter,
