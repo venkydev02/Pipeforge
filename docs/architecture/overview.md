@@ -95,7 +95,7 @@ Source analysis and target schema reading are independent and may run concurrent
 ### 3.1 `analyze_headers`
 * **Input:** the source file and the target table (named by table name), both given to `Engine.new`.
 * **Reads:** the source header row only, and the target model's metadata.
-* **Output:** `HeaderAnalysis`: `matches` keyed by target column (source column, score, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (name and metadata). A source column is shared by the targets that have the same score for it, and the consumer chooses.
+* **Output:** `HeaderAnalysis`: `matches` keyed by target column (source column, score, `tied_with`, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (name and metadata). A source column is shared by the targets that have the same score for it, and the consumer chooses.
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_values`

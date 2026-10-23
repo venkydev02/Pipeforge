@@ -78,6 +78,36 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
 
         expect(result.unmatched_source_columns).to eq(["Phone 2"])
       end
+
+      it "lists the source column that tied in tied_with" do
+        result = matcher.call(source_columns: ["Phone 2", "Phone 1"], target_columns: [target("phone")])
+
+        expect(result.matches.first.tied_with).to eq(["Phone 2"])
+      end
+
+      it "lists every source column that tied, in name order" do
+        result = matcher.call(source_columns: ["Phone 3", "Phone 1", "Phone 2"], target_columns: [target("phone")])
+
+        expect(result.matches.first.tied_with).to eq(["Phone 2", "Phone 3"])
+      end
+
+      it "has an empty tied_with when nothing tied" do
+        result = matcher.call(source_columns: ["First Name"], target_columns: [target("first_name")])
+
+        expect(result.matches.first.tied_with).to eq([])
+      end
+
+      it "does not list a source column with a lower score" do
+        result = matcher.call(source_columns: ["Phone", "Phone 2"], target_columns: [target("phone")])
+
+        expect(result.matches.first.tied_with).to eq([])
+      end
+
+      it "does not list a source column that was matched with another score" do
+        result = matcher.call(source_columns: ["First", "Name"], target_columns: [target("name"), target("first_name")])
+
+        expect(result.matches.map(&:tied_with)).to eq([[], []])
+      end
     end
 
     describe "one source column for several targets" do

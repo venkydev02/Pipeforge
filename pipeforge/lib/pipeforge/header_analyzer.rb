@@ -22,10 +22,13 @@ module Pipeforge
     #   source_identifier            the file path of the source, or its class name
     #   target_table, model          the table and the model the adapter read it from (nil when
     #                                the adapter has no model)
-    #   matches                      {target column => {source_column:, score:, metadata:}}, in
-    #                                table order: the pairs at or above the inclusion threshold.
-    #                                A source column can be in several entries when their scores
-    #                                are the same; the consumer chooses which target to keep.
+    #   matches                      {target column => {source_column:, score:, tied_with:,
+    #                                metadata:}}, in table order: the pairs at or above the
+    #                                inclusion threshold. A source column can be in several
+    #                                entries when their scores are the same; the consumer chooses
+    #                                which target to keep. +tied_with+ lists the other source
+    #                                columns that had the same score for this target and were
+    #                                free to take it (empty when nothing tied).
     #   unmatched_source_columns     source columns in no match, in file order
     #   unmatched_target_columns     [{name:, metadata:}] for the target columns without a match,
     #                                in table order
@@ -103,6 +106,7 @@ module Pipeforge
           matches[match.target_column] = {
             source_column: match.source_column,
             score: match.score,
+            tied_with: match.tied_with,
             metadata: metadata_by_target.fetch(match.target_column)
           }
         end

@@ -21,6 +21,11 @@ module Pipeforge
     # - any other pair is a match. A source column matched with the same score by an earlier pair
     #   is shared, and the consumer chooses which target column to keep.
     #
+    # A target column can have several source columns with the same score. The one whose name
+    # comes first is the match, and the others are listed in its +tied_with+, so the consumer can
+    # see the tie. A source column that was already matched with another score is not listed:
+    # it was not free to take the target.
+    #
     # Every word of a name counts, a trailing +id+ included: +company_id+ matches +Company Id+
     # fully and +Company+ less well.
     #
@@ -36,7 +41,9 @@ module Pipeforge
     #   matcher.call(source_columns: ["First Name"], target_columns: target_columns).matches
     class Matcher
       # A source column matched to a target column.
-      Match = Data.define(:source_column, :target_column, :score)
+      #   tied_with  the other source columns that had the same score for this target column and
+      #              were free to take it, in name order; empty when nothing tied
+      Match = Data.define(:source_column, :target_column, :score, :tied_with)
 
       # The outcome of one matching.
       #   matches                      the matched pairs, in target column order
@@ -69,7 +76,9 @@ module Pipeforge
         picked_in_table_order = in_target_order(picked: picks[:candidates], target_names: target_names)
 
         Result.new(
-          matches: picked_in_table_order.map { |candidate| to_match(candidate: candidate) },
+          matches: picked_in_table_order.map do |candidate|
+            to_match(candidate: candidate, tied_with: picks[:tied_sources].fetch(candidate.target.name))
+          end,
           unmatched_source_columns: source_columns - picks[:source_names],
           unmatched_target_columns: target_names - picks[:target_names]
         )
@@ -116,25 +125,38 @@ module Pipeforge
       # Walks the ranked pairs down to the inclusion threshold and picks the matches.
       #
       # @return [Hash] +candidates+ (the picked pairs, in the order they were picked) with the
-      #   names of the +source_names+ and +target_names+ that were picked
+      #   names of the +source_names+ and +target_names+ that were picked, and +tied_sources+
+      #   ({target name => names of the free sources that tied with its match})
       def pick_matches(ranked:)
-        picked_target_names = []
+        picked_target_scores = {}
+        tied_sources = {}
         source_scores = {}
         picked = []
 
         ranked.each do |candidate|
           break if candidate.score < @inclusion_threshold
-          next if picked_target_names.include?(candidate.target.name)
 
-          source_score = source_scores[candidate.source.name]
-          next if !source_score.nil? && source_score != candidate.score
+          target_name = candidate.target.name
+          source_name = candidate.source.name
+          source_score = source_scores[source_name]
+          source_free = source_score.nil? || source_score == candidate.score
+
+          if picked_target_scores.key?(target_name)
+            tied_sources[target_name] << source_name if source_free && picked_target_scores[target_name] == candidate.score
+            next
+          end
+          next unless source_free
 
           picked << candidate
-          picked_target_names << candidate.target.name
-          source_scores[candidate.source.name] = candidate.score if source_score.nil?
+          picked_target_scores[target_name] = candidate.score
+          tied_sources[target_name] = []
+          source_scores[source_name] = candidate.score if source_score.nil?
         end
 
-        {candidates: picked, source_names: source_scores.keys, target_names: picked_target_names}
+        {
+          candidates: picked, source_names: source_scores.keys, target_names: picked_target_scores.keys,
+          tied_sources: tied_sources
+        }
       end
 
       # Each target column has at most one match, so the positions are all different.
@@ -142,11 +164,12 @@ module Pipeforge
         picked.sort_by { |candidate| target_names.index(candidate.target.name) }
       end
 
-      def to_match(candidate:)
+      def to_match(candidate:, tied_with:)
         Match.new(
           source_column: candidate.source.name,
           target_column: candidate.target.name,
-          score: candidate.score
+          score: candidate.score,
+          tied_with: tied_with
         )
       end
     end

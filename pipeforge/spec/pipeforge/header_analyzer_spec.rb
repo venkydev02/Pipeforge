@@ -41,6 +41,10 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       expect(result.matches["last_name"]).to include(source_column: "Last Name", score: 100.0)
     end
 
+    it "has an empty tied_with when nothing tied" do
+      expect(result.matches["first_name"][:tied_with]).to eq([])
+    end
+
     it "gives each match the metadata of its target column" do
       expect(result.matches["first_name"][:metadata]).to eq(default_metadata(max_length: 50, nullable: false))
     end
@@ -78,14 +82,14 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         "model" => "User",
         "matches" => {
           "first_name" => {
-            "source_column" => "First Name", "score" => 100.0,
+            "source_column" => "First Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => 50,
               "precision" => nil, "scale" => nil, "nullable" => false, "default" => nil, "foreign_key" => nil
             }
           },
           "last_name" => {
-            "source_column" => "Last Name", "score" => 100.0,
+            "source_column" => "Last Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => nil,
               "precision" => nil, "scale" => nil, "nullable" => true, "default" => nil, "foreign_key" => nil
@@ -104,6 +108,23 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           }
         ]
       )
+    end
+
+    context "when two source columns tie for one target" do
+      let(:source_headers) { ["Phone 2", "Phone 1"] }
+      let(:target_columns) { [build_target_column(name: "phone")] }
+
+      it "matches the source column whose name comes first" do
+        expect(result.matches["phone"]).to include(source_column: "Phone 1", score: 66.67)
+      end
+
+      it "lists the other one in tied_with" do
+        expect(result.matches["phone"][:tied_with]).to eq(["Phone 2"])
+      end
+
+      it "still lists it among the unmatched source columns" do
+        expect(result.unmatched_source_columns).to eq(["Phone 2"])
+      end
     end
 
     context "when a source column fits several targets with the same score" do
