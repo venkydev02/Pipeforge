@@ -28,9 +28,9 @@
 - Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
 
 ### 1.5 Migration Pipeline
-1. `analyze_headers`: read the source header and the target model's metadata; rank by names only; return the editable column mapping
-2. The consumer reviews and edits the column mapping
-3. `analyze_values`: one streaming pass over the mapped columns; return facts and the editable value mapping
+1. `analyze_headers`: read the source header and the target model's metadata; rank by names only; return the best match for each target column, the metadata of each target column, and the columns left unmatched
+2. The consumer reviews the matches and builds the mapped columns (target column => source column, with an optional value mapping)
+3. `analyze_values(mapped_columns:)`: one streaming pass over the mapped columns; return facts and the editable value mapping
 4. The consumer reviews and edits the value mapping, and may call `analyze_values` again
 5. `run(mode: :dry_run)`: the contract check, then the batches inside one outer transaction that is rolled back
 6. `run(mode: :run)`: the contract check, then the batches, each committed; checkpoint after each commit
@@ -64,9 +64,9 @@
 1. A Rails consumer can configure the engine and run a migration from their own code with only options and a source file.
 2. CSV files are analyzed without loading the whole file into memory.
 3. The target model's columns and model metadata are read (PostgreSQL and SQLite).
-4. `analyze_headers` returns facts and a column mapping, using names only.
+4. `analyze_headers` returns the best match for each target column (a source column and a score) with the metadata of the target column, using names only.
 5. `analyze_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
-6. The consumer can edit either result and call the method again; the facts reflect the edit.
+6. The consumer can edit the mapped columns or a value mapping and call `analyze_values` again; the facts reflect the edit.
 7. `run` refuses a value result that does not match the mapping, and reports every missing column or required column together.
 8. A dry run reports the same failed rows as a real run against an unchanged database, and persists nothing.
 9. Batches load with `insert_all!`, or row by row through the model; a failed batch is retried row by row.

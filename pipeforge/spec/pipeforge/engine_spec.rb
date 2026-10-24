@@ -119,9 +119,9 @@ RSpec.describe Pipeforge::Engine do
 
     let(:mapped_columns) do
       {
-        "Status" => {target_column: "status"},
-        "Code" => {target_column: "code"},
-        "Note" => {target_column: "note"}
+        "status" => {source_column: "Status"},
+        "code" => {source_column: "Code"},
+        "note" => {source_column: "Note"}
       }
     end
 
@@ -131,12 +131,12 @@ RSpec.describe Pipeforge::Engine do
       expect(result.source_identifier).to eq(source_io.path)
     end
 
-    it "returns a summary for each mapped column, keyed by source column" do
-      expect(result.columns.keys).to eq(%w[Status Code Note])
+    it "returns a summary for each mapped column, keyed by target column" do
+      expect(result.columns.keys).to eq(%w[status code note])
     end
 
-    it "gives each summary its target column" do
-      expect(result.columns["Code"].target_column).to eq("code")
+    it "gives each summary its source column" do
+      expect(result.columns["code"].source_column).to eq("Code")
     end
 
     it "returns the same result when it is called again" do
@@ -153,27 +153,36 @@ RSpec.describe Pipeforge::Engine do
       let(:settings) { {source: {distinct_values_cap: 2}} }
 
       it "lists at most that many values per list" do
-        expect(result.columns["Code"].distinct_values[:compatible].values.size).to eq(2)
+        expect(result.columns["code"].distinct_values[:compatible].values.size).to eq(2)
       end
     end
 
     context "when only some columns are mapped" do
-      let(:mapped_columns) { {"Code" => {target_column: "code"}} }
+      let(:mapped_columns) { {"code" => {source_column: "Code"}} }
 
       it "measures only those columns" do
-        expect(result.columns.keys).to eq(["Code"])
+        expect(result.columns.keys).to eq(["code"])
       end
     end
 
     context "when a mapped column is not in the file" do
-      let(:mapped_columns) { {"Nope" => {target_column: "status"}} }
+      let(:mapped_columns) { {"status" => {source_column: "Nope"}} }
 
       it "stops with mapped_column_not_in_file, naming the column" do
         expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
-            [{code: :mapped_column_not_in_file, source_column: "Nope"}]
+          expect(error.errors.map { |entry| entry.slice(:code, :target_column, :source_column) }).to eq(
+            [{code: :mapped_column_not_in_file, target_column: "status", source_column: "Nope"}]
           )
         end
+      end
+    end
+
+    context "with the same source column for two target columns" do
+      let(:mapped_columns) { {"status" => {source_column: "Status"}, "code" => {source_column: "Status"}} }
+
+      it "measures it once for each target column" do
+        expect(result.columns.keys).to eq(%w[status code])
+        expect(result.columns.values.map(&:source_column)).to eq(%w[Status Status])
       end
     end
 
@@ -187,41 +196,53 @@ RSpec.describe Pipeforge::Engine do
 
     context "with the type of the target column in the schema" do
       let(:target_columns) { [build_target_column(name: "status", type: "string", max_length: 6)] }
-      let(:mapped_columns) { {"Status" => {target_column: "status"}} }
+      let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
       it "measures the values against that type and size" do
-        expect(result.columns["Status"].type_compatibility).to eq(fits: 5, total: 7)
+        expect(result.columns["status"].type_compatibility).to eq(fits: 5, total: 7)
+      end
+    end
+
+    context "with an enum column in the schema" do
+      let(:source_io) { csv_io("Status\ndraft\n1\nshipped\n7\nPlaced\n") }
+      let(:target_columns) do
+        [build_target_column(name: "status", type: "integer", enum_values: {"draft" => 0, "placed" => 1, "shipped" => 2})]
+      end
+      let(:mapped_columns) { {"status" => {source_column: "Status"}} }
+
+      it "counts the labels and the stored values as fitting, and nothing else" do
+        expect(result.columns["status"].type_compatibility).to eq(fits: 3, total: 5)
       end
     end
 
     context "when the caller sends a type with a column" do
       let(:target_columns) { [build_target_column(name: "code", type: "integer")] }
-      let(:mapped_columns) { {"Code" => {target_column: "code", type: "string"}} }
+      let(:mapped_columns) { {"code" => {source_column: "Code", type: "string"}} }
 
       it "uses the type of the schema instead" do
-        expect(result.columns["Code"].type_compatibility).to eq(fits: 0, total: 7)
+        expect(result.columns["code"].type_compatibility).to eq(fits: 0, total: 7)
       end
     end
 
     context "when a mapped column is unusable" do
-      context "without a target column" do
-        let(:mapped_columns) { {"Status" => {}} }
+      context "without a source column" do
+        let(:mapped_columns) { {"status" => {}} }
 
-        it "raises InvalidMappedColumnsError, naming the source column" do
-          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, "Status has no target_column")
+        it "raises InvalidMappedColumnsError, naming the target column" do
+          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, "status has no source_column")
         end
 
-        it "gives the code column_missing_target_column, with the column" do
+        it "gives the code column_missing_source_column, with the column" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
             expect(error.errors).to eq(
-              [{code: :column_missing_target_column, message: "Status has no target_column", source_column: "Status"}]
+              [{code: :column_missing_source_column, message: "status has no source_column", target_column: "status"}]
             )
           end
         end
       end
 
       context "with a target column that is not in the schema" do
-        let(:mapped_columns) { {"Status" => {target_column: "state"}} }
+        let(:mapped_columns) { {"state" => {source_column: "Status"}} }
 
         it "gives the code target_column_not_in_schema, with the columns and the table" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
@@ -232,21 +253,34 @@ RSpec.describe Pipeforge::Engine do
         end
 
         it "names the source column, the target column and the table in the message" do
-          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, /Status.*state.*records/)
+          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, /state.*records/)
+        end
+      end
+
+      context "with a required target column that has no entry" do
+        let(:target_columns) { [build_target_column(name: "status", required: true), build_target_column(name: "code")] }
+        let(:mapped_columns) { {"code" => {source_column: "Code"}} }
+
+        it "gives the code required_column_unmapped, with the target column" do
+          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
+              [{code: :required_column_unmapped, target_column: "status"}]
+            )
+          end
         end
       end
 
       context "in several columns" do
         let(:mapped_columns) do
-          {"Status" => {}, "Code" => {target_column: "nowhere"}, "Note" => {target_column: "note"}}
+          {"status" => {}, "nowhere" => {source_column: "Code"}, "note" => {source_column: "Note"}}
         end
 
         it "lists every error in one error, in order" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
               [
-                {code: :column_missing_target_column, source_column: "Status"},
-                {code: :target_column_not_in_schema, source_column: "Code"}
+                {code: :column_missing_source_column, target_column: "status"},
+                {code: :target_column_not_in_schema, target_column: "nowhere"}
               ]
             )
           end
@@ -254,14 +288,14 @@ RSpec.describe Pipeforge::Engine do
       end
 
       context "together with a column that is not in the file" do
-        let(:mapped_columns) { {"Status" => {}, "Gone" => {target_column: "code"}} }
+        let(:mapped_columns) { {"status" => {}, "code" => {source_column: "Gone"}} }
 
         it "reports both in one error" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
               [
-                {code: :column_missing_target_column, source_column: "Status"},
-                {code: :mapped_column_not_in_file, source_column: "Gone"}
+                {code: :column_missing_source_column, target_column: "status"},
+                {code: :mapped_column_not_in_file, target_column: "code"}
               ]
             )
           end
@@ -269,7 +303,7 @@ RSpec.describe Pipeforge::Engine do
       end
 
       context "when the columns are checked" do
-        let(:mapped_columns) { {"Status" => {}} }
+        let(:mapped_columns) { {"status" => {}} }
 
         it "does not create a value analyzer" do
           allow(Pipeforge::ValueAnalyzer).to receive(:call).and_call_original
@@ -284,25 +318,25 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Count\n1\n2\n") }
       let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
       let(:mapped_columns) do
-        {"Count" => {target_column: "count", value_mapping: {1 => "x", 2 => "20"}}}
+        {"count" => {source_column: "Count", value_mapping: {1 => "x", 2 => "20"}}}
       end
 
       it "applies the mapping, because the keys are turned into text" do
         # 1 maps to x, which does not fit an integer; 2 maps to 20, which fits.
-        expect(result.columns["Count"].type_compatibility).to eq(fits: 1, total: 2)
+        expect(result.columns["count"].type_compatibility).to eq(fits: 1, total: 2)
       end
 
       it "returns the mapping with its keys as text" do
-        expect(result.columns["Count"].value_mapping).to eq("1" => "x", "2" => "20")
+        expect(result.columns["count"].value_mapping).to eq("1" => "x", "2" => "20")
       end
 
       context "when two keys give the same text" do
         let(:mapped_columns) do
-          {"Count" => {target_column: "count", value_mapping: {1 => "x", "1" => "20"}}}
+          {"count" => {source_column: "Count", value_mapping: {1 => "x", "1" => "20"}}}
         end
 
         it "makes them one key, and the later one is used" do
-          expect(result.columns["Count"].value_mapping).to eq("1" => "20")
+          expect(result.columns["count"].value_mapping).to eq("1" => "20")
         end
       end
     end
@@ -310,31 +344,31 @@ RSpec.describe Pipeforge::Engine do
     context "with a column that has no value mapping" do
       let(:source_io) { csv_io("Count\n1\n") }
       let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
-      let(:mapped_columns) { {"Count" => {target_column: "count"}} }
+      let(:mapped_columns) { {"count" => {source_column: "Count"}} }
 
       it "returns an empty value mapping for it" do
-        expect(result.columns["Count"].value_mapping).to eq({})
+        expect(result.columns["count"].value_mapping).to eq({})
       end
     end
 
     context "with a value mapping on a column" do
       let(:target_columns) { [build_target_column(name: "status", type: "integer")] }
-      let(:mapped_columns) { {"Status" => {target_column: "status", value_mapping: value_mapping}} }
+      let(:mapped_columns) { {"status" => {source_column: "Status", value_mapping: value_mapping}} }
       let(:value_mapping) { {"Active" => "1", "A" => "x"} }
 
       it "measures the values as the values they map to" do
-        expect(result.columns["Status"].type_compatibility).to eq(fits: 4, total: 7)
+        expect(result.columns["status"].type_compatibility).to eq(fits: 4, total: 7)
       end
 
       it "returns the value mapping with the column" do
-        expect(result.columns["Status"].value_mapping).to eq(value_mapping)
+        expect(result.columns["status"].value_mapping).to eq(value_mapping)
       end
 
       context "when it is called again with an edited value mapping" do
         let(:edited_mapped_columns) do
           {
-            "Status" => {
-              target_column: "status",
+            "status" => {
+              source_column: "Status",
               value_mapping: {"Active" => "1", "INACTIVE" => "0", "A" => "2"}
             }
           }
@@ -343,7 +377,7 @@ RSpec.describe Pipeforge::Engine do
         it "shows the facts again, now that every value fits" do
           edited_result = engine.analyze_values(mapped_columns: edited_mapped_columns)
 
-          expect(edited_result.columns["Status"].type_compatibility).to eq(fits: 7, total: 7)
+          expect(edited_result.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
         end
       end
     end
@@ -357,8 +391,8 @@ RSpec.describe Pipeforge::Engine do
 
     it "is read from the adapter once, however many times the stages are called" do
       engine.analyze_headers
-      engine.analyze_values(mapped_columns: {"Status" => {target_column: "status"}})
-      engine.analyze_values(mapped_columns: {"Code" => {target_column: "code"}})
+      engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
+      engine.analyze_values(mapped_columns: {"code" => {source_column: "Code"}})
 
       expect(Pipeforge::TargetAdapter).to have_received(:schema).once
     end

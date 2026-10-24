@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Pipeforge
-  # The core's one door to the target (ADR-16). The core calls the methods of this module, and
+  # The core's one door to the target. The core calls the methods of this module, and
   # each call goes to the adapter that an adapter gem installed when it was loaded. The core
   # never holds, creates or receives an adapter.
   #

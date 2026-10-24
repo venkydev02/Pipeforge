@@ -3,13 +3,11 @@
 module Pipeforge
   module HeaderAnalyzer
     # Splits a column name into lowercase word pieces, called tokens, so two column names can be
-    # compared word by word (D1 in recommendation-name-matching.md).
+    # compared word by word.
     #
     # A name is split on spaces and other non-alphanumeric characters, on camelCase and on
     # acronym runs, and where letters meet digits. Each token is lowercased and otherwise kept as
-    # written: a plural is not turned into its singular, because no short rule list does that
-    # correctly for every word. Both sides of a comparison go through the same steps, so the
-    # tokens line up.
+    # written: a plural is not turned into its singular.
     #
     # @example
     #   tokenizer = Pipeforge::HeaderAnalyzer::Tokenizer.new

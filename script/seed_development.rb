@@ -11,7 +11,7 @@
 # Or open a Ruby console with the database seeded and the models loaded (see script/console).
 #
 # The tables are the target and the table its foreign key refers to:
-#   users      the target table, 10 rows; has a required foreign key to companies, an ignored
+#   users      the target table, 10 rows; has a foreign key to companies, an ignored
 #              column (legacy_code) and a generated column (full_name), which the engine leaves
 #              out of the target schema
 #   companies  the parent table, 5 rows
@@ -61,7 +61,6 @@ module Sample
   class User < ActiveRecord::Base
     self.table_name = "users"
     self.ignored_columns = ["legacy_code"]
-    self.belongs_to_required_by_default = true
     belongs_to :company, class_name: "Sample::Company"
   end
 end

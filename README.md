@@ -78,15 +78,23 @@ result.unmatched_target_columns  # [{name:, metadata:}] for the target columns l
 | `script/sample_data/users_messy_headers.csv` | Headers that are only partly recognizable: some matches, some columns left unmatched |
 | `script/sample_data/users_bad_values.csv` | The right headers, but values that do not fit their columns (`forty` for an age, `maybe` for a boolean, a name where an id is expected) |
 
-To measure the values of a file, pass the columns you mapped to `analyze_values`:
+To measure the values of a file, pass the columns you mapped to `analyze_values`, keyed by target column like the `matches` of `analyze_headers`. Every required target column (NOT NULL in the table, with no default in the table or the model; the timestamps a model fills on save do not count; the header result's metadata shows which) needs an entry:
 
 ```ruby
 engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users_bad_values.csv"), target_table: "users")
-values = engine.analyze_values(mapped_columns: {"Age" => {target_column: "age"}})
-values.columns["Age"].type_compatibility   # {fits: 3, total: 4}
-values.columns["Age"].distinct_values[:incompatible].values   # the values that do not fit
+values = engine.analyze_values(mapped_columns: {
+  "email" => {source_column: "Email"},
+  "first_name" => {source_column: "First Name"},
+  "last_name" => {source_column: "Last Name"},
+  "company_id" => {source_column: "Company"},
+  "age" => {source_column: "Age"}
+})
+values.columns["age"].type_compatibility   # {fits: 3, total: 4}
+values.columns["age"].distinct_values[:incompatible].values   # the values that do not fit
 ```
 
 The engine finds the model of the target table among the models that are loaded and never loads any itself. Loading them, and how, is your choice; the model of the target table must be loaded before `analyze_headers`, otherwise it stops with `active_record_model_not_found`.
+
+The public API is `Pipeforge::Engine`, the result objects it returns, the errors under `Pipeforge::*Error` (each with a stable `code`) and `Pipeforge::Configuration`. Everything else is internal and may change in any release.
 
 The seed script alone is `bundle exec ruby script/seed_development.rb`. The settings are read from `config/pipeforge.yml` if you add one; without it every setting has its default.

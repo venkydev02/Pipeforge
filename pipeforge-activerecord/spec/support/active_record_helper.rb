@@ -8,13 +8,17 @@ require "active_record"
 #
 #   users       a typical table: sizes, a decimal, a foreign key, an ignored column, a generated
 #               column, timestamps
-#   contacts    a foreign key that is optional
-#   leads       a foreign key with no setting (the model default decides)
 #   vehicles    single table inheritance (Vehicle, with Car and Truck below it)
 #   notes       two unrelated models on one table (Note and Memo)
 #   orphans     a table with no model
 #   comments    a polymorphic association (not described as a foreign key)
 #   order_lines a composite foreign key (not described as a foreign key)
+#   invoices    NOT NULL columns with and without a default (a value and a function), and a
+#               NOT NULL foreign key whose association is optional in the model
+#   receipts    NOT NULL timestamps on a model that does not record timestamps
+#   tickets     a column the model declares with another type than the table
+#   shipments   enums (stored as a number and as text, with and without a default in the
+#               table) and a column whose default is set only in the model
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.verbose = false
 
@@ -33,8 +37,6 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
-  create_table(:contacts) { |t| t.references :company }
-  create_table(:leads) { |t| t.references :company }
   create_table(:vehicles) { |t| t.string :type, :wheels }
   create_table(:notes) { |t| t.string :title }
   create_table(:orphans) { |t| t.string :name }
@@ -50,6 +52,25 @@ ActiveRecord::Schema.define do
     t.integer :shop_id
     t.integer :order_number
   end
+  create_table(:invoices) do |t|
+    t.string :number, null: false
+    t.string :status, null: false, default: "open"
+    t.references :company, null: false
+    t.datetime :issued_at, null: false, default: -> { "CURRENT_TIMESTAMP" }
+    t.timestamps
+  end
+  create_table(:receipts) do |t|
+    t.string :number, null: false
+    t.timestamps
+  end
+  create_table(:tickets) { |t| t.string :rank }
+  create_table(:shipments) do |t|
+    t.integer :status, null: false, default: 0
+    t.string :kind, null: false, default: "retail"
+    t.integer :priority, null: false
+    t.string :channel, null: false
+    t.string :note
+  end
 end
 
 module AdapterSpecModels
@@ -59,19 +80,7 @@ module AdapterSpecModels
 
   class User < ActiveRecord::Base
     self.table_name = "users"
-    self.belongs_to_required_by_default = true
     self.ignored_columns = ["legacy_code"]
-    belongs_to :company, class_name: "AdapterSpecModels::Company"
-  end
-
-  class Contact < ActiveRecord::Base
-    self.table_name = "contacts"
-    belongs_to :company, class_name: "AdapterSpecModels::Company", optional: true
-  end
-
-  class Lead < ActiveRecord::Base
-    self.table_name = "leads"
-    self.belongs_to_required_by_default = false
     belongs_to :company, class_name: "AdapterSpecModels::Company"
   end
 
@@ -98,6 +107,29 @@ module AdapterSpecModels
 
   class Order < ActiveRecord::Base
     self.table_name = "orders"
+  end
+
+  class Invoice < ActiveRecord::Base
+    self.table_name = "invoices"
+    belongs_to :company, class_name: "AdapterSpecModels::Company", optional: true
+  end
+
+  class Receipt < ActiveRecord::Base
+    self.table_name = "receipts"
+    self.record_timestamps = false
+  end
+
+  class Ticket < ActiveRecord::Base
+    self.table_name = "tickets"
+    attribute :rank, :integer
+  end
+
+  class Shipment < ActiveRecord::Base
+    self.table_name = "shipments"
+    enum :status, {draft: 0, placed: 1, shipped: 2}
+    enum :kind, {retail: "retail", wholesale: "wholesale"}
+    enum :priority, {low: 0, high: 1}
+    attribute :channel, :string, default: "web"
   end
 
   class OrderLine < ActiveRecord::Base

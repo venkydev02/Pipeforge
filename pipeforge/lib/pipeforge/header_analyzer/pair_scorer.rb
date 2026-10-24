@@ -2,8 +2,8 @@
 
 module Pipeforge
   module HeaderAnalyzer
-    # Scores how well the tokens of one target column match the tokens of one source column
-    # (D2, D4 and D9 in recommendation-name-matching.md). Only names are used, never values.
+    # Scores how well the tokens of one target column match the tokens of one source column.
+    # Only names are used, never values.
     #
     # Word points (0 to 1) compare two tokens: identical tokens score 1, a token that is a full
     # prefix of the other scores shorter length / longer length, anything else scores 0

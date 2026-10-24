@@ -3,9 +3,8 @@
 require_relative "header_analyzer/matcher"
 
 module Pipeforge
-  # The header stage (stage 1, ADR-14): matches the columns of the source to the columns of
-  # the target table by name only, and tells the consumer the best matches and the state
-  # (the metadata) of each target column.
+  # The header stage: matches the columns of the source to the columns of the target table by
+  # name only, and gives the best matches with the metadata of each target column.
   #
   # It is a service: {.call} is given the header names of the source and the schema of the
   # target, and reads nothing itself. It sees no value of the source and no row of the target,
@@ -34,8 +33,8 @@ module Pipeforge
     #                                in table order
     #
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
-    # max_length, precision, scale, nullable, default and foreign_key (nil, or
-    # {association:, parent_table:, required:}).
+    # max_length, precision, scale, default, enum_values (nil, or label => stored value),
+    # required and foreign_key (nil, or {association:, parent_table:}).
     Result = Data.define(
       :source_identifier, :target_table, :model, :matches, :unmatched_source_columns,
       :unmatched_target_columns

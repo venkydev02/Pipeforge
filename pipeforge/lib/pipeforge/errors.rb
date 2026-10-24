@@ -51,15 +51,20 @@ module Pipeforge
 
   # Raised when the configuration file (config/pipeforge.yml) cannot be used. A missing file is
   # not an error: every setting then has its default. Each code is a subject and what is wrong
-  # with it: +config_file_not_valid_yaml+,
-  # +config_file_not_name_value_entries+, +engine_not_sections+, +unknown_section+,
-  # +section_not_settings+, +unknown_setting+, +setting_not_positive_whole_number+.
+  # with it: +config_file_not_valid_yaml+, +config_file_not_name_value_entries+,
+  # +engine_not_sections+, +unknown_section+, +section_not_settings+, +unknown_setting+,
+  # +setting_not_positive_whole_number+, +setting_not_whole_number_0_to_100+ and
+  # +setting_not_true_or_false+.
   class ConfigurationError < Error; end
 
   # Raised when the mapped columns given to {Engine#analyze_values} cannot be used (checked by
-  # {MappedDataValidator}). Codes: +mapped_column_not_in_file+, +column_missing_target_column+,
-  # +target_column_not_in_schema+ (the target column is not a column of the table that can be
-  # loaded), one entry for each mistake.
+  # {MappedDataValidator}). Codes: +mapped_columns_not_name_value_entries+ (the mapped columns
+  # are not a Hash; raised alone), +mapped_column_not_name_value_entries+ (an entry is not a
+  # Hash), +target_column_not_in_schema+ (the target column is not a column of the table that can
+  # be loaded), +column_missing_source_column+, +mapped_column_not_in_file+,
+  # +value_mapping_not_name_value_entries+ (the value mapping is not a Hash) and
+  # +required_column_unmapped+ (a required target column has no entry), one entry for each
+  # mistake.
   class InvalidMappedColumnsError < Error; end
 
   # Raised when the engine needs a target adapter and none is installed
@@ -68,7 +73,7 @@ module Pipeforge
 
   # Raised by a target adapter that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table+). A code that belongs
-  # to one adapter carries its name, for example +active_record_model_not_found+ (ADR-20).
+  # to one adapter carries its name, for example +active_record_model_not_found+.
   class TargetSchemaError < Error; end
 
   # The errors about the source file: the file itself, its header and its rows.

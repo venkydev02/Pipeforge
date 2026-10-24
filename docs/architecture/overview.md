@@ -37,7 +37,7 @@ run(mode: :dry_run | :run, header_analysis:, value_analysis:)    → summary and
 ```
 
 1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, keyed by target column, with the metadata of each target column, and the columns left unmatched.
-2. **`analyze_values`** takes the mapping the consumer settled and measures the mapped source columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
+2. **`analyze_values`** takes the mapping the consumer settled (target column => source column, like the header matches) and measures the mapped columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
 3. **`run`** is the one public runtime entry point. It checks that the two results agree, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits.
 
 There is no separate build step: the consumer already has the header and value results, which show the plan. Review is the consumer's own step; the engine never prompts and never resets anything.
@@ -99,7 +99,7 @@ Source analysis and target schema reading are independent and may run concurrent
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_values`
-* **Input:** the mapped columns (source column, target column, optional value mapping) and the engine's offset and limit. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
+* **Input:** the mapped columns, keyed by target column like the header `matches` (each entry names its source column and an optional value mapping), and the engine's offset and limit. Every required target column needs an entry; a source column may feed several target columns. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
 * **Reads:** the mapped source columns only, in one streaming pass with bounded memory, and the schema of the target table (metadata only).
 * **Output:** `ValueAnalyzer::Result`: per column, empty count, type compatibility (`fits` of `total`), distinct values split into compatible and incompatible lists (capped per list), and the value mapping the facts were measured with.
 * **Non-responsibilities:** no writes, no target rows, no changes to the mapping.

@@ -9,7 +9,7 @@ module TargetSchemaHelper
   def build_target_column(name:, **overrides)
     defaults = {
       type: "string", sql_type: "varchar", limit: nil, max_length: nil, precision: nil, scale: nil,
-      nullable: true, default: nil, foreign_key: nil
+      default: nil, enum_values: nil, required: false, foreign_key: nil
     }
 
     Pipeforge::TargetColumn.new(name: name, **defaults.merge(overrides))
@@ -19,8 +19,8 @@ module TargetSchemaHelper
     Pipeforge::TargetSchema.new(table_name: table_name, model: model, columns: columns)
   end
 
-  def build_foreign_key(association:, parent_table:, required: true)
-    Pipeforge::ForeignKey.new(association: association, parent_table: parent_table, required: required)
+  def build_foreign_key(association:, parent_table:)
+    Pipeforge::ForeignKey.new(association: association, parent_table: parent_table)
   end
 end
 

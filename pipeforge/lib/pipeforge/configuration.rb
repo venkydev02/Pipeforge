@@ -12,10 +12,9 @@ module Pipeforge
   # boots. Without that file every setting has its default; a setting the file does not mention
   # keeps its default.
   #
-  # It holds only the settings used so far; the other sections come later. Each value is checked
-  # when the file is read: a whole number of at least 1 for +batch_size+ and
-  # +distinct_values_cap+, a whole number from 0 to 100 for the recommendation settings, true or
-  # false for +fingerprint+.
+  # Each value is checked when the file is read: a whole number of at least 1 for +batch_size+,
+  # +distinct_values_cap+ and +inclusion_threshold+, a whole number from 0 to 100 for
+  # +reorder_penalty+, true or false for +fingerprint+.
   #
   # A file that cannot be read at all (not valid YAML, not name: value entries) stops at once.
   # Every other error is collected, so one ConfigurationError lists them all, each with its own

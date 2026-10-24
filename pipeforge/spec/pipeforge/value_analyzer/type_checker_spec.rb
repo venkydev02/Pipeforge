@@ -237,6 +237,43 @@ RSpec.describe Pipeforge::ValueAnalyzer::TypeChecker do
       end
     end
 
+    context "with an enum column stored as a number" do
+      let(:type_info) { {type: "integer", enum_values: {"draft" => 0, "placed" => 1}} }
+
+      it "fits a label" do
+        expect(type_checker).to fit_text("draft", "placed")
+      end
+
+      it "fits a stored value" do
+        expect(type_checker).to fit_text("0", "1")
+      end
+
+      it "does not fit a number that is not stored, a label in another case or any other text" do
+        expect(type_checker).not_to fit_text("2", "Draft", "shipped", "abc")
+      end
+    end
+
+    context "with an enum column stored as text" do
+      let(:type_info) { {type: "string", enum_values: {"retail" => "retail", "wholesale" => "wholesale"}} }
+
+      it "fits its values" do
+        expect(type_checker).to fit_text("retail", "wholesale")
+      end
+
+      it "does not fit another text" do
+        expect(type_checker).not_to fit_text("Retail", "other")
+      end
+    end
+
+    context "with enum_values that are nil" do
+      let(:type_info) { {type: "integer", enum_values: nil} }
+
+      it "checks the type as for any other column" do
+        expect(type_checker).to fit_text("42")
+        expect(type_checker).not_to fit_text("draft")
+      end
+    end
+
     context "with a type that has no rule yet" do
       let(:type_info) { {type: "jsonb"} }
 

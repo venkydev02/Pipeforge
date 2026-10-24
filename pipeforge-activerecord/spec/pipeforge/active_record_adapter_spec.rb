@@ -25,12 +25,12 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
 
     it "gives the character limit of a string column as max_length" do
       expect(column_named(schema, "email")).to have_attributes(
-        type: "string", sql_type: "varchar(255)", max_length: 255, limit: nil, nullable: false
+        type: "string", sql_type: "varchar(255)", max_length: 255, limit: nil
       )
     end
 
     it "gives the size in bytes of an integer column as limit" do
-      expect(column_named(schema, "age")).to have_attributes(type: "integer", limit: 2, max_length: nil, nullable: true)
+      expect(column_named(schema, "age")).to have_attributes(type: "integer", limit: 2, max_length: nil)
     end
 
     it "gives the precision and scale of a decimal column" do
@@ -61,9 +61,9 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(schema.columns.select { |target_column| target_column.name.end_with?("_at") }).to all(have_attributes(type: "datetime"))
     end
 
-    it "describes a foreign key with its association, parent table and whether a parent is required" do
+    it "describes a foreign key with its association and parent table" do
       expect(column_named(schema, "company_id").foreign_key).to eq(
-        Pipeforge::ForeignKey.new(association: "company", parent_table: "companies", required: true)
+        Pipeforge::ForeignKey.new(association: "company", parent_table: "companies")
       )
     end
 
@@ -71,19 +71,98 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(column_named(schema, "email").foreign_key).to be_nil
     end
 
-    context "with a foreign key marked optional" do
-      let(:target_table) { "contacts" }
+    context "with a column the model declares with another type than the table" do
+      let(:target_table) { "tickets" }
 
-      it "does not require a parent" do
-        expect(column_named(schema, "company_id").foreign_key.required).to be(false)
+      it "gives the type the model declares" do
+        expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "varchar")
       end
     end
 
-    context "with a foreign key and the model's own setting off" do
-      let(:target_table) { "leads" }
+    context "with enum columns and a default set only in the model" do
+      let(:target_table) { "shipments" }
 
-      it "does not require a parent" do
-        expect(column_named(schema, "company_id").foreign_key.required).to be(false)
+      it "gives the labels and stored values of an enum stored as a number" do
+        expect(column_named(schema, "status").enum_values).to eq("draft" => 0, "placed" => 1, "shipped" => 2)
+      end
+
+      it "gives the labels and stored values of an enum stored as text" do
+        expect(column_named(schema, "kind").enum_values).to eq("retail" => "retail", "wholesale" => "wholesale")
+      end
+
+      it "gives no enum values for a column that is not an enum" do
+        expect(column_named(schema, "note").enum_values).to be_nil
+      end
+
+      it "gives the default as the model sees it, which is the label for an enum" do
+        expect(column_named(schema, "status").default).to eq("draft")
+      end
+
+      it "gives a default that only the model sets" do
+        expect(column_named(schema, "channel").default).to eq("web")
+      end
+
+      it "requires a NOT NULL enum that has no default" do
+        expect(column_named(schema, "priority").required).to be(true)
+      end
+
+      it "does not require a NOT NULL column whose default only the model sets" do
+        expect(column_named(schema, "channel").required).to be(false)
+      end
+
+      it "does not require an enum that has a default" do
+        expect(column_named(schema, "status").required).to be(false)
+      end
+    end
+
+    context "with a model that does not record timestamps" do
+      let(:target_table) { "receipts" }
+
+      it "requires the NOT NULL timestamps, because nothing fills them" do
+        expect(schema.columns.select(&:required).map(&:name)).to eq(%w[number created_at updated_at])
+      end
+    end
+
+    describe "which columns are required" do
+      def required_names(schema)
+        schema.columns.select(&:required).map(&:name)
+      end
+
+      it "requires a column that refuses an empty value and has no default" do
+        expect(required_names(schema)).to eq(%w[email])
+      end
+
+      it "does not require the timestamps of a model that records them, because the model fills them" do
+        expect(column_named(schema, "created_at")).to have_attributes(required: false)
+        expect(column_named(schema, "updated_at")).to have_attributes(required: false)
+      end
+
+      it "does not require a column that accepts an empty value" do
+        expect(column_named(schema, "age").required).to be(false)
+      end
+
+      it "does not require a nullable foreign key" do
+        expect(column_named(schema, "company_id").required).to be(false)
+      end
+
+      context "with NOT NULL columns, with and without a default" do
+        let(:target_table) { "invoices" }
+
+        it "does not require the one with a default" do
+          expect(column_named(schema, "status").required).to be(false)
+        end
+
+        it "requires the one without" do
+          expect(column_named(schema, "number").required).to be(true)
+        end
+
+        it "does not require the one whose default is a function of the database" do
+          expect(column_named(schema, "issued_at").required).to be(false)
+        end
+
+        it "requires a NOT NULL foreign key even when the model marks its association optional" do
+          expect(column_named(schema, "company_id").required).to be(true)
+        end
       end
     end
 

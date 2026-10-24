@@ -10,8 +10,8 @@ module Pipeforge
     # consumer's IO would be closed after the first pass and could not be read again. The wrapper
     # offers the methods smarter_csv reads with and no +close+.
     #
-    # The IO must respond to +read+, +rewind+ and +seek+ (ADR-17 item 12); the wrapper checks
-    # that when it is built.
+    # The IO must respond to +read+, +rewind+ and +seek+; the wrapper checks that when it is
+    # built.
     #
     # @example
     #   source_io = Pipeforge::Source::ReusableIO.new(io: File.open("data/users.csv"))

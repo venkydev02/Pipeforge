@@ -5,8 +5,8 @@ require_relative "pair_scorer"
 
 module Pipeforge
   module HeaderAnalyzer
-    # Matches source columns to target columns by name only (ADR-12, D5 in
-    # recommendation-name-matching.md). Values, types and constraints never change the result.
+    # Matches source columns to target columns by name only. Values, types and constraints never
+    # change the result.
     #
     # Every target column is scored against every source column. A pair with a score of 0 is
     # never a candidate. The candidates are sorted by score, best first; pairs with the same

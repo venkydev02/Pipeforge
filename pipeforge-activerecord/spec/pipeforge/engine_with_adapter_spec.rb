@@ -27,7 +27,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
   it "reports the foreign key in the metadata of its column" do
     expect(result.matches["company_id"][:metadata][:foreign_key]).to eq(
-      association: "company", parent_table: "companies", required: true
+      association: "company", parent_table: "companies"
     )
   end
 
@@ -36,27 +36,60 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   end
 
   it "gives the type information of each column in its metadata" do
-    expect(result.matches["age"][:metadata]).to include(type: "integer", nullable: true)
+    expect(result.matches["age"][:metadata]).to include(type: "integer", required: false)
   end
 
   describe "#analyze_values" do
     subject(:value_result) { engine.analyze_values(mapped_columns: mapped_columns) }
 
-    let(:csv) { "Age,Balance\n31,10.5\n99999,abc\n" }
-    let(:mapped_columns) { {"Age" => {target_column: "age"}, "Balance" => {target_column: "balance"}} }
+    let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,31,10.5\nbob@example.com,2,99999,abc\n" }
+    let(:required_columns) { {"email" => {source_column: "Email"}} }
+    let(:mapped_columns) do
+      required_columns.merge(
+        "company_id" => {source_column: "Company"}, "age" => {source_column: "Age"}, "balance" => {source_column: "Balance"}
+      )
+    end
 
     it "measures the values against the types of the columns in the table" do
-      expect(value_result.columns["Age"].type_compatibility).to eq(fits: 1, total: 2)
-      expect(value_result.columns["Balance"].type_compatibility).to eq(fits: 1, total: 2)
+      expect(value_result.columns["age"].type_compatibility).to eq(fits: 1, total: 2)
+      expect(value_result.columns["balance"].type_compatibility).to eq(fits: 1, total: 2)
+    end
+
+    it "does not ask for the timestamps, which the model fills" do
+      expect { value_result }.not_to raise_error
+    end
+
+    context "with an enum column of the model" do
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "shipments") }
+      let(:csv) { "Status,Priority\ndraft,low\n1,high\nnope,9\n" }
+      let(:mapped_columns) do
+        {"status" => {source_column: "Status"}, "priority" => {source_column: "Priority"}}
+      end
+
+      it "counts the labels and the stored values of the enum as fitting" do
+        expect(value_result.columns["status"].type_compatibility).to eq(fits: 2, total: 3)
+        expect(value_result.columns["priority"].type_compatibility).to eq(fits: 2, total: 3)
+      end
     end
 
     context "with a column the engine cannot load into" do
-      let(:csv) { "Id\n1\n" }
-      let(:mapped_columns) { {"Id" => {target_column: "id"}} }
+      let(:mapped_columns) { required_columns.merge("id" => {source_column: "Age"}) }
 
       it "stops with target_column_not_in_schema" do
         expect { value_result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
           expect(error.codes).to eq([:target_column_not_in_schema])
+        end
+      end
+    end
+
+    context "when the required columns are not mapped" do
+      let(:mapped_columns) { {"age" => {source_column: "Age"}} }
+
+      it "asks for the NOT NULL column without a default, and for nothing else" do
+        expect { value_result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
+          expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
+            [{code: :required_column_unmapped, target_column: "email"}]
+          )
         end
       end
     end

@@ -3,11 +3,11 @@
 RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
   let(:distinct_values_class) { Pipeforge::ValueAnalyzer::DistinctValues }
 
-  # A summary as a chunk is measured: it knows its counts and lists, not yet its column.
-  def summary_of(empty: 0, fits: 0, total: 0, compatible: {}, incompatible: {}, target_column: nil, position: nil,
+  # A summary as a chunk is measured: it knows its counts and lists, not yet its source column.
+  def summary_of(empty: 0, fits: 0, total: 0, compatible: {}, incompatible: {}, source_column: nil, position: nil,
     value_mapping: {})
     described_class.new(
-      target_column: target_column,
+      source_column: source_column,
       position: position,
       empty: empty,
       type_compatibility: {fits: fits, total: total},
@@ -23,10 +23,12 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
   end
 
   describe ".empty" do
-    subject(:summary) { described_class.empty(cap: 5) }
+    subject(:summary) do
+      described_class.empty(source_column: "Age", position: 2, value_mapping: {"x" => "0"}, cap: 5)
+    end
 
-    it "has no target column and no position yet" do
-      expect(summary).to have_attributes(target_column: nil, position: nil)
+    it "has the source column, the position and the value mapping it was given" do
+      expect(summary).to have_attributes(source_column: "Age", position: 2, value_mapping: {"x" => "0"})
     end
 
     it "has nothing counted" do
@@ -43,10 +45,6 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
 
       expect(lists.map { |list| list.value_counts.size }).to eq([5, 5])
     end
-
-    it "has no value mapping" do
-      expect(summary.value_mapping).to eq({})
-    end
   end
 
   describe "#merge" do
@@ -54,7 +52,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
 
     let(:earlier) do
       summary_of(empty: 1, fits: 2, total: 3, compatible: {"a" => 2}, incompatible: {"x" => 1},
-        target_column: "age", position: 2)
+        source_column: "Age", position: 2)
     end
     let(:later) { summary_of(empty: 2, fits: 1, total: 4, compatible: {"a" => 1, "b" => 1}, incompatible: {"y" => 3}) }
 
@@ -74,8 +72,8 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
       expect(merged.distinct_values[:incompatible].value_counts).to eq("x" => 1, "y" => 3)
     end
 
-    it "keeps the target column and the position of the earlier summary" do
-      expect(merged).to have_attributes(target_column: "age", position: 2)
+    it "keeps the source column and the position of the earlier summary" do
+      expect(merged).to have_attributes(source_column: "Age", position: 2)
     end
 
     it "keeps the value mapping of the earlier summary" do
@@ -92,12 +90,12 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
   describe "#to_h" do
     subject(:hash) do
       summary_of(empty: 1, fits: 1, total: 2, compatible: {"30" => 1}, incompatible: {"x" => 1},
-        target_column: "age", position: 2, value_mapping: {"x" => "0"}).to_h
+        source_column: "Age", position: 2, value_mapping: {"x" => "0"}).to_h
     end
 
     it "is made of plain JSON types, with each list as an array of value and count" do
       expect(hash).to eq(
-        target_column: "age",
+        source_column: "Age",
         position: 2,
         empty: 1,
         type_compatibility: {fits: 1, total: 2},

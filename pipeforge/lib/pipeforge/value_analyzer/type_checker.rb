@@ -5,15 +5,24 @@ require "date"
 module Pipeforge
   module ValueAnalyzer
     # Decides whether a text value fits the type of the target column it is mapped to. The test
-    # is strict and our own: ActiveRecord's cast is too lenient for it (it reads "abc" as 0).
+    # is strict: "abc" does not fit an integer.
     #
-    # It reads only the text and the type information, never a table. A type with no rule yet
+    # It reads only the text and the type information, never a table. A type with no rule
     # (json, inet, and so on) is not checked: every value fits it.
+    #
+    # An enum column accepts only its labels and the values stored for them, whatever its stored
+    # type is.
     #
     # @example
     #   type_checker = TypeChecker.new(type_info: {type: "integer", limit: 4})
     #   type_checker.fits?(text: "42")   # => true
     #   type_checker.fits?(text: "42x")  # => false
+    #
+    # @example an enum column
+    #   type_checker = TypeChecker.new(type_info: {type: "integer", enum_values: {"draft" => 0, "placed" => 1}})
+    #   type_checker.fits?(text: "draft")  # => true
+    #   type_checker.fits?(text: "1")      # => true
+    #   type_checker.fits?(text: "7")      # => false
     class TypeChecker
       WHOLE_NUMBER = /\A[+-]?\d+\z/
       DECIMAL = /\A[+-]?\d+(\.\d+)?\z/
@@ -28,10 +37,12 @@ module Pipeforge
       #   +type+ (integer, float, decimal, string, text, boolean, date, time, timestamp, uuid),
       #   +limit+ (integer: size in bytes, 4 when not given), +max_length+ (string and text: the
       #   most characters allowed), +precision+ and +scale+ (decimal: the total digits and the
-      #   digits after the point)
+      #   digits after the point), and +enum_values+ (nil, or the label => stored value pairs of an
+      #   enum column)
       # @raise [KeyError] when +type+ is missing
       def initialize(type_info:)
         @type = type_info.fetch(:type).to_s
+        @enum_texts = enum_texts(enum_values: type_info[:enum_values])
         @max_length = type_info[:max_length]
         @precision = type_info[:precision]
         @scale = type_info[:scale] || 0
@@ -41,6 +52,8 @@ module Pipeforge
       # @param text [String] a non-empty value; empty values are not checked
       # @return [Boolean] whether the text fits the type
       def fits?(text:)
+        return @enum_texts.include?(text) unless @enum_texts.nil?
+
         case @type
         when "integer" then whole_number?(text: text)
         when "float" then float?(text: text)
@@ -56,6 +69,14 @@ module Pipeforge
       end
 
       private
+
+      # The texts an enum column accepts: its labels and the values stored for them. nil when the
+      # column is not an enum.
+      def enum_texts(enum_values:)
+        return nil if enum_values.nil?
+
+        enum_values.keys.map(&:to_s) + enum_values.values.map(&:to_s)
+      end
 
       # Sets the smallest and largest whole number a column of +limit+ bytes holds (4 bytes when
       # no limit is given), which the whole number rule compares with.

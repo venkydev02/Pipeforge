@@ -3,8 +3,8 @@
 require "open3"
 require "rbconfig"
 
-# The core gem must work without any database library (ADR-16): the target is reached only
-# through an adapter gem.
+# The core gem works without any database library: the target is reached only through an
+# adapter gem.
 RSpec.describe "the core gem" do
   let(:gem_root) { File.expand_path("../..", __dir__) }
 

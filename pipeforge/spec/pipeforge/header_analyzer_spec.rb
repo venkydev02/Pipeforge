@@ -10,9 +10,9 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   let(:foreign_key) { build_foreign_key(association: "company", parent_table: "companies") }
   let(:target_columns) do
     [
-      build_target_column(name: "first_name", max_length: 50, nullable: false),
+      build_target_column(name: "first_name", max_length: 50, required: true),
       build_target_column(name: "last_name"),
-      build_target_column(name: "company_id", type: "integer", sql_type: "bigint", foreign_key: foreign_key)
+      build_target_column(name: "company_id", type: "integer", sql_type: "bigint", required: true, foreign_key: foreign_key)
     ]
   end
   let(:schema) { build_target_schema(columns: target_columns) }
@@ -21,7 +21,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   def default_metadata(**overrides)
     {
       type: "string", sql_type: "varchar", limit: nil, max_length: nil, precision: nil, scale: nil,
-      nullable: true, default: nil, foreign_key: nil
+      default: nil, enum_values: nil, required: false, foreign_key: nil
     }.merge(overrides)
   end
 
@@ -46,7 +46,18 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
     end
 
     it "gives each match the metadata of its target column" do
-      expect(result.matches["first_name"][:metadata]).to eq(default_metadata(max_length: 50, nullable: false))
+      expect(result.matches["first_name"][:metadata]).to eq(default_metadata(max_length: 50, required: true))
+    end
+
+    context "with an enum column" do
+      let(:source_headers) { ["Status"] }
+      let(:target_columns) do
+        [build_target_column(name: "status", type: "integer", default: "draft", enum_values: {"draft" => 0, "placed" => 1})]
+      end
+
+      it "gives the labels and stored values of the enum in its metadata" do
+        expect(result.matches["status"][:metadata]).to include(default: "draft", enum_values: {"draft" => 0, "placed" => 1})
+      end
     end
 
     it "lists the source columns without a match" do
@@ -59,8 +70,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           {
             name: "company_id",
             metadata: default_metadata(
-              type: "integer", sql_type: "bigint",
-              foreign_key: {association: "company", parent_table: "companies", required: true}
+              type: "integer", sql_type: "bigint", required: true,
+              foreign_key: {association: "company", parent_table: "companies"}
             )
           }
         ]
@@ -85,14 +96,16 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
             "source_column" => "First Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => 50,
-              "precision" => nil, "scale" => nil, "nullable" => false, "default" => nil, "foreign_key" => nil
+              "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
+              "foreign_key" => nil
             }
           },
           "last_name" => {
             "source_column" => "Last Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => nil,
-              "precision" => nil, "scale" => nil, "nullable" => true, "default" => nil, "foreign_key" => nil
+              "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => false,
+              "foreign_key" => nil
             }
           }
         },
@@ -102,8 +115,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
             "name" => "company_id",
             "metadata" => {
               "type" => "integer", "sql_type" => "bigint", "limit" => nil, "max_length" => nil,
-              "precision" => nil, "scale" => nil, "nullable" => true, "default" => nil,
-              "foreign_key" => {"association" => "company", "parent_table" => "companies", "required" => true}
+              "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
+              "foreign_key" => {"association" => "company", "parent_table" => "companies"}
             }
           }
         ]

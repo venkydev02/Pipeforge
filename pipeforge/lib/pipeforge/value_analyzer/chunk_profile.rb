@@ -4,10 +4,10 @@ require_relative "distinct_values"
 
 module Pipeforge
   module ValueAnalyzer
-    # What the scan found out about one source column. A ChunkProfile or a Result holds it
-    # under the name of the source column.
-    #   target_column       the target column it is mapped to; nil until the scan has finished
-    #   position            its position in the file, starting at 1; nil until the scan has finished
+    # What the scan found out about one mapped target column. A ChunkProfile or a Result holds it
+    # under the name of the target column.
+    #   source_column       the source column it is read from
+    #   position            the position of the source column in the file, starting at 1
     #   empty               how many cells are empty
     #   type_compatibility  {fits:, total:}: how many of the non-empty values fit the target type
     #   distinct_values     {compatible:, incompatible:}, each a DistinctValues
@@ -15,29 +15,32 @@ module Pipeforge
     #                       counts and the lists above describe the values after applying it,
     #                       that is, what would be loaded
     ColumnSummary = Data.define(
-      :target_column, :position, :empty, :type_compatibility, :distinct_values, :value_mapping
+      :source_column, :position, :empty, :type_compatibility, :distinct_values, :value_mapping
     ) do
       # A column with nothing counted yet.
       #
+      # @param source_column [String] the source column it is read from
+      # @param position [Integer] the position of the source column in the file, starting at 1
+      # @param value_mapping [Hash] the consumer's mapping of source values to the values to load
       # @param cap [Integer, nil] how many different values each list keeps; nil keeps every value
       # @return [ColumnSummary]
-      def self.empty(cap:)
+      def self.empty(source_column:, position:, value_mapping:, cap:)
         new(
-          target_column: nil,
-          position: nil,
+          source_column: source_column,
+          position: position,
           empty: 0,
           type_compatibility: {fits: 0, total: 0},
           distinct_values: {
             compatible: DistinctValues.new(cap: cap),
             incompatible: DistinctValues.new(cap: cap)
           },
-          value_mapping: {}
+          value_mapping: value_mapping
         )
       end
 
       # Adds the summary of a later part of the file to this one: the numbers are added and the
-      # distinct values are merged. The target column, the position and the value mapping stay
-      # those of this summary.
+      # distinct values are merged. The source column, the position and the value mapping stay those
+      # of this summary.
       #
       # @param later [ColumnSummary] the same column, measured on rows after this summary's rows
       # @return [ColumnSummary] a new summary; neither input changes
@@ -58,7 +61,7 @@ module Pipeforge
       # @return [Hash] plain JSON types, with each list as an array of {value:, count:}
       def to_h
         {
-          target_column: target_column,
+          source_column: source_column,
           position: position,
           empty: empty,
           type_compatibility: type_compatibility,
@@ -72,21 +75,27 @@ module Pipeforge
     end
 
     # The partial result of analysing one chunk or, after merging, any number of chunks: the
-    # ColumnSummary of every mapped column, by source column name. Every profile holds the same
+    # ColumnSummary of every mapped column, by target column name. Every profile holds the same
     # columns, so two profiles can always be merged.
     ChunkProfile = Data.define(:columns) do
-      # A profile with an empty summary for each source column.
+      # A profile with an empty summary for each target column.
       #
-      # @param source_columns [Array<String>]
+      # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, position:,
+      #   value_mapping:, ...}, as {ChunkAnalyzer} takes them; the other keys are ignored
       # @param cap [Integer, nil] how many different values each list keeps; nil keeps every
       #   value. A profile that chunks are merged into has the cap, so the values of the first
       #   chunk are capped too.
       # @return [ChunkProfile]
-      def self.empty(source_columns:, cap:)
+      def self.empty(mapped_columns:, cap:)
         column_summaries = {}
 
-        source_columns.each do |source_column|
-          column_summaries[source_column] = ColumnSummary.empty(cap: cap)
+        mapped_columns.each do |target_column, mapped_column|
+          column_summaries[target_column] = ColumnSummary.empty(
+            source_column: mapped_column[:source_column],
+            position: mapped_column[:position],
+            value_mapping: mapped_column.fetch(:value_mapping, {}),
+            cap: cap
+          )
         end
 
         new(columns: column_summaries)
@@ -97,8 +106,8 @@ module Pipeforge
       def merge(later:)
         merged_columns = {}
 
-        columns.each do |source_column, earlier_summary|
-          merged_columns[source_column] = earlier_summary.merge(later: later.columns.fetch(source_column))
+        columns.each do |target_column, earlier_summary|
+          merged_columns[target_column] = earlier_summary.merge(later: later.columns.fetch(target_column))
         end
 
         with(columns: merged_columns)

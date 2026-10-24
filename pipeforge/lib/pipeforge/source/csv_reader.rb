@@ -9,9 +9,7 @@ module Pipeforge
     # builds one for its source, and every stage (header analysis, value analysis, run) reads the
     # file through it.
     #
-    # The engine is built for one source and that source is not expected to change during its
-    # life, so the header is read once and kept. The rows are read again on every +each_chunk+
-    # call.
+    # The header is read once and kept. The rows are read again on every +each_chunk+ call.
     #
     # Text is kept as written, with these exceptions: surrounding spaces and tabs are trimmed
     # from values and headers, and a cell that is empty or only whitespace arrives as nil. No
@@ -23,10 +21,9 @@ module Pipeforge
     class CsvReader
       EMPTY_VALUE = /\A[[:space:]]*\z/
 
-      # Called by the gem for a row it cannot use. Stops the scan with our own error and the line
-      # where the row starts: an unclosed quote swallows every row after it, and a row with more
-      # cells than the header is usually a broken file (an unquoted comma shifts every cell after
-      # it), so skipping or trimming the row would silently lose data.
+      # Called by the gem for a row it cannot use (an unclosed quote, or more cells than the
+      # header). Stops the scan with a {MalformedSourceError} that carries the line where the row
+      # starts.
       STOP_ON_BAD_ROW = lambda do |bad_row|
         line = bad_row[:file_line_number]
 
@@ -44,7 +41,7 @@ module Pipeforge
         )
       end
 
-      # Trimming is the gem's default (+strip_whitespace: true+), so it is not listed.
+      # The options every read passes to smarter_csv. Trimming is the gem's default.
       OPTIONS = {
         convert_values_to_numeric: false,
         remove_empty_values: false,
@@ -56,19 +53,16 @@ module Pipeforge
         verbose: :quiet
       }.freeze
 
-      # Reading only the header: one row at a time, and a repeated name is reported by the gem
-      # (+duplicate_header_suffix: nil+) instead of being renamed, so the real names can be read.
-      # A long first row is not this method's concern, so the gem does not raise for it here.
+      # The options for reading only the header: one row at a time, and a repeated name is
+      # reported by the gem instead of being renamed, so the names are read as written.
       HEADER_OPTIONS = OPTIONS.merge(
         chunk_size: 1,
         duplicate_header_suffix: nil,
         missing_headers: :auto
       ).freeze
 
-      # smarter_csv rewinds the source when it starts to read, so every read starts at the first
-      # line of the file.
-      #
-      # @param source_io [ReusableIO] the CSV source
+      # @param source_io [ReusableIO] the CSV source; nothing is read until +headers+ or
+      #   +each_chunk+ is called
       def initialize(source_io:)
         @source_io = source_io
       end

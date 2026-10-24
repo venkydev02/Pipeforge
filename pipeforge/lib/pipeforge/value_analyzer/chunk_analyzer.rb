@@ -5,7 +5,7 @@ module Pipeforge
     # Measures one chunk of rows into a ChunkProfile: for each mapped column, how many values
     # are empty, how many fit the target type, and the distinct values that do and do not fit.
     #
-    # It is a service: {.call} is a pure function of its rows and column rules, so the same rows
+    # It is a service: {.call} is a pure function of its rows and mapped columns, so the same rows
     # give the same profile and nothing is kept between chunks or between calls. The rows are
     # data rows (the reader drops blank ones) and an empty value is nil.
     #
@@ -19,21 +19,24 @@ module Pipeforge
     # one entry in the lists. A value that maps to nil or to a blank counts as empty and is not
     # listed.
     #
-    # +column_rules+ is a Hash{String => Hash} with one entry per mapped source column and what
-    # its values are measured by: +type_checker+ (a TypeChecker, which decides
-    # whether a value fits the type of the target column) and +value_mapping+ ({value in the
-    # file => value to load}, {} when the column has none).
+    # +mapped_columns+ is a Hash{String => Hash}: one entry per mapped target column, as the value
+    # analyzer prepares it. The entry says what its values are read from and measured by:
+    # +source_column+ (the column of the rows the values are read from), +position+ (of that
+    # column in the file), +type_checker+ (the {TypeChecker} of the target column, which decides
+    # whether a value fits), and optionally +value_mapping+ ({value in the file => value to
+    # load}).
+    # Several target columns may read the same source column; each is measured on its own.
     module ChunkAnalyzer
       class << self
         # @param rows [Array<Hash{String => String, nil}>] one chunk, as the reader yields it
-        # @param column_rules [Hash{String => Hash}] see the module description
+        # @param mapped_columns [Hash{String => Hash}] see the module description
         # @return [ChunkProfile] the measurements of this chunk alone
-        def call(rows:, column_rules:)
+        def call(rows:, mapped_columns:)
           column_summaries = {}
 
-          count_values(rows: rows, column_rules: column_rules).each do |source_column, column_cells|
-            column_summaries[source_column] = summarize(
-              column_rules: column_rules[source_column],
+          count_values(rows: rows, mapped_columns: mapped_columns).each do |target_column, column_cells|
+            column_summaries[target_column] = summarize(
+              mapped_column: mapped_columns[target_column],
               column_cells: column_cells
             )
           end
@@ -43,21 +46,17 @@ module Pipeforge
 
         private
 
-        # For every mapped source column: {empty:, values:}, where +values+ is a DistinctValues
+        # For every mapped target column: {empty:, values:}, where +values+ is a DistinctValues
         # that holds each value of the column with how many times it appeared, in the order the
         # values first appear. It has no cap: the cap applies when profiles are merged.
-        def count_values(rows:, column_rules:)
+        def count_values(rows:, mapped_columns:)
           column_counts = {}
 
-          column_rules.each_key do |source_column|
-            column_counts[source_column] = {empty: 0, values: DistinctValues.new(cap: nil)}
-          end
+          mapped_columns.each do |target_column, mapped_column|
+            column_cells = {empty: 0, values: DistinctValues.new(cap: nil)}
 
-          rows.each do |row|
-            row.each do |source_column, value|
-              next unless column_rules.key?(source_column)
-
-              column_cells = column_counts[source_column]
+            rows.each do |row|
+              value = row[mapped_column[:source_column]]
 
               if value.nil?
                 column_cells[:empty] += 1
@@ -65,17 +64,20 @@ module Pipeforge
                 column_cells[:values].record(value: value)
               end
             end
+
+            column_counts[target_column] = column_cells
           end
 
           column_counts
         end
 
         # Each distinct value is checked once, as the value it maps to, and counted as many times
-        # as it appeared; the lists hold the value that would be loaded. The target column, the
-        # position and the value mapping are filled in when the scan is finished.
+        # as it appeared; the lists hold the value that would be loaded.
         #
-        # +column_rules+ here is the entry of one column: its type_checker and value_mapping.
-        def summarize(column_rules:, column_cells:)
+        # +mapped_column+ here is the entry of one column.
+        def summarize(mapped_column:, column_cells:)
+          type_checker = mapped_column.fetch(:type_checker)
+          value_mapping = mapped_column.fetch(:value_mapping, {})
           empty = column_cells[:empty]
           fits = 0
           total = 0
@@ -83,7 +85,7 @@ module Pipeforge
           incompatible = DistinctValues.new(cap: nil)
 
           column_cells[:values].value_counts.each do |value, count|
-            loaded_value = column_rules[:value_mapping].fetch(value, value)
+            loaded_value = value_mapping.fetch(value, value)
 
             if Utilities.blank?(value: loaded_value)
               empty += count
@@ -93,7 +95,7 @@ module Pipeforge
             total += count
             loaded_text = loaded_value.to_s
 
-            if column_rules[:type_checker].fits?(text: loaded_text)
+            if type_checker.fits?(text: loaded_text)
               fits += count
               compatible.record(value: loaded_text, count: count)
             else
@@ -102,12 +104,12 @@ module Pipeforge
           end
 
           ColumnSummary.new(
-            target_column: nil,
-            position: nil,
+            source_column: mapped_column[:source_column],
+            position: mapped_column[:position],
             empty: empty,
             type_compatibility: {fits: fits, total: total},
             distinct_values: {compatible: compatible, incompatible: incompatible},
-            value_mapping: {}
+            value_mapping: value_mapping
           )
         end
       end
