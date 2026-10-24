@@ -1,0 +1,5 @@
+-I pipeforge/lib
+-I pipeforge/spec
+--require spec_helper
+--format documentation
+--color
