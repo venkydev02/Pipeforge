@@ -33,7 +33,8 @@ module Pipeforge
     end
 
     # @param mapped_columns [Hash{String => Hash}] target column => {source_column:,
-    #   value_mapping:} (+value_mapping+ is optional and, when given, a Hash)
+    #   value_mapping:} (+value_mapping+ is optional: leave the key out for none; when the key is
+    #   given the value must be a Hash, +nil+ included)
     # @return [nil] when every mapped column is usable and every required column is mapped
     # @raise [InvalidMappedColumnsError] +mapped_columns_not_name_value_entries+ alone when
     #   +mapped_columns+ is not a Hash; otherwise one entry for each mistake:
@@ -117,11 +118,12 @@ module Pipeforge
       }]
     end
 
-    # The value mapping is optional. When given it must be a Hash; its keys and values are not
-    # checked, because a value may be mapped to anything, nil and blank included.
+    # The value mapping is optional: leave the key out for no mapping. When the key is given the
+    # value must be a Hash, so +nil+ is a mistake too. Its keys and values are not checked,
+    # because a value may be mapped to anything, nil and blank included.
     def value_mapping_errors(target_column:, mapped_column:)
-      value_mapping = mapped_column[:value_mapping]
-      return [] if value_mapping.nil? || value_mapping.is_a?(Hash)
+      return [] unless mapped_column.key?(:value_mapping)
+      return [] if mapped_column[:value_mapping].is_a?(Hash)
 
       [{
         code: :value_mapping_not_name_value_entries,

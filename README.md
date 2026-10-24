@@ -78,7 +78,7 @@ result.unmatched_target_columns  # [{name:, metadata:}] for the target columns l
 | `script/sample_data/users_messy_headers.csv` | Headers that are only partly recognizable: some matches, some columns left unmatched |
 | `script/sample_data/users_bad_values.csv` | The right headers, but values that do not fit their columns (`forty` for an age, `maybe` for a boolean, a name where an id is expected) |
 
-To measure the values of a file, pass the columns you mapped to `analyze_values`, keyed by target column like the `matches` of `analyze_headers`. Every required target column (NOT NULL in the table, with no default in the table or the model; the timestamps a model fills on save do not count; the header result's metadata shows which) needs an entry:
+To measure the values of a file, pass the columns you mapped to `analyze_values`, as a plain Hash keyed by target column that you build yourself. Every required target column (NOT NULL in the table, with no default in the table or the model; the timestamps a model fills on save do not count; the header result's metadata shows which) needs an entry:
 
 ```ruby
 engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users_bad_values.csv"), target_table: "users")

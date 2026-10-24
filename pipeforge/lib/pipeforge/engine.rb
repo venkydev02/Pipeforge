@@ -59,13 +59,13 @@ module Pipeforge
     # every call, so an edited mapping can be measured again.
     #
     # @param mapped_columns [Hash{String => Hash}] target column => {source_column:,
-    #   value_mapping: {value in the file => value to load}}, like the +matches+ of the header
-    #   result. A source column may be given to several target columns. Every required target
-    #   column (see {TargetColumn}) needs an entry. +value_mapping+ is optional, its keys are
-    #   turned into text, and a value that maps to nil or a blank is loaded as empty. The entries
-    #   must not be frozen: the type metadata of each target column is added to them (see
-    #   {#add_type_metadata}), then the position of the source column and a type checker, and the
-    #   keys of their value mapping are replaced by text.
+    #   value_mapping: {value in the file => value to load}}, a plain Hash the caller builds (the
+    #   header result is not passed in). A source column may be given to several target columns.
+    #   Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
+    #   optional (leave the key out for none; +nil+ is an error), its keys are turned into text,
+    #   and a value that maps to nil or a blank is loaded as empty. The entries must not be frozen: the type metadata of each target column is added
+    #   to them (see {#add_type_metadata}), then the position of the source column and a type
+    #   checker, and the keys of their value mapping are replaced by text.
     # @return [ValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [Source::EmptySourceError] the source has no header row

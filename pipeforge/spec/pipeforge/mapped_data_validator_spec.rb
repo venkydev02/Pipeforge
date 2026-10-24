@@ -157,6 +157,14 @@ RSpec.describe Pipeforge::MappedDataValidator do
     context "when the value mapping is nil" do
       let(:mapped_columns) { {"email" => {source_column: "Mail", value_mapping: nil}} }
 
+      it "gives value_mapping_not_name_value_entries with the target column" do
+        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column: "email"}])
+      end
+    end
+
+    context "when the value mapping is left out" do
+      let(:mapped_columns) { {"email" => {source_column: "Mail"}} }
+
       it "raises nothing, because the value mapping is optional" do
         expect { validator.call(mapped_columns: mapped_columns) }.not_to raise_error
       end
