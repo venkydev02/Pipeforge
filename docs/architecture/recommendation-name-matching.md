@@ -1,7 +1,7 @@
 # Recommendation: Name Matching Decisions
 
 > **Document Location:** `docs/architecture/recommendation-name-matching.md`
-> **Status:** Decision record (D1 to D16, 2026-10-09 to 2026-10-10), applied to the other docs on 2026-10-10 (section 3). Small details remain open (section 4).
+> **Status:** Decision record (D1 to D16, 2026-10-09 to 2026-10-10), applied to the other docs on 2026-10-10 (section 3). Small details remain open (section 4). Checked against the code on 2026-10-25.
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -48,10 +48,10 @@ For a target token `t` and a source token `s`: if the shorter is a **full prefix
 **Considered and not chosen for v1:** suffix matching (would catch `phone` inside `telephone`) and character n-gram / Jaro-Winkler fuzzy scores (catch typos and compounds). Research shows strong systems combine several measures, but fuzzy scores are harder to explain. Prefix-only was chosen for explainability; revisit if real data needs more.
 
 ### D3. Abbreviations and synonyms are configured by the customer
-No built-in abbreviation dictionary. The customer declares synonyms in `pipeforge.yml` at two levels: global token synonyms (`qty` -> `quantity`) and optional per-target-column aliases (`users.first_name: [fname, given name]`).
+No built-in abbreviation dictionary. **Status: decided, not built yet; the engine ships without synonyms and aliases.** The customer declares synonyms in `pipeforge.yml` at two levels: global token synonyms (`qty` -> `quantity`) and optional per-target-column aliases (`users.first_name: [fname, given name]`).
 
 **Why.** Abbreviations vary by business and data source. The open-source importers surveyed (react-spreadsheet-import `alternateMatches`, tableflow `suggested_mappings`, Dromo aliases) all use alias lists declared by whoever owns the target fields, and no open-source library ships a general column-name synonym dictionary. Research on automatic abbreviation expansion mines large code bases and is neither small nor deterministic enough for this engine.
-**Consequence.** Out of the box `qty` will not match `quantity`. The draft's facts must list unmatched source and target columns so the customer can see what to add, then re-plan. One-off cases can be fixed by editing the draft.
+**Consequence.** Out of the box `qty` will not match `quantity`. The header result lists the unmatched source and target columns so the customer can see what to add, then calls `analyze_headers` again. One-off cases can be fixed by choosing the source column by hand in `mapped_columns`.
 
 ### D4. Aggregation: symmetric score
 Name score = `2 x (sum of best token-pair scores) / (target tokens + source tokens)`. Each source token can be used for at most one target token.
@@ -74,18 +74,18 @@ Assignment: walk the sorted pairs from the top, down to the inclusion threshold.
 **Why.** A plain `Name` source scores 67% against `first_name`, `last_name` and `full_name`, so independent per-target ranking would give one source to all three. Greedy best-first is deterministic and easy to explain ("the highest score claimed it first"). Optimal assignment (Hungarian) can score higher in rare cases but is harder to explain, and allowing reuse risks mapping one column twice by default.
 
 ### D6. Ranking depends only on the column-name match score
-Which source column is recommended for a target column is decided **only** by the name match score (D1 to D5, D9). Observed values, types and constraints never remove a pair and never change the ranking. Their only use is to support value mappings and cheap hints (see D11); whether the data will load is answered by the dry run, not by the Planner.
+Which source column is recommended for a target column is decided **only** by the name match score (D1 to D5, D9). Observed values, types and constraints never remove a pair and never change the ranking. Their only use is to support value mappings and cheap hints (see D11); whether the data will load is answered by the dry run, not by the header stage.
 
 **Why.** It keeps the ranking simple, predictable and fully explainable: the customer can reproduce any recommendation from the column names alone, and nothing is hidden in an adjustment. A single dirty value in a million (for example `twenty` in an `Age` column) must not remove or demote the obviously right column. The earlier idea (hard gates plus capped adjustments of about +-15 points from types and values) and the old weighted formula (0.45 name, 0.25 type, 0.20 values, 0.10 structure) are both dropped.
 **Consequences accepted.**
 - When two pairs tie on names (`Name` against `first_name` and `last_name`), the data cannot break the tie: the source is shared and the consumer chooses (D5).
-- A pair with a clear data mismatch (a column of emails into a whole-number column) can still be recommended if the names match. The facts must flag it prominently. At run time those records fail individually and go to the dead-letter log; nothing loads silently wrong.
+- A pair with a clear data mismatch (a column of emails into a whole-number column) can still be recommended if the names match. The facts must flag it prominently. At run time those records fail individually and go to the failed rows; nothing loads silently wrong.
 
 ### D7. Every target column is visible in the facts
-The draft's facts contain one row per target column: best candidate, score, reasons, status (matched / weak guess / none), plus the lists of unmatched source and target columns.
+The header result shows every target column: either in `matches` (source column, score, `tied_with` and the metadata of the target column) or in `unmatched_target_columns` (name and metadata), plus `unmatched_source_columns`.
 
-**Why.** A target column with no recommendation looks as if the engine forgot it. Visibility lives in the facts and does not depend on whether the candidate is in the plan state.
-**Open:** whether weak candidates (below the configurable inclusion threshold, default 0.55) also go into the state (section 4).
+**Why.** A target column with no recommendation looks as if the engine forgot it. Visibility does not depend on whether a column found a match.
+**Decided (ADR-12 amendment of 2026-10-23):** a pair below the inclusion threshold (`recommendation.inclusion_threshold`, default 55) is not a match, so there are no weak guesses; the columns are listed as unmatched.
 
 ### D8. Acknowledgement flag is required to build (superseded)
 > **Superseded by ADR-14 (item 7) and ADR-17.** There is no build step and no acknowledgement flag; the consumer reviews the stage results and calls `run`. The text below is the record of the earlier decision.
@@ -96,7 +96,7 @@ The draft's facts contain one row per target column: best candidate, score, reas
 **Trade-off accepted.** A stale acknowledgement after a later edit is the consumer's responsibility, not the engine's.
 
 ### D9. Word order: small fixed penalty for reordering
-Words are paired anywhere (as in D4), but if the matched words appear in a different left-to-right order on the two sides, the match score loses a fixed amount, applied once per pair of columns (proposed: 10 points; the exact value is open and could be configurable).
+Words are paired anywhere (as in D4), but if the matched words appear in a different left-to-right order on the two sides, the match score loses a fixed amount, applied once per pair of columns (10 points by default, `recommendation.reorder_penalty`, a whole number from 0 to 100).
 
 | Target | Source | Without penalty | With penalty |
 |---|---|---|---|
@@ -105,7 +105,7 @@ Words are paired anywhere (as in D4), but if the matched words appear in a diffe
 | Birth Date | Date of Birth | 80% | 70% |
 
 **Why.** The same meaning is often written in a different order (`Date of Birth` / `Birth Date`, `Mobile Phone` / `Phone Mobile`), so ignoring order would be forgiving but would also let a reordered name tie with the exact one. Strict order (matched words must stay in order or earn nothing) was rejected because it scores harmless reorderings far too low (`Birth Date` against `Date of Birth` would drop to 40%) and could push the right column under the inclusion threshold. A small penalty keeps reordered names matching well while the same-order column always wins a tie.
-**Open:** the penalty size (10 points proposed) and whether it is configurable in `pipeforge.yml`.
+**Decided:** the size is 10 points and it is configurable in `pipeforge.yml`.
 
 ### D10. Columns the database fills or refuses to write are never recommended (visibility superseded)
 > **Partly superseded by ADR-22.** The columns are still never recommended, but the target adapter now leaves them out of the schema, so they are no longer listed with a status (D7 no longer applies to them). The text below is the record of the earlier decision.
@@ -116,12 +116,12 @@ Target columns that are **filled by the database** (auto-numbered keys, identity
 **Consequence accepted.** A customer who wants to keep their old ids must add that mapping by hand when editing the draft. The Builder therefore must not refuse a deliberate mapping to an auto-numbered key; it is only never *recommended*.
 
 ### D11. The value scan exists for value mappings; loadability comes from the dry run
-The scan lists the **distinct values** of each source column (with how often each occurs, up to a cap) so the customer can configure **value mappings** (for example `A` -> `active`, `Y` -> `true`). A cheap type hint (for example "all values look like whole numbers") may be added if it costs almost nothing in the same pass; it is informational only.
+The scan lists the **distinct values** of each source column (with how often each occurs, up to a cap) so the customer can configure **value mappings** (for example `A` -> `active`, `Y` -> `true`). The same pass reports `type_compatibility` (how many values fit the target column's type, with the value mappings applied); it is informational only.
 
-Whether the data will actually load is answered by the **dry run** of the final plan (with all value mappings and transforms applied), not by the Planner.
+Whether the data will actually load is answered by the **dry run** (with the value mappings applied), not by the value stage.
 
 **Why.** At planning time the customer has not yet configured value mappings or transforms, so a "loadable / doubtful" percentage on raw values can mislead: `twenty` looks like a failure now, but a mapping added later may fix it. The dry run already exists in the design and is the only truthful answer. This replaces the earlier "loadable / doubtful" facts idea.
-**Open:** the cap on distinct values per column, what is shown next to them (counts, the target column's allowed values), and how value mappings are suggested (section 4).
+**Open:** the cap on distinct values per column, what is shown next to them (counts, the target column's allowed values), and how value mappings are suggested (D13).
 
 ### D12. Distinct values: capped at 1,000 per column, configurable
 For each source column the scan keeps up to **1,000 distinct values**, each with how often it appears. Beyond the cap the column is marked "too many distinct values to list". The cap is a setting in `pipeforge.yml`.
@@ -129,14 +129,14 @@ For each source column the scan keeps up to **1,000 distinct values**, each with
 **Why.** Value mappings only matter for columns with few distinct values (statuses, countries, categories); 1,000 covers every realistic code list. Listing every distinct email or id would grow memory with the data and break the bounded-memory promise (ADR-02). A smaller cap (100) would cut off country or category lists; no cap is not bounded.
 
 ### D13. Value-mapping suggestions: safe ones only
-The Planner suggests a value mapping automatically only when it is certain:
+**Status: decided, not built yet.** Today the value stage lists the values and the consumer writes the value mappings (`recommendation-and-validation.md` section 3.1). The value stage would suggest a value mapping automatically only when it is certain:
 - a source value equals an **allowed value** of the target column once case, spaces and punctuation are ignored (`INACTIVE` -> `inactive`); allowed values come from the model (for example an `enum` declaration), and a column without allowed values needs no mapping;
 - the source values are words from a small **fixed boolean list** (`Y`, `yes`, `true`, `t`, `1` -> true; `N`, `no`, `false`, `f`, `0` -> false) and the target column is a yes/no column.
 
-Everything else is listed as **unmapped** next to the target's allowed values, for the customer to map. The Planner never guesses (no "`A` starts like `active`").
+Everything else is listed as **unmapped** next to the target's allowed values, for the customer to map. It never guesses (no "`A` starts like `active`").
 
 **Why.** A wrong guess can slip through if nobody checks, and a wrong value mapping corrupts data silently, while an unmapped value is visible and the dry run shows what happens to it. The boolean list is small, standard and fixed, so it does not go against D3 (no built-in vocabulary): it is part of reading yes/no values, not a business vocabulary.
-**Open:** exactly which words are in the boolean list, and how mappings are written in the draft.
+**Open:** exactly which words are in the boolean list.
 
 ### D14. Draft layout: mappings with confidence and their own facts; doubtful candidates listed separately (superseded)
 > **Superseded by the ADR-12 amendment of 2026-10-23.** The header result has `matches` keyed by target column (source column, score, `tied_with`, metadata of the target column), `unmatched_source_columns` and `unmatched_target_columns` (name and metadata). There is no doubtful list. The text below is the record of the earlier decision.
@@ -160,7 +160,7 @@ NOT MAPPED, REQUIRED -> build fails until fixed
 **Open:** the exact threshold default (55% proposed), whether it applies to the name score only (yes, per D6), and the name of the call that adopts a doubtful candidate.
 
 ### D15. The Planner's JSON response (the draft) (superseded)
-> **Superseded by ADR-14 and ADR-17.** The header stage returns a `HeaderAnalysis` (facts and an editable `column_mapping`), and the value stage returns a `ValueAnalyzer::Result`. The draft JSON and the `BuildResult` are no longer produced. The text below is the record of the earlier decision.
+> **Superseded by ADR-14 and ADR-17.** The header stage returns a `HeaderAnalysis` (`matches` keyed by target column, the metadata of each target column and the unmatched columns; the consumer builds `mapped_columns` from it), and the value stage returns a `ValueAnalyzer::Result`. The draft JSON and the `BuildResult` are no longer produced. The text below is the record of the earlier decision.
 
 The Planner returns one JSON document (no UI is involved). The consumer edits it (remap a column, add value mappings) and sends it back to the Builder.
 
@@ -249,5 +249,5 @@ A **reference column** is a target column that points to a row in another (paren
 3. ~~Value-mapping suggestions~~ Decided: D13 (safe ones only). Still open: the boolean word list and the draft syntax for mappings.
 4. ~~Reference columns~~ Decided: D16. Still open: the hint fact, non-unique lookup warning, missing-lookup-column error, source column named only `Id`, composite and polymorphic references.
 5. ~~Name required?~~ and 6. ~~Weak candidates in state?~~ Decided: D14 (below-threshold candidates are doubtful facts; 0% pairs are not candidates).
-7. **Penalty size for reordered words** (D9) and whether it is configurable.
+7. ~~Penalty size for reordered words~~ Decided: D9 (10 points, configurable).
 8. ~~Explanation format~~ Mostly decided: D15 (JSON shape). Still open: exact constraint fields, reason wording, value-mapping edge cases (null, one value to several targets).
