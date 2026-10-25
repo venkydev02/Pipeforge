@@ -53,8 +53,7 @@ module Pipeforge
   # not an error: every setting then has its default. Each code is a subject and what is wrong
   # with it: +config_file_not_valid_yaml+, +config_file_not_name_value_entries+,
   # +engine_not_sections+, +unknown_section+, +section_not_settings+, +unknown_setting+,
-  # +setting_not_positive_whole_number+, +setting_not_whole_number_0_to_100+ and
-  # +setting_not_true_or_false+.
+  # +setting_not_positive_whole_number+ and +setting_not_whole_number_0_to_100+.
   class ConfigurationError < Error; end
 
   # Raised when the mapped columns given to {Engine#analyze_values} cannot be used (checked by

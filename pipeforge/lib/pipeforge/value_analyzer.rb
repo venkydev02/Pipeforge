@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-require_relative "fingerprint"
 require_relative "value_analyzer/type_checker"
 require_relative "value_analyzer/chunk_profile"
 require_relative "source/csv_reader"
@@ -32,9 +30,7 @@ module Pipeforge
     #   row_count          data rows read; blank and all-empty rows are not counted
     #   columns            a ColumnSummary per mapped target column, keyed by the target column
     #                      and in the order of the mapped columns
-    #   source_fingerprint the fingerprint of the parsed rows (see {Fingerprint}), or nil when
-    #                      the source fingerprint setting is off
-    Result = Data.define(:source_identifier, :row_count, :columns, :source_fingerprint) do
+    Result = Data.define(:source_identifier, :row_count, :columns) do
       # @return [Hash] the result as plain JSON types, ready to store or send
       def to_h
         columns_as_hashes = {}
@@ -46,7 +42,6 @@ module Pipeforge
         {
           source_identifier: source_identifier,
           row_count: row_count,
-          source_fingerprint: source_fingerprint,
           columns: columns_as_hashes
         }
       end
@@ -79,19 +74,12 @@ module Pipeforge
         add_positions(mapped_columns: mapped_columns, header_names: source_reader.headers)
         add_type_checkers(mapped_columns: mapped_columns)
         profile = ChunkProfile.empty(mapped_columns: mapped_columns, cap: Configuration.source.distinct_values_cap)
-        fingerprint = Configuration.source.fingerprint ? Fingerprint.new : nil
 
         row_count = source_reader.each_chunk do |rows|
-          add_rows_to_fingerprint(fingerprint: fingerprint, rows: rows) if fingerprint
           profile = profile.merge(later: ChunkAnalyzer.call(rows: rows, mapped_columns: mapped_columns))
         end
 
-        Result.new(
-          source_identifier: source_reader.identifier,
-          row_count: row_count,
-          columns: profile.columns,
-          source_fingerprint: fingerprint&.value
-        )
+        Result.new(source_identifier: source_reader.identifier, row_count: row_count, columns: profile.columns)
       end
 
       private
@@ -111,15 +99,6 @@ module Pipeforge
       def add_type_checkers(mapped_columns:)
         mapped_columns.each_value do |mapped_column|
           mapped_column[:type_checker] = TypeChecker.new(type_info: mapped_column)
-        end
-      end
-
-      # Adds each row to the fingerprint as one line: its values as a JSON array, in header order.
-      # JSON keeps the values apart (a comma inside a value is not a separator) and writes an
-      # empty cell as null.
-      def add_rows_to_fingerprint(fingerprint:, rows:)
-        rows.each do |row|
-          fingerprint.add(text: "#{JSON.generate(row.values)}\n")
         end
       end
     end

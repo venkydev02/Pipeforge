@@ -27,10 +27,6 @@ RSpec.describe Pipeforge::Configuration do
       expect(configuration.source.distinct_values_cap).to eq(1000)
     end
 
-    it "turns the source fingerprint off" do
-      expect(configuration.source.fingerprint).to eq(false)
-    end
-
     it "uses the default inclusion threshold" do
       expect(configuration.recommendation.inclusion_threshold).to eq(55)
     end
@@ -82,15 +78,15 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       it "keeps the defaults of the settings the file does not mention" do
-        expect(configuration.source).to have_attributes(distinct_values_cap: 1000, fingerprint: false)
+        expect(configuration.source).to have_attributes(distinct_values_cap: 1000)
       end
     end
 
     context "with only one setting of a section" do
-      let(:yaml) { "engine:\n  source:\n    distinct_values_cap: 50\n" }
+      let(:yaml) { "engine:\n  recommendation:\n    inclusion_threshold: 70\n" }
 
       it "keeps the default of the other setting of that section" do
-        expect(configuration.source.fingerprint).to eq(false)
+        expect(configuration.recommendation.reorder_penalty).to eq(10)
       end
     end
 
@@ -399,23 +395,6 @@ RSpec.describe Pipeforge::Configuration do
       end
     end
 
-    describe "source.fingerprint" do
-      context "set to true" do
-        let(:yaml) { setting_yaml(section: "source", setting: "fingerprint", value: "true") }
-
-        it "reads it" do
-          expect(configuration.source.fingerprint).to eq(true)
-        end
-      end
-
-      context "set to a word that is not true or false" do
-        let(:yaml) { setting_yaml(section: "source", setting: "fingerprint", value: "maybe") }
-
-        include_examples "a file the engine refuses", :setting_not_true_or_false,
-          /source\.fingerprint must be true or false, got "maybe"/
-      end
-    end
-
     describe "source.distinct_values_cap" do
       context "set to text" do
         let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "many") }
@@ -492,7 +471,7 @@ RSpec.describe Pipeforge::Configuration do
                 batch_size: abc
                 batch_sise: 10
               source:
-                fingerprint: maybe
+                distinct_values_cap: 0
               loging:
                 level: info
           YAML
@@ -508,7 +487,7 @@ RSpec.describe Pipeforge::Configuration do
               "- unknown section loging",
               "- unknown setting batch_sise in section execution",
               "- execution.batch_size must be a whole number of at least 1, got \"abc\"",
-              "- source.fingerprint must be true or false, got \"maybe\""
+              "- source.distinct_values_cap must be a whole number of at least 1, got 0"
             )
           end
         end
@@ -520,7 +499,7 @@ RSpec.describe Pipeforge::Configuration do
         it "has one entry for each, in the order they are found" do
           expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
             expect(error.codes).to eq(
-              %i[unknown_section unknown_setting setting_not_positive_whole_number setting_not_true_or_false]
+              %i[unknown_section unknown_setting setting_not_positive_whole_number setting_not_positive_whole_number]
             )
           end
         end
@@ -537,11 +516,11 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       context "with a section that is not settings next to a section with a wrong value" do
-        let(:yaml) { "engine:\n  execution: 5\n  source:\n    fingerprint: maybe\n" }
+        let(:yaml) { "engine:\n  execution: 5\n  source:\n    distinct_values_cap: 0\n" }
 
         it "still checks the other section" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /section execution must hold settings.*source\.fingerprint must be true or false/m
+            Pipeforge::ConfigurationError, /section execution must hold settings.*source\.distinct_values_cap must be a whole number/m
           )
         end
       end
