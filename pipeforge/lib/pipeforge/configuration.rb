@@ -13,8 +13,8 @@ module Pipeforge
   # keeps its default.
   #
   # Each value is checked when the file is read: a whole number of at least 1 for +batch_size+,
-  # +distinct_values_cap+ and +inclusion_threshold+, a whole number from 0 to 100 for
-  # +reorder_penalty+, true or false for +fingerprint+.
+  # +distinct_values_cap+ and +inclusion_threshold+, and a whole number from 0 to 100 for
+  # +reorder_penalty+.
   #
   # A file that cannot be read at all (not valid YAML, not name: value entries) stops at once.
   # Every other error is collected, so one ConfigurationError lists them all, each with its own
@@ -30,8 +30,8 @@ module Pipeforge
     ExecutionSettings = Data.define(:batch_size)
 
     # The +source+ section: +distinct_values_cap+ is the most different values listed per column of
-    # the source, and +fingerprint+ turns on the fingerprint of the source rows (true or false).
-    SourceSettings = Data.define(:distinct_values_cap, :fingerprint)
+    # the source.
+    SourceSettings = Data.define(:distinct_values_cap)
 
     # The +recommendation+ section: +inclusion_threshold+ is the lowest score (a whole number of
     # at least 1) a pair of columns needs to be a match, and +reorder_penalty+ is how many points
@@ -131,10 +131,9 @@ module Pipeforge
         source = build_section(
           settings_class: SourceSettings,
           section_name: "source",
-          defaults: {distinct_values_cap: 1000, fingerprint: false}
+          defaults: {distinct_values_cap: 1000}
         )
         require_positive_whole_number(setting_name: "source.distinct_values_cap", value: source.distinct_values_cap)
-        require_true_or_false(setting_name: "source.fingerprint", value: source.fingerprint)
 
         source
       end
@@ -203,18 +202,6 @@ module Pipeforge
         add_error(
           code: :setting_not_whole_number_0_to_100,
           message: "#{setting_name} must be a whole number from 0 to 100, got #{value.inspect}",
-          setting: setting_name,
-          value: value
-        )
-      end
-
-      # The word true or false, as YAML writes a yes or no setting.
-      def require_true_or_false(setting_name:, value:)
-        return if value == true || value == false
-
-        add_error(
-          code: :setting_not_true_or_false,
-          message: "#{setting_name} must be true or false, got #{value.inspect}",
           setting: setting_name,
           value: value
         )

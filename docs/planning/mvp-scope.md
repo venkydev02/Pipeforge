@@ -1,7 +1,7 @@
 # MVP Scope & Definition of Done
 
 > **Document Location:** `docs/planning/mvp-scope.md`
-> **Status:** Draft v4.0 — updated 2026-10-15 (ADR-14 to ADR-17)
+> **Status:** Draft v4.0 — updated 2026-10-25 (ADR-14 to ADR-17; stages are independent and the fingerprints are removed, ADR-18 amendment of 2026-10-25)
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -24,7 +24,7 @@
 ### 1.4 Configuration & Interaction
 - Consumed as a Ruby library: the core gem comes with the adapter gem; no gem-shipped CLI in MVP
 - One-time engine configuration through `pipeforge.yml`; behavior is chosen by options, not code
-- Per-call input: the header and value results, the mode, and the optional offset, limit and loading options
+- Per-call input: the mapped columns with their value mappings, the mode, and the optional offset, limit and loading options (the stages do not depend on each other's output)
 - Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
 
 ### 1.5 Migration Pipeline
@@ -38,7 +38,7 @@
 
 ### 1.6 Core Guarantees
 - Deterministic, explainable recommendations (reproducible from column names alone)
-- No guessing: a foreign key is never matched by name in the engine
+- No guessing: the engine never looks up a parent row by name; the consumer maps names to ids in the value stage (ADR-15)
 - Streaming, bounded-memory processing
 - Row access confined to the loader (ADR-15)
 - Complete accounting of every processed row
@@ -67,7 +67,7 @@
 4. `analyze_headers` returns the best match for each target column (a source column and a score) with the metadata of the target column, using names only.
 5. `analyze_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
 6. The consumer can edit the mapped columns or a value mapping and call `analyze_values` again; the facts reflect the edit.
-7. `run` refuses a value result that does not match the mapping, and reports every missing column or required column together.
+7. `run` reports every missing column and every unmapped required column together, before any row is read.
 8. A dry run reports the same failed rows as a real run against an unchanged database, and persists nothing.
 9. Batches load with `insert_all!`, or row by row through the model; a failed batch is retried row by row.
 10. Failed rows are written with exact row numbers, the source values and each error's stage, column and code.

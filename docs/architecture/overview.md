@@ -1,7 +1,7 @@
 # Architecture Overview & System Topology
 
 > **Document Location:** `docs/architecture/overview.md`
-> **Status:** Draft v4.0 — updated 2026-10-15 for ADR-14 to ADR-17 (staged engine methods, no lookups, framework-agnostic core, one runtime entry point)
+> **Status:** Draft v4.0 — updated 2026-10-25: stages are independent public calls and the fingerprints are removed (ADR-18 amendment of 2026-10-25); the inputs of `run` are still to be settled
 > **Index:** [Master Documentation Index](../../README.md)
 
 ---
@@ -15,7 +15,7 @@ CSV is the **current MVP source format**. It is not the system identity; other s
 The engine is split into a **framework-agnostic core** (`pipeforge`) and one **adapter distribution per database library** (`pipeforge-activerecord` for the MVP). The consumer installs only the adapter (ADR-16).
 
 ### 1.1 Minimal Consumer Effort
-The consumer does not write connections or loaders. They supply a source, name the target model, and set behavior options. The adapter is built in. Custom adapters are an advanced extension point (see `target-access.md`).
+The consumer does not write connections or loaders. They supply a source, name the target table, and set behavior options. The adapter is built in. Custom adapters are an advanced extension point (see `target-access.md`).
 
 ### 1.2 The Row-Access Boundary
 Analysis must never depend on what is already in the target database.
@@ -33,12 +33,12 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 Engine.new(source_io:, target_table:)      the source and the target table, given once
 analyze_headers                           → HeaderAnalysis      (names only, no values)
 analyze_values(mapped_columns:)           → ValueAnalyzer::Result (values, facts, value mappings)
-run(mode: :dry_run | :run, header_analysis:, value_analysis:)    → summary and failed rows
+run(mode: :dry_run | :run, ...)           → summary and failed rows (inputs to be settled)
 ```
 
 1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, keyed by target column, with the metadata of each target column, and the columns left unmatched.
 2. **`analyze_values`** takes the mapping the consumer settled (target column => source column) and measures the mapped columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
-3. **`run`** is the one public runtime entry point. It checks that the two results agree, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits.
+3. **`run`** is the one public runtime entry point. It checks its input against the source and the target schema, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits. The stages are public calls that do not depend on each other's output (ADR-18 amendment of 2026-10-25), so a consumer may call `run` without the other two; its exact inputs (the mapped columns with their value mappings) are settled in the run contract.
 
 There is no separate build step: the consumer already has the header and value results, which show the plan. Review is the consumer's own step; the engine never prompts and never resets anything.
 
@@ -99,14 +99,14 @@ Source analysis and target schema reading are independent and may run concurrent
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_values`
-* **Input:** the mapped columns, a plain Hash the consumer builds, keyed by target column (each entry names its source column and an optional value mapping), and the engine's offset and limit. Every required target column needs an entry; a source column may feed several target columns. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
+* **Input:** the mapped columns, a plain Hash the consumer builds, keyed by target column (each entry names its source column and an optional value mapping). Every required target column needs an entry; a source column may feed several target columns. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
 * **Reads:** the mapped source columns only, in one streaming pass with bounded memory, and the schema of the target table (metadata only).
 * **Output:** `ValueAnalyzer::Result`: per column, empty count, type compatibility (`fits` of `total`), distinct values split into compatible and incompatible lists (capped per list), and the value mapping the facts were measured with.
 * **Non-responsibilities:** no writes, no target rows, no changes to the mapping.
 
 ### 3.3 `run`
-* **Input:** `mode`, `HeaderAnalysis`, `ValueAnalyzer::Result`, and the optional offset, limit and per-call options.
-* **Checks first:** the value result is current for the mapping; every mapped column exists in the source and the target; every required target column is mapped. All errors are reported at once, before any row is read.
+* **Input:** `mode`, what it needs to load (the mapped columns with their value mappings; to be settled in the run contract), and the optional offset, limit and per-call options. Offset and limit are not built yet.
+* **Checks first:** every mapped column exists in the source and the target; every required target column is mapped. All errors are reported at once, before any row is read.
 * **Loads:** streams the source in batches. Each batch is loaded through the adapter, a failed batch is retried row by row, and each committed batch leaves a checkpoint.
 * **Output:** a summary (`mode`, loaded and failed counts, checkpoint) and the failed rows, one JSON line each.
 * **Dry run:** the same path, inside one outer transaction that is rolled back at the end (`target-access.md` §4).
