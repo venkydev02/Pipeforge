@@ -94,4 +94,26 @@ RSpec.describe Pipeforge::Utilities do
       end
     end
   end
+
+  describe ".largest_float" do
+    it "is the double precision maximum when the column has no limit" do
+      expect(described_class.largest_float(limit: nil)).to eq(Float::MAX)
+    end
+
+    it "is the double precision maximum for a limit of 53" do
+      expect(described_class.largest_float(limit: 53)).to eq(Float::MAX)
+    end
+
+    it "is the single precision maximum for a limit of 24" do
+      expect(described_class.largest_float(limit: 24)).to eq(3.4028234663852886e38)
+    end
+
+    it "is the single precision maximum for a limit below 24" do
+      expect(described_class.largest_float(limit: 10)).to eq(3.4028234663852886e38)
+    end
+
+    it "is the double precision maximum for a limit just above 24" do
+      expect(described_class.largest_float(limit: 25)).to eq(Float::MAX)
+    end
+  end
 end

@@ -7,6 +7,7 @@ require_relative "header_analyzer"
 require_relative "target_schema"
 require_relative "target_adapter"
 require_relative "mapped_data_validator"
+require_relative "runtime"
 
 module Pipeforge
   # The entry point of the engine. It is built for one source file and one target table, and runs
@@ -76,23 +77,71 @@ module Pipeforge
     #   except that mapped columns that are not a Hash are reported alone.
     # @raise [Source::MalformedSourceError] a row cannot be parsed
     def analyze_values(mapped_columns:)
-      target_columns = {}
-      target_schema.columns.each { |target_column| target_columns[target_column.name] = target_column }
+      check_mapped_columns(mapped_columns: mapped_columns)
 
-      MappedDataValidator.new(
-        source_header_names: @source_reader.headers,
-        target_column_names: target_columns.keys,
-        required_target_column_names: target_schema.columns.select(&:required).map(&:name),
-        target_table: @target_table
-      ).call(mapped_columns: mapped_columns)
-
-      add_type_metadata(mapped_columns: mapped_columns, target_columns: target_columns)
+      add_type_metadata(mapped_columns: mapped_columns, target_columns: target_columns_by_name)
       convert_value_mapping_keys(mapped_columns: mapped_columns)
 
-      ValueAnalyzer.call(source_reader: @source_reader, mapped_columns: mapped_columns)
+      ValueAnalyzer.call(
+        source_reader: @source_reader, mapped_columns: mapped_columns,
+        model_adapter: model_adapter
+      )
+    end
+
+    # Checks every row of the source against the target (the validation layer of a run) and counts
+    # the rows that would load and the rows that would not. The rows are read in chunks, and each
+    # chunk's result, with its failed rows, is yielded to the block as soon as the chunk is done.
+    # Nothing is written to the target yet.
+    #
+    # @api private
+    # @param mode [Symbol] +:dry_run+ or +:run+
+    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_values}
+    # @param offset [Integer] rows to skip before the first one processed
+    # @param limit [Integer, nil] the most rows to process after the offset; nil processes them all
+    # @yieldparam chunk_result [ChunkResult] the outcome of one chunk
+    # @return [RunResult]
+    # @raise [TargetSchemaError] the table or its model cannot be found
+    # @raise [InvalidMappedColumnsError] as in {#analyze_values}
+    # @raise [Source::MalformedSourceError] a row cannot be parsed
+    def run(mode:, mapped_columns:, offset: 0, limit: nil, &on_chunk)
+      check_mapped_columns(mapped_columns: mapped_columns)
+      convert_value_mapping_keys(mapped_columns: mapped_columns)
+
+      Runtime.call(
+        source_reader: @source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+        offset: offset, limit: limit, mode: mode, model_adapter: model_adapter, &on_chunk
+      )
     end
 
     private
+
+    # The columns of the target table by name.
+    def target_columns_by_name
+      target_columns = {}
+      target_schema.columns.each { |target_column| target_columns[target_column.name] = target_column }
+
+      target_columns
+    end
+
+    # Stops with every mistake in the mapped columns, or does nothing when there is none.
+    def check_mapped_columns(mapped_columns:)
+      MappedDataValidator.new(
+        source_header_names: @source_reader.headers,
+        target_column_names: target_columns_by_name.keys,
+        required_target_column_names: target_schema.columns.select(&:required).map(&:name),
+        target_table: @target_table
+      ).call(mapped_columns: mapped_columns)
+    end
+
+    # The adapter's object for the target table, which casts texts and builds records.
+    def model_adapter
+      if @model_adapter.nil?
+        # Kept only once the adapter has answered, so a failed ask is asked again on the next call.
+        @model_adapter = TargetAdapter.model_adapter(target_table: @target_table)
+      end
+
+      @model_adapter
+    end
 
     # The schema of the target table. The adapter is asked on the first call and the answer is
     # kept. A failed read is not kept, so the next call asks again.
@@ -115,7 +164,7 @@ module Pipeforge
       end
     end
 
-    # Adds the type metadata of the target column (its type, limit, length, precision, scale and
+    # Adds the type metadata of the target column (its type, limit, unsigned, length, precision, scale and
     # enum values), taken from the schema, to each entry of the mapped columns. It changes the
     # entries it is given: a +type+ the caller sent is replaced by the type of the schema.
     def add_type_metadata(mapped_columns:, target_columns:)
@@ -125,6 +174,7 @@ module Pipeforge
         mapped_column.merge!(
           type: target_column.type,
           limit: target_column.limit,
+          unsigned: target_column.unsigned,
           max_length: target_column.max_length,
           precision: target_column.precision,
           scale: target_column.scale,

@@ -16,9 +16,9 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
     )
   end
 
-  def list_of(value_counts)
+  def list_of(counts)
     distinct_values_class.new(cap: nil).tap do |list|
-      value_counts.each { |value, count| list.record(value: value, count: count) }
+      counts.each { |value, count| list.record(value: value, count: count) }
     end
   end
 
@@ -36,14 +36,14 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
     end
 
     it "has an empty list for each kind of value" do
-      expect(summary.distinct_values.values).to all(have_attributes(value_counts: {}))
+      expect(summary.distinct_values.values).to all(have_attributes(values: []))
     end
 
     it "holds at most the cap of different values in each list" do
       lists = summary.distinct_values.values
       lists.each { |list| 7.times { |index| list.record(value: "v#{index}") } }
 
-      expect(lists.map { |list| list.value_counts.size }).to eq([5, 5])
+      expect(lists.map { |list| list.values.size }).to eq([5, 5])
     end
   end
 
@@ -65,11 +65,11 @@ RSpec.describe Pipeforge::ValueAnalyzer::ColumnSummary do
     end
 
     it "merges the compatible values" do
-      expect(merged.distinct_values[:compatible].value_counts).to eq("a" => 3, "b" => 1)
+      expect(merged.distinct_values[:compatible].values).to eq([{value: "a", count: 3}, {value: "b", count: 1}])
     end
 
     it "merges the incompatible values" do
-      expect(merged.distinct_values[:incompatible].value_counts).to eq("x" => 1, "y" => 3)
+      expect(merged.distinct_values[:incompatible].values).to eq([{value: "y", count: 3}, {value: "x", count: 1}])
     end
 
     it "keeps the source column and the position of the earlier summary" do

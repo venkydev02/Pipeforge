@@ -18,6 +18,15 @@ RSpec.describe Pipeforge::Engine do
   let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
 
   # The core is tested without an adapter gem, so the check that one is installed is stubbed.
+  # and so is the model adapter that casts the texts of the value stage: it reads a text as the type of
+  # its column and cannot read any other text.
+  before do
+    types = target_columns.to_h do |target_column|
+      [target_column.name, target_column.enum_values.nil? ? target_column.type : "string"]
+    end
+    allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.reading(types: types))
+  end
+
   before { allow(Pipeforge::TargetAdapter).to receive(:ensure_installed) }
 
   before { use_settings(settings) }
@@ -129,6 +138,23 @@ RSpec.describe Pipeforge::Engine do
 
     it "names the source file" do
       expect(result.source_identifier).to eq(source_io.path)
+    end
+
+    it "asks the adapter for the model adapter of the table it was given" do
+      result
+
+      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records")
+    end
+
+    it "checks each value as the value the model adapter casts it to" do
+      cast_to_one_letter = FakeModelAdapter.new(casts: ->(column_name:, text:) { "x" })
+      allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(cast_to_one_letter)
+      short_string = build_target_column(name: "status", type: "string", max_length: 1)
+      allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(build_target_schema(columns: [short_string]))
+
+      checked = engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
+
+      expect(checked.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
     end
 
     it "returns a summary for each mapped column, keyed by target column" do
@@ -409,6 +435,37 @@ RSpec.describe Pipeforge::Engine do
         allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
 
         expect(engine.analyze_headers.matches.keys).to eq(%w[status code])
+      end
+    end
+  end
+
+  describe "the model adapter of the target table" do
+    let(:source_io) { csv_io("Status,Code\n1,2\n") }
+    let(:target_columns) { [build_target_column(name: "status"), build_target_column(name: "code")] }
+
+    before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
+
+    it "is asked from the adapter once, however many times the stages use it" do
+      engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
+      engine.analyze_values(mapped_columns: {"code" => {source_column: "Code"}})
+      engine.run(mode: :dry_run, mapped_columns: {"status" => {source_column: "Status"}})
+
+      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records").once
+    end
+
+    context "when asking for it fails" do
+      let(:model_error) do
+        Pipeforge::TargetSchemaError.single(code: :target_table_not_found, message: "no such table", table: "records")
+      end
+
+      it "asks the adapter again on the next call" do
+        allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_raise(model_error)
+        expect { engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}}) }
+          .to raise_error(Pipeforge::TargetSchemaError)
+
+        allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.new)
+
+        expect(engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}}).columns.keys).to eq(["status"])
       end
     end
   end

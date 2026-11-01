@@ -12,8 +12,12 @@ RSpec.describe Pipeforge::ValueAnalyzer do
   # example's own result first: the settings stay replaced afterwards.
   def result_with(settings)
     use_settings(settings)
-    described_class.call(source_reader: csv_reader(csv), mapped_columns: mapped_columns)
+    described_class.call(source_reader: csv_reader(csv), mapped_columns: mapped_columns, model_adapter: model_adapter)
   end
+
+  # The adapter that casts a text for a column: by default one that reads a text as the type of its
+  # column and cannot read any other text.
+  let(:model_adapter) { FakeModelAdapter.reading(types: mapped_columns.transform_values { |entry| entry[:type] }) }
 
   # One mapping value: the target column of a source column and the type of that column.
   def maps_to(source_column:, type:, **type_info)
@@ -21,7 +25,9 @@ RSpec.describe Pipeforge::ValueAnalyzer do
   end
 
   describe "#call" do
-    subject(:result) { described_class.call(source_reader: source_reader, mapped_columns: mapped_columns) }
+    subject(:result) do
+      described_class.call(source_reader: source_reader, mapped_columns: mapped_columns, model_adapter: model_adapter)
+    end
 
     let(:source_reader) { csv_reader(csv) }
     # Four data rows: a value spanning two lines, empty cells, a whitespace-only cell, a blank line.
@@ -250,7 +256,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       end
 
       it "lists no values" do
-        expect(result.columns["b"].distinct_values.values).to all(have_attributes(value_counts: {}))
+        expect(result.columns["b"].distinct_values.values).to all(have_attributes(values: []))
       end
     end
 
@@ -406,38 +412,38 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       end
 
       context "of 1 row" do
-        let(:settings) { {execution: {batch_size: 1}} }
+        let(:settings) { {execution: {chunk_size: 1}} }
 
         include_examples "the same result as the default chunk size"
       end
 
       context "of 2 rows" do
-        let(:settings) { {execution: {batch_size: 2}} }
+        let(:settings) { {execution: {chunk_size: 2}} }
 
         include_examples "the same result as the default chunk size"
       end
 
       context "of 3 rows" do
-        let(:settings) { {execution: {batch_size: 3}} }
+        let(:settings) { {execution: {chunk_size: 3}} }
 
         include_examples "the same result as the default chunk size"
       end
 
       context "of 100 rows, more than the file has" do
-        let(:settings) { {execution: {batch_size: 100}} }
+        let(:settings) { {execution: {chunk_size: 100}} }
 
         include_examples "the same result as the default chunk size"
       end
 
       context "of 1 row, with several rows in the file" do
-        let(:settings) { {execution: {batch_size: 1}} }
+        let(:settings) { {execution: {chunk_size: 1}} }
 
-        it "builds one type checker for each mapped column, however many chunks are read" do
-          allow(Pipeforge::ValueAnalyzer::TypeChecker).to receive(:new).and_call_original
+        it "builds one limits checker for each mapped column, however many chunks are read" do
+          allow(Pipeforge::ColumnLimitsChecker).to receive(:new).and_call_original
 
           result
 
-          expect(Pipeforge::ValueAnalyzer::TypeChecker).to have_received(:new).exactly(mapped_columns.size).times
+          expect(Pipeforge::ColumnLimitsChecker).to have_received(:new).exactly(mapped_columns.size).times
         end
       end
     end
@@ -478,7 +484,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
 
       context "when the file is read one row at a time" do
         let(:settings) do
-          {execution: {batch_size: 1}, source: {distinct_values_cap: cap}}
+          {execution: {chunk_size: 1}, source: {distinct_values_cap: cap}}
         end
 
         it "keeps the counts of the listed values exact" do
@@ -614,7 +620,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
       end
 
       context "when the file is read in small chunks" do
-        let(:settings) { {execution: {batch_size: 1}} }
+        let(:settings) { {execution: {chunk_size: 1}} }
         let(:default_result) { result_with({}) }
 
         it "gives the same result as the default chunk size" do
@@ -633,7 +639,7 @@ RSpec.describe Pipeforge::ValueAnalyzer do
 
       it "lists it as false" do
         expect(result.columns["flag"].distinct_values[:compatible].values)
-          .to eq([{value: "false", count: 2}, {value: "Yes", count: 1}])
+          .to eq([{value: "false", count: 2}, {value: "Yes", count: 1, casted_to: "true"}])
       end
     end
 
@@ -650,7 +656,8 @@ RSpec.describe Pipeforge::ValueAnalyzer do
     let(:result) do
       described_class.call(
         source_reader: csv_reader("Age\n30\nx\n\n"),
-        mapped_columns: {"age" => maps_to(source_column: "Age", type: "integer")}
+        mapped_columns: {"age" => maps_to(source_column: "Age", type: "integer")},
+        model_adapter: FakeModelAdapter.reading(types: {"age" => "integer"})
       )
     end
 

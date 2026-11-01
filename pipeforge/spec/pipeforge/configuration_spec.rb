@@ -20,7 +20,7 @@ RSpec.describe Pipeforge::Configuration do
 
   shared_examples "every default" do
     it "uses the default batch size" do
-      expect(configuration.execution.batch_size).to eq(2000)
+      expect(configuration.execution.chunk_size).to eq(2000)
     end
 
     it "uses the default distinct values cap" do
@@ -55,14 +55,14 @@ RSpec.describe Pipeforge::Configuration do
           version: "1.0"
           engine:
             execution:
-              batch_size: 500
+              chunk_size: 500
             source:
               distinct_values_cap: 50
         YAML
       end
 
       it "reads the batch size" do
-        expect(configuration.execution.batch_size).to eq(500)
+        expect(configuration.execution.chunk_size).to eq(500)
       end
 
       it "reads the distinct values cap" do
@@ -71,10 +71,10 @@ RSpec.describe Pipeforge::Configuration do
     end
 
     context "with only one setting" do
-      let(:yaml) { "engine:\n  execution:\n    batch_size: 500\n" }
+      let(:yaml) { "engine:\n  execution:\n    chunk_size: 500\n" }
 
       it "reads it" do
-        expect(configuration.execution.batch_size).to eq(500)
+        expect(configuration.execution.chunk_size).to eq(500)
       end
 
       it "keeps the defaults of the settings the file does not mention" do
@@ -129,7 +129,7 @@ RSpec.describe Pipeforge::Configuration do
     end
 
     it "are the defaults when the project has no such file" do
-      expect(described_class.execution.batch_size).to eq(2000)
+      expect(described_class.execution.chunk_size).to eq(2000)
     end
 
     it "give each section by name" do
@@ -139,14 +139,14 @@ RSpec.describe Pipeforge::Configuration do
   end
 
   describe ".load when a later load fails" do
-    let(:yaml) { "engine:\n  execution:\n    batch_size: 7\n" }
+    let(:yaml) { "engine:\n  execution:\n    chunk_size: 7\n" }
 
     it "keeps the settings it had" do
       described_class.load
       File.write(described_class::DEFAULT_PATH, "engine: [unclosed\n")
 
       expect { described_class.load }.to raise_error(Pipeforge::ConfigurationError)
-      expect(described_class.execution.batch_size).to eq(7)
+      expect(described_class.execution.chunk_size).to eq(7)
     end
   end
 
@@ -251,75 +251,75 @@ RSpec.describe Pipeforge::Configuration do
       end
     end
 
-    describe "execution.batch_size" do
+    describe "execution.chunk_size" do
       context "set to text" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "abc") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "abc") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1, got "abc"/
+          /execution\.chunk_size must be a whole number of at least 1, got "abc"/
 
         it "says which setting and which value" do
           expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-            expect(error.errors.first).to include(setting: "execution.batch_size", value: "abc")
+            expect(error.errors.first).to include(setting: "execution.chunk_size", value: "abc")
           end
         end
       end
 
       context "set to a decimal" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "1.5") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "1.5") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to zero" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "0") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "0") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to a negative number" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "-5") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "-5") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to true" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "true") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "true") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to nothing" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to a list" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "[1]") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "[1]") }
 
         include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+          /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to 1" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "1") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "1") }
 
         it "is accepted" do
-          expect(configuration.execution.batch_size).to eq(1)
+          expect(configuration.execution.chunk_size).to eq(1)
         end
       end
 
       context "set to 100000" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "100000") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "100000") }
 
         it "is accepted" do
-          expect(configuration.execution.batch_size).to eq(100_000)
+          expect(configuration.execution.chunk_size).to eq(100_000)
         end
       end
     end
@@ -468,7 +468,7 @@ RSpec.describe Pipeforge::Configuration do
           <<~YAML
             engine:
               execution:
-                batch_size: abc
+                chunk_size: abc
                 batch_sise: 10
               source:
                 distinct_values_cap: 0
@@ -486,7 +486,7 @@ RSpec.describe Pipeforge::Configuration do
             expect(error.message.lines.map(&:strip)).to include(
               "- unknown section loging",
               "- unknown setting batch_sise in section execution",
-              "- execution.batch_size must be a whole number of at least 1, got \"abc\"",
+              "- execution.chunk_size must be a whole number of at least 1, got \"abc\"",
               "- source.distinct_values_cap must be a whole number of at least 1, got 0"
             )
           end
@@ -506,11 +506,11 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       context "with a wrong value in each of two sections" do
-        let(:yaml) { "engine:\n  execution:\n    batch_size: 0\n  source:\n    distinct_values_cap: -1\n" }
+        let(:yaml) { "engine:\n  execution:\n    chunk_size: 0\n  source:\n    distinct_values_cap: -1\n" }
 
         it "reports both" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /execution\.batch_size.*source\.distinct_values_cap/m
+            Pipeforge::ConfigurationError, /execution\.chunk_size.*source\.distinct_values_cap/m
           )
         end
       end
@@ -536,12 +536,12 @@ RSpec.describe Pipeforge::Configuration do
       end
 
       context "with one error only" do
-        let(:yaml) { "engine:\n  execution:\n    batch_size: abc\n" }
+        let(:yaml) { "engine:\n  execution:\n    chunk_size: abc\n" }
 
         it "gives the sentence, with no list" do
           expect { configuration }.to raise_error(
             Pipeforge::ConfigurationError,
-            "#{described_class::DEFAULT_PATH}: execution.batch_size must be a whole number of at least 1, got \"abc\""
+            "#{described_class::DEFAULT_PATH}: execution.chunk_size must be a whole number of at least 1, got \"abc\""
           )
         end
       end

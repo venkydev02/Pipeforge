@@ -8,7 +8,7 @@
 module TargetSchemaHelper
   def build_target_column(name:, **overrides)
     defaults = {
-      type: "string", sql_type: "varchar", limit: nil, max_length: nil, precision: nil, scale: nil,
+      type: "string", sql_type: "varchar", limit: nil, unsigned: false, max_length: nil, precision: nil, scale: nil,
       default: nil, enum_values: nil, required: false, foreign_key: nil
     }
 

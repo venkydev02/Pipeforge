@@ -50,9 +50,31 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       )
     end
 
-    it "measures the values against the types of the columns in the table" do
+    it "measures the values against the limits of the columns in the table" do
       expect(value_result.columns["age"].type_compatibility).to eq(fits: 1, total: 2)
-      expect(value_result.columns["balance"].type_compatibility).to eq(fits: 1, total: 2)
+    end
+
+    it "counts a text that the model reads leniently as fitting, and gives the value it would load" do
+      expect(value_result.columns["balance"].type_compatibility).to eq(fits: 2, total: 2)
+      expect(value_result.columns["balance"].distinct_values[:compatible].values).to eq(
+        [{value: "10.5", count: 1}, {value: "abc", count: 1, casted_to: "0.0"}]
+      )
+    end
+
+    context "with texts that the model changes when it casts them" do
+      let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,\"1,000\",\"1,234.50\"\nbob@example.com,2,31,10.50\n" }
+
+      it "gives the value each text would load as, and none for a text that is the loaded value" do
+        expect(value_result.columns["age"].distinct_values[:compatible].values).to contain_exactly(
+          {value: "31", count: 1}, {value: "1,000", count: 1, casted_to: "1"}
+        )
+      end
+
+      it "writes a decimal in plain notation, and shows the zeros the text had as a change" do
+        expect(value_result.columns["balance"].distinct_values[:compatible].values).to contain_exactly(
+          {value: "1,234.50", count: 1, casted_to: "1.0"}, {value: "10.50", count: 1, casted_to: "10.5"}
+        )
+      end
     end
 
     it "does not ask for the timestamps, which the model fills" do
@@ -69,6 +91,39 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       it "counts the labels and the stored values of the enum as fitting" do
         expect(value_result.columns["status"].type_compatibility).to eq(fits: 2, total: 3)
         expect(value_result.columns["priority"].type_compatibility).to eq(fits: 2, total: 3)
+      end
+    end
+
+    context "with a date column of the model" do
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "events") }
+      let(:csv) { "Day\n2024-02-03\n2024-2-3\n\"Feb 3, 2024\"\n2024-02-30\ngarbage\n" }
+      let(:mapped_columns) { {"starts_on" => {source_column: "Day"}} }
+
+      it "counts the formats that the model reads as fitting, and the days it cannot read as not" do
+        expect(value_result.columns["starts_on"].type_compatibility).to eq(fits: 3, total: 5)
+      end
+
+      it "lists the texts that the model cannot read, for a value mapping to fix" do
+        incompatible = value_result.columns["starts_on"].distinct_values[:incompatible].values.map { |entry| entry[:value] }
+
+        expect(incompatible).to contain_exactly("2024-02-30", "garbage")
+      end
+    end
+
+    context "with an unsigned integer attribute of the model" do
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "counters") }
+      let(:csv) { "Hits,Misses\n40000,40000\n-1,-1\n" }
+      let(:mapped_columns) do
+        {"hits" => {source_column: "Hits"}, "misses" => {source_column: "Misses"}}
+      end
+
+      it "measures a value against the unsigned range of that column and the signed range of the other" do
+        compatible_values = lambda do |target_column|
+          value_result.columns[target_column].distinct_values[:compatible].values.map { |entry| entry[:value] }
+        end
+
+        expect(compatible_values.call("hits")).to eq(%w[40000])
+        expect(compatible_values.call("misses")).to eq(%w[-1])
       end
     end
 

@@ -12,7 +12,7 @@ module Pipeforge
   # boots. Without that file every setting has its default; a setting the file does not mention
   # keeps its default.
   #
-  # Each value is checked when the file is read: a whole number of at least 1 for +batch_size+,
+  # Each value is checked when the file is read: a whole number of at least 1 for +chunk_size+,
   # +distinct_values_cap+ and +inclusion_threshold+, and a whole number from 0 to 100 for
   # +reorder_penalty+.
   #
@@ -21,13 +21,13 @@ module Pipeforge
   # code (see {ConfigurationError}). When {.load} fails, the settings it had before stay.
   #
   # @example
-  #   Pipeforge::Configuration.execution.batch_size  # => 2000
+  #   Pipeforge::Configuration.execution.chunk_size  # => 2000
   module Configuration
     # Where the engine looks for its settings, by convention.
     DEFAULT_PATH = "config/pipeforge.yml"
 
-    # The +execution+ section: +batch_size+ is how many rows are read and processed at a time.
-    ExecutionSettings = Data.define(:batch_size)
+    # The +execution+ section: +chunk_size+ is how many rows are read and processed at a time.
+    ExecutionSettings = Data.define(:chunk_size)
 
     # The +source+ section: +distinct_values_cap+ is the most different values listed per column of
     # the source.
@@ -120,9 +120,9 @@ module Pipeforge
 
       def build_execution
         execution = build_section(
-          settings_class: ExecutionSettings, section_name: "execution", defaults: {batch_size: 2000}
+          settings_class: ExecutionSettings, section_name: "execution", defaults: {chunk_size: 2000}
         )
-        require_positive_whole_number(setting_name: "execution.batch_size", value: execution.batch_size)
+        require_positive_whole_number(setting_name: "execution.chunk_size", value: execution.chunk_size)
 
         execution
       end

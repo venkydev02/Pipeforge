@@ -10,7 +10,8 @@ module Pipeforge
     #   position            the position of the source column in the file, starting at 1
     #   empty               how many cells are empty
     #   type_compatibility  {fits:, total:}: how many of the non-empty values fit the target type
-    #   distinct_values     {compatible:, incompatible:}, each a DistinctValues
+    #   distinct_values     {compatible:, incompatible:}, each a DistinctValues; an entry of either list
+    #                       carries +casted_to+ when the adapter would load the value as something else
     #   value_mapping       the consumer's mapping of source values to the values to load; the
     #                       counts and the lists above describe the values after applying it,
     #                       that is, what would be loaded
@@ -58,7 +59,8 @@ module Pipeforge
         )
       end
 
-      # @return [Hash] plain JSON types, with each list as an array of {value:, count:}
+      # @return [Hash] plain JSON types, with each list as an array of {value:, count:} (and casted_to: for
+      #   a value that is loaded as something else, in either list)
       def to_h
         {
           source_column: source_column,

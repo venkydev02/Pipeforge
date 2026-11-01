@@ -42,6 +42,21 @@ module Pipeforge
         ensure_installed
         @adapter.schema(target_table: target_table)
       end
+
+      # The adapter's object for one target table. The run asks for it once and uses it for every
+      # record: +build_record(attributes:)+ returns the adapter's wrapper of one record (see
+      # {RowCandidate#model_record}), +preload_parents(records:)+ loads the parents a chunk
+      # needs, and +cast_text(column_name:, text:)+ gives the value the adapter would load for a text
+      # in a column, or nil when it cannot read the text.
+      #
+      # @param target_table [String]
+      # @return [#build_record, #preload_parents, #cast_text] the model adapter
+      # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
+      # @raise [TargetSchemaError] the table or its model cannot be found
+      def model_adapter(target_table:)
+        ensure_installed
+        @adapter.model_adapter(target_table: target_table)
+      end
     end
   end
 end

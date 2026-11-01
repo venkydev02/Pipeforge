@@ -33,6 +33,38 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(column_named(schema, "age")).to have_attributes(type: "integer", limit: 2, max_length: nil)
     end
 
+    it "reports an integer column as signed" do
+      expect(column_named(schema, "age")).to have_attributes(unsigned: false)
+    end
+
+    it "reports a column that is not an integer as not unsigned" do
+      expect(column_named(schema, "email")).to have_attributes(unsigned: false)
+    end
+
+    context "with an attribute of ActiveRecord's unsigned integer type" do
+      let(:target_table) { "counters" }
+
+      it "reports that column as unsigned, with its size" do
+        expect(column_named(schema, "hits")).to have_attributes(type: "integer", limit: 2, unsigned: true)
+      end
+
+      it "reports the other integer column of the table as signed" do
+        expect(column_named(schema, "misses")).to have_attributes(type: "integer", limit: 2, unsigned: false)
+      end
+    end
+
+    context "with float columns" do
+      let(:target_table) { "measurements" }
+
+      it "gives 24 as the limit of a single precision float" do
+        expect(column_named(schema, "ratio")).to have_attributes(type: "float", limit: 24)
+      end
+
+      it "gives no limit for a float with no size, which is double precision" do
+        expect(column_named(schema, "weight")).to have_attributes(type: "float", limit: nil)
+      end
+    end
+
     it "gives the precision and scale of a decimal column" do
       expect(column_named(schema, "balance")).to have_attributes(type: "decimal", precision: 10, scale: 2)
     end
@@ -239,9 +271,37 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
   end
 
+  describe "#model_adapter" do
+    it "gives the model adapter of the model that uses the table" do
+      expect(adapter.model_adapter(target_table: "memberships")).to be_a(Pipeforge::ActiveRecordModelAdapter)
+    end
+
+    it "builds the records of that model" do
+      model_record = adapter.model_adapter(target_table: "memberships").build_record(attributes: {"email" => "a@example.com"})
+
+      expect(model_record.record).to be_a(AdapterSpecModels::Membership)
+    end
+
+    it "stops with target_table_not_found when the table does not exist" do
+      expect { adapter.model_adapter(target_table: "nowhere") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+        expect(error.codes).to eq([:target_table_not_found])
+      end
+    end
+
+    it "stops with active_record_model_not_found when no model uses the table" do
+      expect { adapter.model_adapter(target_table: "orphans") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+        expect(error.codes).to eq([:active_record_model_not_found])
+      end
+    end
+  end
+
   describe "the core's target adapter" do
     it "is this adapter, once the gem is loaded" do
       expect(Pipeforge::TargetAdapter.schema(target_table: "users").model).to eq("AdapterSpecModels::User")
+    end
+
+    it "gives the model adapter of this adapter" do
+      expect(Pipeforge::TargetAdapter.model_adapter(target_table: "memberships")).to be_a(Pipeforge::ActiveRecordModelAdapter)
     end
   end
 end

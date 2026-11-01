@@ -4,6 +4,7 @@
 # It loads the gem's own files, then the core and ActiveRecord, and installs the adapter in the
 # core's TargetAdapter, so the engine uses it without being told.
 require_relative "activerecord/version"
+require_relative "activerecord/model_adapter"
 require_relative "activerecord/adapter"
 require "pipeforge"
 require "active_record"

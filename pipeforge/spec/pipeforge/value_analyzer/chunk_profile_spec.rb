@@ -49,7 +49,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::ChunkProfile do
       lists = profile.columns.values.flat_map { |summary| summary.distinct_values.values }
       lists.each { |list| 7.times { |index| list.record(value: "v#{index}") } }
 
-      expect(lists.map { |list| list.value_counts.size }).to all(eq(5))
+      expect(lists.map { |list| list.values.size }).to all(eq(5))
     end
 
     context "with no target columns" do
@@ -72,7 +72,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::ChunkProfile do
     end
 
     it "merges the values of each column" do
-      expect(merged.columns["a"].distinct_values[:compatible].value_counts).to eq("x" => 3, "y" => 3)
+      expect(merged.columns["a"].distinct_values[:compatible].values).to eq([{value: "x", count: 3}, {value: "y", count: 3}])
     end
 
     it "returns a new profile and leaves both as they were" do
@@ -84,7 +84,7 @@ RSpec.describe Pipeforge::ValueAnalyzer::ChunkProfile do
       let(:later) { profile_counting({"a" => 1, "b" => 1, "c" => 1, "d" => 1}) }
 
       it "caps the values of the first chunk as well" do
-        expect(merged.columns["a"].distinct_values[:compatible].value_counts.keys).to eq(%w[a b])
+        expect(merged.columns["a"].distinct_values[:compatible].values.map { |entry| entry[:value] }).to contain_exactly("a", "b")
       end
     end
 

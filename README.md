@@ -49,7 +49,7 @@ flowchart TD
     Loader -. writes rows .-> DB
 ```
 
-Header and value analysis never read existing target rows. Only the loader writes rows, and the model's own validations check parent records as they load.
+Header and value analysis never read existing target rows. Only the loader writes rows, and the model's own validations, which run for every row, read the parent records and the values they check.
 
 This is a simplified view. The full topology, the stage contracts and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md); every other doc refers back to that file.
 

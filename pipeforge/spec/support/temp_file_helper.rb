@@ -6,7 +6,7 @@ require "stringio"
 # so a spec only states the text it needs.
 #
 #   let(:source_io) { csv_io("A,B\n1,2\n") }
-#   let(:path) { yaml_file("engine:\n  execution:\n    batch_size: 10\n") }
+#   let(:path) { yaml_file("engine:\n  execution:\n    chunk_size: 10\n") }
 module TempFileHelper
   # An in-memory source with the same methods as a file (read, rewind, seek).
   def csv_io(text)

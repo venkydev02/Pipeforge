@@ -22,7 +22,7 @@ Analysis must never depend on what is already in the target database.
 
 * **Allowed everywhere (metadata only):** columns, types, nullability, defaults, primary and foreign keys, unique indexes, and model metadata (enums, associations, virtual attributes, validators).
 * **Forbidden outside the loader:** reading existing target rows, value distributions of the target, or "is this table empty?" checks.
-* **Row-access module:** only the **loader** touches business rows, and it does so inside the model's own validations (ADR-15). The header stage and the value stage read only the source file and target metadata. The value stage reads source values, which is not target access.
+* **Row-access module:** only the adapter touches business rows: the **loader** writes them, and the model's own validations, which the validation layer runs for every row, read the parents and the values they check (ADR-15). The header stage and the value stage read only the source file and target metadata. The value stage reads source values, which is not target access.
 
 ### 1.3 Schema Is Structural Truth, Not Business Truth
 The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values are allowed. Allowed values are known only from model metadata (for example an `enum` declaration), never inferred from stored data.
@@ -33,7 +33,8 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 Engine.new(source_io:, target_table:)      the source and the target table, given once
 analyze_headers                           → HeaderAnalysis      (names only, no values)
 analyze_values(mapped_columns:)           → ValueAnalyzer::Result (values, facts, value mappings)
-run(mode: :dry_run | :run, ...)           → summary and failed rows (inputs to be settled)
+run(mode:, mapped_columns:, offset:, limit:) { |chunk_result| }
+                                          → RunResult (totals); each chunk's failed rows go to the block
 ```
 
 1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, keyed by target column, with the metadata of each target column, and the columns left unmatched.
@@ -105,11 +106,12 @@ Source analysis and target schema reading are independent and may run concurrent
 * **Non-responsibilities:** no writes, no target rows, no changes to the mapping.
 
 ### 3.3 `run`
-* **Input:** `mode`, what it needs to load (the mapped columns with their value mappings; to be settled in the run contract), and the optional offset, limit and per-call options. Offset and limit are not built yet.
+* **Input:** `mode`, the mapped columns with their value mappings (the same Hash as `analyze_values`; nothing from an earlier stage), and the optional `offset` (rows to skip) and `limit`. A block receives each chunk's result.
 * **Checks first:** every mapped column exists in the source and the target; every required target column is mapped. All errors are reported at once, before any row is read.
-* **Loads:** streams the source in batches. Each batch is loaded through the adapter, a failed batch is retried row by row, and each committed batch leaves a checkpoint.
-* **Output:** a summary (`mode`, loaded and failed counts, checkpoint) and the failed rows, one JSON line each.
-* **Dry run:** the same path, inside one outer transaction that is rolled back at the end (`target-access.md` §4).
+* **Validates, row by row (built):** streams the source in chunks. Each row is mapped (columns and values), then checked on two levels without writing: the model's own validations, asked through the adapter's model record, and the schema checks the core makes from the `TargetSchema` (required, length, range, enum), on the values the model record holds after its validation. The parents a chunk needs are loaded once for the chunk. A mistake found on both levels is reported once.
+* **Loads (next):** the valid rows are loaded one by one (`load_row`), and later in batches (`load_batch`, `insert_all!`), with a failed batch retried row by row.
+* **Output:** the totals (`RunResult`: processed, valid and failed rows) and, for each chunk as it is done, a `ChunkResult` with its failed rows (row number, the transformed values, and each error's stage, column, code and message). The engine writes no file; what to do with the failed rows and the progress is the consumer's.
+* **Dry run:** the same path, inside one outer transaction that is rolled back at the end (`target-access.md` §4); it has no effect until loading is built.
 
 ### 3.4 The Consumer Boundary
 The consumer owns: reviewing and editing the stage results, where they are stored, **when** to call each method, the choice of offset slices, and the decision to run during low traffic (the dry run holds locks). The engine never prompts and never becomes a web app. Progress is surfaced through consumer-supplied hooks, not terminal UI.
@@ -125,7 +127,6 @@ sequenceDiagram
     participant Core as Core (pipeforge)
     participant Consumer as Consumer (review)
     participant Adapter as Adapter (pipeforge-activerecord)
-    participant Rep as Reporter
 
     Note over Core: Stage 1: names
     Core->>Src: Read header row only
@@ -145,11 +146,13 @@ sequenceDiagram
 
     Note over Core: Stage 3: run
     Core->>Core: Contract check (all errors at once)
-    loop each batch
-        Src->>Core: Rows (batch_size)
-        Core->>Adapter: transaction(scope: :batch) and load_batch
-        Adapter-->>Core: Outcomes (failed batch: retry rows one by one)
-        Core->>Rep: Checkpoint, failed rows, counts
+    loop each chunk
+        Src->>Core: Rows (chunk_size)
+        Core->>Adapter: build_record for each row, preload_parents once
+        Adapter-->>Core: Model records (valid? and errors for the model-level checks)
+        Core->>Core: Schema-level checks, merge errors, count
+        Core->>Consumer: ChunkResult with its failed rows (to the block)
     end
-    Core->>Consumer: Summary and failed rows
+    Note over Core,Adapter: Loading (load_row, then load_batch) comes next
+    Core->>Consumer: RunResult (totals)
 ```
