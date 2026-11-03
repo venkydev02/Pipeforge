@@ -19,12 +19,8 @@ RSpec.describe Pipeforge::Configuration do
   end
 
   shared_examples "every default" do
-    it "uses the default batch size" do
-      expect(configuration.execution.batch_size).to eq(2000)
-    end
-
-    it "uses the default distinct values cap" do
-      expect(configuration.source.distinct_values_cap).to eq(1000)
+    it "uses the default chunk size" do
+      expect(configuration.execution.chunk_size).to eq(2000)
     end
 
     it "uses the default inclusion threshold" do
@@ -36,49 +32,43 @@ RSpec.describe Pipeforge::Configuration do
     end
   end
 
-  shared_examples "a file the engine refuses" do |code, message|
-    it "raises ConfigurationError, saying what is wrong" do
-      expect { configuration }.to raise_error(Pipeforge::ConfigurationError, message)
-    end
-
-    it "gives the code #{code}" do
-      expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-        expect(error.codes).to eq([code])
-      end
+  shared_examples "a file the engine refuses" do |message|
+    it "raises ArgumentError, saying what is wrong" do
+      expect { configuration }.to raise_error(ArgumentError, message)
     end
   end
 
-  describe ".execution and .source" do
+  describe ".execution and .recommendation" do
     context "with every known setting in the engine section" do
       let(:yaml) do
         <<~YAML
           version: "1.0"
           engine:
             execution:
-              batch_size: 500
-            source:
-              distinct_values_cap: 50
+              chunk_size: 500
+            recommendation:
+              inclusion_threshold: 50
         YAML
       end
 
-      it "reads the batch size" do
-        expect(configuration.execution.batch_size).to eq(500)
+      it "reads the chunk size" do
+        expect(configuration.execution.chunk_size).to eq(500)
       end
 
-      it "reads the distinct values cap" do
-        expect(configuration.source.distinct_values_cap).to eq(50)
+      it "reads the inclusion threshold" do
+        expect(configuration.recommendation.inclusion_threshold).to eq(50)
       end
     end
 
     context "with only one setting" do
-      let(:yaml) { "engine:\n  execution:\n    batch_size: 500\n" }
+      let(:yaml) { "engine:\n  execution:\n    chunk_size: 500\n" }
 
       it "reads it" do
-        expect(configuration.execution.batch_size).to eq(500)
+        expect(configuration.execution.chunk_size).to eq(500)
       end
 
       it "keeps the defaults of the settings the file does not mention" do
-        expect(configuration.source).to have_attributes(distinct_values_cap: 1000)
+        expect(configuration.recommendation).to have_attributes(inclusion_threshold: 55, reorder_penalty: 10)
       end
     end
 
@@ -129,24 +119,23 @@ RSpec.describe Pipeforge::Configuration do
     end
 
     it "are the defaults when the project has no such file" do
-      expect(described_class.execution.batch_size).to eq(2000)
+      expect(described_class.execution.chunk_size).to eq(2000)
     end
 
     it "give each section by name" do
-      expect(described_class.source.distinct_values_cap).to eq(1000)
       expect(described_class.recommendation.inclusion_threshold).to eq(55)
     end
   end
 
   describe ".load when a later load fails" do
-    let(:yaml) { "engine:\n  execution:\n    batch_size: 7\n" }
+    let(:yaml) { "engine:\n  execution:\n    chunk_size: 7\n" }
 
     it "keeps the settings it had" do
       described_class.load
       File.write(described_class::DEFAULT_PATH, "engine: [unclosed\n")
 
-      expect { described_class.load }.to raise_error(Pipeforge::ConfigurationError)
-      expect(described_class.execution.batch_size).to eq(7)
+      expect { described_class.load }.to raise_error(ArgumentError)
+      expect(described_class.execution.chunk_size).to eq(7)
     end
   end
 
@@ -168,158 +157,131 @@ RSpec.describe Pipeforge::Configuration do
     context "when the file is not valid YAML" do
       let(:yaml) { "engine: [unclosed\n" }
 
-      include_examples "a file the engine refuses", :config_file_not_valid_yaml, /not valid YAML/
+      include_examples "a file the engine refuses", /not valid YAML/
     end
 
     context "when the YAML uses a tag that is not allowed" do
       let(:yaml) { "engine: !ruby/object:Object {}\n" }
 
-      include_examples "a file the engine refuses", :config_file_not_valid_yaml, /not valid YAML/
+      include_examples "a file the engine refuses", /not valid YAML/
     end
 
     context "when the file is a list, not name: value entries" do
       let(:yaml) { "- a\n- b\n" }
 
-      include_examples "a file the engine refuses", :config_file_not_name_value_entries,
-        /must be made of name: value entries at the top level/
+      include_examples "a file the engine refuses", /must be made of name: value entries at the top level/
     end
 
     context "when the file is a single word, not name: value entries" do
       let(:yaml) { "hello\n" }
 
-      include_examples "a file the engine refuses", :config_file_not_name_value_entries,
-        /must be made of name: value entries at the top level/
+      include_examples "a file the engine refuses", /must be made of name: value entries at the top level/
     end
 
     context "when the file is a number, not name: value entries" do
       let(:yaml) { "42\n" }
 
-      include_examples "a file the engine refuses", :config_file_not_name_value_entries,
-        /must be made of name: value entries at the top level/
+      include_examples "a file the engine refuses", /must be made of name: value entries at the top level/
     end
 
     context "when engine is a list, not sections" do
       let(:yaml) { "engine:\n  - a\n" }
 
-      include_examples "a file the engine refuses", :engine_not_sections,
-        /engine must hold sections, each written as a name/
+      include_examples "a file the engine refuses", /engine must hold sections, each written as a name/
     end
 
     context "when engine is a single word, not sections" do
       let(:yaml) { "engine: hello\n" }
 
-      include_examples "a file the engine refuses", :engine_not_sections,
-        /engine must hold sections, each written as a name/
+      include_examples "a file the engine refuses", /engine must hold sections, each written as a name/
     end
 
     context "when a section is a number, not settings" do
       let(:yaml) { "engine:\n  execution: 5\n" }
 
-      include_examples "a file the engine refuses", :section_not_settings,
-        /section execution must hold settings, each written as name: value/
+      include_examples "a file the engine refuses", /section execution must hold settings, each written as name: value/
     end
 
     context "when a section is a list, not settings" do
       let(:yaml) { "engine:\n  execution:\n    - a\n" }
 
-      include_examples "a file the engine refuses", :section_not_settings,
-        /section execution must hold settings, each written as name: value/
+      include_examples "a file the engine refuses", /section execution must hold settings, each written as name: value/
     end
 
     context "with a section it does not know" do
       let(:yaml) { "engine:\n  loging:\n    level: info\n" }
 
-      include_examples "a file the engine refuses", :unknown_section, /unknown section loging/
+      include_examples "a file the engine refuses", /unknown section loging/
+    end
 
-      it "says which section" do
-        expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-          expect(error.errors.first).to include(section: "loging")
-        end
-      end
+    context "with a source section" do
+      let(:yaml) { "engine:\n  source:\n    distinct_values_cap: 10\n" }
+
+      include_examples "a file the engine refuses", /unknown section source/
     end
 
     context "with a setting it does not know" do
       let(:yaml) { "engine:\n  execution:\n    batch_sise: 10\n" }
 
-      include_examples "a file the engine refuses", :unknown_setting,
-        /unknown setting batch_sise in section execution/
-
-      it "says which section and which setting" do
-        expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-          expect(error.errors.first).to include(section: "execution", setting: "batch_sise")
-        end
-      end
+      include_examples "a file the engine refuses", /unknown setting batch_sise in section execution/
     end
 
-    describe "execution.batch_size" do
+    describe "execution.chunk_size" do
       context "set to text" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "abc") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "abc") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1, got "abc"/
-
-        it "says which setting and which value" do
-          expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-            expect(error.errors.first).to include(setting: "execution.batch_size", value: "abc")
-          end
-        end
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1, got "abc"/
       end
 
       context "set to a decimal" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "1.5") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "1.5") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to zero" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "0") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "0") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to a negative number" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "-5") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "-5") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to true" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "true") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "true") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to nothing" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to a list" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "[1]") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "[1]") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /execution\.batch_size must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /execution\.chunk_size must be a whole number of at least 1/
       end
 
       context "set to 1" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "1") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "1") }
 
         it "is accepted" do
-          expect(configuration.execution.batch_size).to eq(1)
+          expect(configuration.execution.chunk_size).to eq(1)
         end
       end
 
       context "set to 100000" do
-        let(:yaml) { setting_yaml(section: "execution", setting: "batch_size", value: "100000") }
+        let(:yaml) { setting_yaml(section: "execution", setting: "chunk_size", value: "100000") }
 
         it "is accepted" do
-          expect(configuration.execution.batch_size).to eq(100_000)
+          expect(configuration.execution.chunk_size).to eq(100_000)
         end
       end
     end
@@ -352,29 +314,25 @@ RSpec.describe Pipeforge::Configuration do
       context "set to 0" do
         let(:yaml) { setting_yaml(section: "recommendation", setting: "inclusion_threshold", value: "0") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /recommendation\.inclusion_threshold must be a whole number of at least 1, got 0/
+        include_examples "a file the engine refuses", /recommendation\.inclusion_threshold must be a whole number of at least 1, got 0/
       end
 
       context "set to a negative number" do
         let(:yaml) { setting_yaml(section: "recommendation", setting: "inclusion_threshold", value: "-1") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /recommendation\.inclusion_threshold must be a whole number of at least 1, got -1/
+        include_examples "a file the engine refuses", /recommendation\.inclusion_threshold must be a whole number of at least 1, got -1/
       end
 
       context "set to a decimal" do
         let(:yaml) { setting_yaml(section: "recommendation", setting: "inclusion_threshold", value: "55.5") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /recommendation\.inclusion_threshold must be a whole number of at least 1/
+        include_examples "a file the engine refuses", /recommendation\.inclusion_threshold must be a whole number of at least 1/
       end
 
       context "set to text" do
         let(:yaml) { setting_yaml(section: "recommendation", setting: "inclusion_threshold", value: "high") }
 
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /recommendation\.inclusion_threshold must be a whole number of at least 1, got "high"/
+        include_examples "a file the engine refuses", /recommendation\.inclusion_threshold must be a whole number of at least 1, got "high"/
       end
     end
 
@@ -390,75 +348,7 @@ RSpec.describe Pipeforge::Configuration do
       context "set to 101" do
         let(:yaml) { setting_yaml(section: "recommendation", setting: "reorder_penalty", value: "101") }
 
-        include_examples "a file the engine refuses", :setting_not_whole_number_0_to_100,
-          /recommendation\.reorder_penalty must be a whole number from 0 to 100, got 101/
-      end
-    end
-
-    describe "source.distinct_values_cap" do
-      context "set to text" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "many") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1, got "many"/
-      end
-
-      context "set to a decimal" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "2.5") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to zero" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "0") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to a negative number" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "-1") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to true" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "true") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to nothing" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to a list" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "[1]") }
-
-        include_examples "a file the engine refuses", :setting_not_positive_whole_number,
-          /source\.distinct_values_cap must be a whole number of at least 1/
-      end
-
-      context "set to 1" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "1") }
-
-        it "is accepted" do
-          expect(configuration.source.distinct_values_cap).to eq(1)
-        end
-      end
-
-      context "set to 500" do
-        let(:yaml) { setting_yaml(section: "source", setting: "distinct_values_cap", value: "500") }
-
-        it "is accepted" do
-          expect(configuration.source.distinct_values_cap).to eq(500)
-        end
+        include_examples "a file the engine refuses", /recommendation\.reorder_penalty must be a whole number from 0 to 100, got 101/
       end
     end
 
@@ -468,80 +358,85 @@ RSpec.describe Pipeforge::Configuration do
           <<~YAML
             engine:
               execution:
-                batch_size: abc
+                chunk_size: abc
                 batch_sise: 10
-              source:
-                distinct_values_cap: 0
+              recommendation:
+                inclusion_threshold: 0
               loging:
                 level: info
           YAML
         end
 
         it "reports all of them in one error" do
-          expect { configuration }.to raise_error(Pipeforge::ConfigurationError, /has 4 errors/)
+          expect { configuration }.to raise_error(ArgumentError, /has 4 errors/)
         end
 
         it "lists each error on its own line" do
-          expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
+          expect { configuration }.to raise_error(ArgumentError) do |error|
             expect(error.message.lines.map(&:strip)).to include(
               "- unknown section loging",
               "- unknown setting batch_sise in section execution",
-              "- execution.batch_size must be a whole number of at least 1, got \"abc\"",
-              "- source.distinct_values_cap must be a whole number of at least 1, got 0"
+              "- execution.chunk_size must be a whole number of at least 1, got \"abc\"",
+              "- recommendation.inclusion_threshold must be a whole number of at least 1, got 0"
             )
           end
         end
 
         it "starts with the file, so the consumer knows which file to open" do
-          expect { configuration }.to raise_error(Pipeforge::ConfigurationError).with_message(a_string_starting_with("#{described_class::DEFAULT_PATH} has 4 errors:"))
+          expect { configuration }.to raise_error(ArgumentError).with_message(a_string_starting_with("#{described_class::DEFAULT_PATH} has 4 errors:"))
         end
 
-        it "has one entry for each, in the order they are found" do
-          expect { configuration }.to raise_error(Pipeforge::ConfigurationError) do |error|
-            expect(error.codes).to eq(
-              %i[unknown_section unknown_setting setting_not_positive_whole_number setting_not_positive_whole_number]
+        it "lists them in the order they are found" do
+          expect { configuration }.to raise_error(ArgumentError) do |error|
+            expect(error.message.lines.drop(1).map(&:strip)).to eq(
+              [
+                "- unknown section loging",
+                "- unknown setting batch_sise in section execution",
+                "- execution.chunk_size must be a whole number of at least 1, got \"abc\"",
+                "- recommendation.inclusion_threshold must be a whole number of at least 1, got 0"
+              ]
             )
           end
         end
       end
 
       context "with a wrong value in each of two sections" do
-        let(:yaml) { "engine:\n  execution:\n    batch_size: 0\n  source:\n    distinct_values_cap: -1\n" }
+        let(:yaml) { "engine:\n  execution:\n    chunk_size: 0\n  recommendation:\n    inclusion_threshold: -1\n" }
 
         it "reports both" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /execution\.batch_size.*source\.distinct_values_cap/m
+            ArgumentError, /execution\.chunk_size.*recommendation\.inclusion_threshold/m
           )
         end
       end
 
       context "with a section that is not settings next to a section with a wrong value" do
-        let(:yaml) { "engine:\n  execution: 5\n  source:\n    distinct_values_cap: 0\n" }
+        let(:yaml) { "engine:\n  execution: 5\n  recommendation:\n    inclusion_threshold: 0\n" }
 
         it "still checks the other section" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /section execution must hold settings.*source\.distinct_values_cap must be a whole number/m
+            ArgumentError, /section execution must hold settings.*recommendation\.inclusion_threshold must be a whole number/m
           )
         end
       end
 
       context "with an unknown setting next to a wrong value in the same section" do
-        let(:yaml) { "engine:\n  source:\n    colour: red\n    distinct_values_cap: 0\n" }
+        let(:yaml) { "engine:\n  recommendation:\n    colour: red\n    inclusion_threshold: 0\n" }
 
         it "reports both, because the known settings are still checked" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, /unknown setting colour in section source.*source\.distinct_values_cap/m
+            ArgumentError, /unknown setting colour in section recommendation.*recommendation\.inclusion_threshold/m
           )
         end
       end
 
       context "with one error only" do
-        let(:yaml) { "engine:\n  execution:\n    batch_size: abc\n" }
+        let(:yaml) { "engine:\n  execution:\n    chunk_size: abc\n" }
 
         it "gives the sentence, with no list" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError,
-            "#{described_class::DEFAULT_PATH}: execution.batch_size must be a whole number of at least 1, got \"abc\""
+            ArgumentError,
+            "#{described_class::DEFAULT_PATH}: execution.chunk_size must be a whole number of at least 1, got \"abc\""
           )
         end
       end
@@ -551,7 +446,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "stops at once, with only that error" do
           expect { configuration }.to raise_error(
-            Pipeforge::ConfigurationError, "#{described_class::DEFAULT_PATH}: must be made of name: value entries at the top level"
+            ArgumentError, "#{described_class::DEFAULT_PATH}: must be made of name: value entries at the top level"
           )
         end
       end

@@ -6,6 +6,7 @@ require "pipeforge/activerecord"
 # shared with the core's specs.
 core_support = File.expand_path("../../pipeforge/spec/support", __dir__)
 require File.join(core_support, "temp_file_helper")
+require File.join(core_support, "project_directory_helper")
 require File.join(core_support, "configuration_helper")
 require File.join(core_support, "target_schema_helper")
 

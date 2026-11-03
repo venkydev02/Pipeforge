@@ -9,7 +9,7 @@
 ## 1. Current Scope
 
 ### 1.1 Source
-- CSV (read with an offset and limit, optionally)
+- CSV (read from an offset, optionally)
 
 ### 1.2 Target
 - Rails applications using ActiveRecord, through the `pipeforge-activerecord` distribution (ADR-16)
@@ -18,27 +18,29 @@
 
 ### 1.3 Migration Scope
 - Single primary entity per migration job
-- Foreign key columns hold the parent's primary key; names are mapped to ids in the value stage (ADR-15)
+- Foreign key columns hold the parent's primary key; names are mapped to ids in the column values stage (ADR-15)
 - Single-attribute primary, foreign and unique keys
 
 ### 1.4 Configuration & Interaction
 - Consumed as a Ruby library: the core gem comes with the adapter gem; no gem-shipped CLI in MVP
 - One-time engine configuration through `pipeforge.yml`; behavior is chosen by options, not code
-- Per-call input: the mapped columns with their value mappings, the mode, and the optional offset, limit and loading options (the stages do not depend on each other's output)
+- Per-call input: the mapped columns with their value mappings, the mode, and the optional offset, chunk size and loading options (the stages do not depend on each other's output)
 - Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
 
 ### 1.5 Migration Pipeline
 1. `analyze_headers`: read the source header and the target model's metadata; rank by names only; return the best match for each target column, the metadata of each target column, and the columns left unmatched
 2. The consumer reviews the matches and builds the mapped columns (target column => source column, with an optional value mapping)
-3. `analyze_values(mapped_columns:)`: one streaming pass over the mapped columns; return facts and the editable value mapping
-4. The consumer reviews and edits the value mapping, and may call `analyze_values` again
-5. `run(mode: :dry_run)`: the contract check, then the batches inside one outer transaction that is rolled back
-6. `run(mode: :run)`: the contract check, then the batches, each committed; checkpoint after each commit
-7. Failed rows (JSON Lines) and the summary
+3. `analyze_column_values(mapped_columns:)`: one streaming pass over the mapped columns; return facts and the editable value mapping
+4. The consumer reviews and edits the value mapping, and may call `analyze_column_values` again
+5. `run(mode: :dry_run)`: the contract check, then each row is mapped, validated and written, in chunks and one row at a time, inside one outer transaction that is rolled back at the end (built); batch loading comes next
+6. `run(mode: :run)`: the contract check, then the same validation and writing, each row in its own committed transaction (built); later in batches
+7. Each chunk's failed rows go to the consumer's block as the chunk is done; `run` returns the totals
+
+Now that row-by-row loading is built (post-load work): review which error codes the engine has to support, and add the missing ones, so that a dry run and a run report the same failures.
 
 ### 1.6 Core Guarantees
 - Deterministic, explainable recommendations (reproducible from column names alone)
-- No guessing: the engine never looks up a parent row by name; the consumer maps names to ids in the value stage (ADR-15)
+- No guessing: the engine never looks up a parent row by name; the consumer maps names to ids in the column values stage (ADR-15)
 - Streaming, bounded-memory processing
 - Row access confined to the loader (ADR-15)
 - Complete accounting of every processed row
@@ -65,12 +67,12 @@
 2. CSV files are analyzed without loading the whole file into memory.
 3. The target model's columns and model metadata are read (PostgreSQL and SQLite).
 4. `analyze_headers` returns the best match for each target column (a source column and a score) with the metadata of the target column, using names only.
-5. `analyze_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
-6. The consumer can edit the mapped columns or a value mapping and call `analyze_values` again; the facts reflect the edit.
+5. `analyze_column_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
+6. The consumer can edit the mapped columns or a value mapping and call `analyze_column_values` again; the facts reflect the edit.
 7. `run` reports every missing column and every unmapped required column together, before any row is read.
 8. A dry run reports the same failed rows as a real run against an unchanged database, and persists nothing.
 9. Batches load with `insert_all!`, or row by row through the model; a failed batch is retried row by row.
-10. Failed rows are written with exact row numbers, the source values and each error's stage, column and code.
-11. A checkpoint is written after each committed batch, and a run from a checkpoint continues the row numbers.
-12. The summary accounts for every processed row.
+10. Failed rows are given to the consumer, a chunk at a time, with exact row numbers, the transformed values and each error's stage, column and code. The engine writes no file.
+11. A run with `offset:` (the row number of the last processed row) continues the row numbers.
+12. The totals account for every processed row (valid plus invalid).
 13. Row access is confined to the loader, and the core gem names no ActiveRecord class (tested).

@@ -19,6 +19,14 @@ require "active_record"
 #   tickets     a column the model declares with another type than the table
 #   shipments   enums (stored as a number and as text, with and without a default in the
 #               table) and a column whose default is set only in the model
+#   events      a date and a datetime column, for the formats the model reads
+#   measurements a single precision float (limit 24) next to a double precision one
+#   counters    an unsigned integer attribute (the type MySQL gives an unsigned column), next to a signed one
+#   memberships a model with validations: presence, uniqueness, length, numericality, an enum
+#               that must be present, a required parent and a mistake on the record as a whole
+#   accounts    a model with no validations, on a table that refuses what the model does not check:
+#               a repeated email (unique index), an empty email (NOT NULL) and a company that
+#               does not exist (foreign key); a callback stops the save of one nickname
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.verbose = false
 
@@ -71,6 +79,31 @@ ActiveRecord::Schema.define do
     t.string :channel, null: false
     t.string :note
   end
+  create_table(:events) do |t|
+    t.date :starts_on
+    t.datetime :starts_at
+  end
+  create_table(:measurements) do |t|
+    t.float :ratio, limit: 24
+    t.float :weight
+  end
+  create_table(:counters) do |t|
+    t.integer :hits, limit: 2
+    t.integer :misses, limit: 2
+  end
+  create_table(:memberships) do |t|
+    t.string :email, limit: 20, null: false
+    t.integer :seats, limit: 2
+    t.decimal :fee, precision: 5, scale: 2
+    t.integer :tier
+    t.references :company
+  end
+  create_table(:accounts) do |t|
+    t.string :email, null: false
+    t.string :nickname
+    t.references :company, foreign_key: true
+  end
+  add_index :accounts, :email, unique: true
 end
 
 module AdapterSpecModels
@@ -136,5 +169,51 @@ module AdapterSpecModels
     self.table_name = "order_lines"
     belongs_to :order, class_name: "AdapterSpecModels::Order",
       foreign_key: [:shop_id, :order_number], primary_key: [:shop_id, :number]
+  end
+
+  class Event < ActiveRecord::Base
+    self.table_name = "events"
+  end
+
+  class Measurement < ActiveRecord::Base
+    self.table_name = "measurements"
+  end
+
+  class Counter < ActiveRecord::Base
+    self.table_name = "counters"
+    attribute :hits, ActiveRecord::Type::UnsignedInteger.new(limit: 2)
+  end
+
+  class Membership < ActiveRecord::Base
+    self.table_name = "memberships"
+    enum :tier, {basic: 0, pro: 1}
+    belongs_to :company, class_name: "AdapterSpecModels::Company", optional: false
+    validates :email, presence: true, uniqueness: true, length: {maximum: 20}
+    validates :tier, presence: true
+    validates :seats, numericality: {less_than: 100_000}, allow_nil: true
+    validate :email_not_closed
+    before_validation :strip_email
+
+    def strip_email
+      self.email = email.strip unless email.nil?
+    end
+
+    def email_not_closed
+      errors.add(:base, "signups are closed for this email") if email == "closed@example.com"
+    end
+  end
+
+  class Account < ActiveRecord::Base
+    self.table_name = "accounts"
+    before_save { throw :abort if nickname == "halt" }
+  end
+end
+
+# The specs that save rows leave the tables empty for the next example.
+RSpec.configure do |config|
+  config.after do
+    AdapterSpecModels::Account.delete_all
+    AdapterSpecModels::Membership.delete_all
+    AdapterSpecModels::Company.delete_all
   end
 end

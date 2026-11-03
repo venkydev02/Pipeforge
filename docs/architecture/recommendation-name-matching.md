@@ -116,20 +116,20 @@ Target columns that are **filled by the database** (auto-numbered keys, identity
 **Consequence accepted.** A customer who wants to keep their old ids must add that mapping by hand when editing the draft. The Builder therefore must not refuse a deliberate mapping to an auto-numbered key; it is only never *recommended*.
 
 ### D11. The value scan exists for value mappings; loadability comes from the dry run
-The scan lists the **distinct values** of each source column (with how often each occurs, up to a cap) so the customer can configure **value mappings** (for example `A` -> `active`, `Y` -> `true`). The same pass reports `type_compatibility` (how many values fit the target column's type, with the value mappings applied); it is informational only.
+The scan lists the **distinct values** of each source column (with how often each occurs) so the customer can configure **value mappings** (for example `A` -> `active`, `Y` -> `true`). The same pass reports `type_compatibility` (how many values fit the target column's type, with the value mappings applied); it is informational only.
 
-Whether the data will actually load is answered by the **dry run** (with the value mappings applied), not by the value stage.
+Whether the data will actually load is answered by the **dry run** (with the value mappings applied), not by the column values stage.
 
 **Why.** At planning time the customer has not yet configured value mappings or transforms, so a "loadable / doubtful" percentage on raw values can mislead: `twenty` looks like a failure now, but a mapping added later may fix it. The dry run already exists in the design and is the only truthful answer. This replaces the earlier "loadable / doubtful" facts idea.
-**Open:** the cap on distinct values per column, what is shown next to them (counts, the target column's allowed values), and how value mappings are suggested (D13).
+**Open:** what is shown next to them (counts, the target column's allowed values), and how value mappings are suggested (D13).
 
-### D12. Distinct values: capped at 1,000 per column, configurable
-For each source column the scan keeps up to **1,000 distinct values**, each with how often it appears. Beyond the cap the column is marked "too many distinct values to list". The cap is a setting in `pipeforge.yml`.
+### D12. Distinct values: every value is kept
+For each source column the scan keeps **every distinct value**, each with how often it appears. There is no cap and no setting.
 
-**Why.** Value mappings only matter for columns with few distinct values (statuses, countries, categories); 1,000 covers every realistic code list. Listing every distinct email or id would grow memory with the data and break the bounded-memory promise (ADR-02). A smaller cap (100) would cut off country or category lists; no cap is not bounded.
+**Why.** The result is complete only after the last row, so a cap would hide values from the customer, who needs all of them to write a value mapping, and paging cannot work because a value can first appear in the last row. The cost is memory: it grows with the number of distinct values, and a column of unique ids holds one entry per row. (This replaces the earlier cap of 1,000 per column.)
 
 ### D13. Value-mapping suggestions: safe ones only
-**Status: decided, not built yet.** Today the value stage lists the values and the consumer writes the value mappings (`recommendation-and-validation.md` section 3.1). The value stage would suggest a value mapping automatically only when it is certain:
+**Status: decided, not built yet.** Today the column values stage lists the values and the consumer writes the value mappings (`recommendation-and-validation.md` section 3.1). The column values stage would suggest a value mapping automatically only when it is certain:
 - a source value equals an **allowed value** of the target column once case, spaces and punctuation are ignored (`INACTIVE` -> `inactive`); allowed values come from the model (for example an `enum` declaration), and a column without allowed values needs no mapping;
 - the source values are words from a small **fixed boolean list** (`Y`, `yes`, `true`, `t`, `1` -> true; `N`, `no`, `false`, `f`, `0` -> false) and the target column is a yes/no column.
 
@@ -160,7 +160,7 @@ NOT MAPPED, REQUIRED -> build fails until fixed
 **Open:** the exact threshold default (55% proposed), whether it applies to the name score only (yes, per D6), and the name of the call that adopts a doubtful candidate.
 
 ### D15. The Planner's JSON response (the draft) (superseded)
-> **Superseded by ADR-14 and ADR-17.** The header stage returns a `HeaderAnalysis` (`matches` keyed by target column, the metadata of each target column and the unmatched columns; the consumer builds `mapped_columns` from it), and the value stage returns a `ValueAnalyzer::Result`. The draft JSON and the `BuildResult` are no longer produced. The text below is the record of the earlier decision.
+> **Superseded by ADR-14 and ADR-17.** The header stage returns a `HeaderAnalysis` (`matches` keyed by target column, the metadata of each target column and the unmatched columns; the consumer builds `mapped_columns` from it), and the column values stage returns a `ColumnValueAnalyzer::Result`. The draft JSON and the `BuildResult` are no longer produced. The text below is the record of the earlier decision.
 
 The Planner returns one JSON document (no UI is involved). The consumer edits it (remap a column, add value mappings) and sends it back to the Builder.
 
@@ -169,7 +169,7 @@ The Planner returns one JSON document (no UI is involved). The consumer edits it
   "findings": {
     "source_columns": [
       { "name": "Status", "non_empty": 1000000, "empty": 0,
-        "distinct_values": { "capped": false,
+        "distinct_values": {
           "values": [ { "value": "Active", "count": 600000 }, { "value": "A", "count": 100000 } ] } }
     ],
     "target_columns": [
@@ -208,7 +208,7 @@ The Planner returns one JSON document (no UI is involved). The consumer edits it
 **Open:** the exact `constraints` fields, the wording of `reason`, and `value_mapping` handling for values that map to several targets or to null.
 
 ### D16. Reference columns: ranked by name like other columns; the customer chooses the lookup column (lookup superseded)
-> **Partly superseded by ADR-15.** The name ranking still applies to foreign key columns. The lookup column, the `lookup` field and the resolver are removed for the MVP: a foreign key column holds the parent's primary key, and the consumer maps names to ids in the value stage. The text below is the record of the earlier decision.
+> **Partly superseded by ADR-15.** The name ranking still applies to foreign key columns. The lookup column, the `lookup` field and the resolver are removed for the MVP: a foreign key column holds the parent's primary key, and the consumer maps names to ids in the column values stage. The text below is the record of the earlier decision.
 
 A **reference column** is a target column that points to a row in another (parent) table, i.e. a real foreign key such as `users.company_id`.
 
@@ -239,13 +239,13 @@ A **reference column** is a target column that points to a row in another (paren
 - **ADR-12** (ranking by names only; values feed value mappings) and **ADR-13** (acknowledgement flag; JSON draft) in `docs/decisions/adrs.md`; ADR-10 marked partially superseded.
 - **protocols.md:** P1 and P2 rewritten, the draft JSON, `BuildResult` codes and P3.
 - **recommendation-and-validation.md:** recommendation sections rewritten (name matching, draft contents, value mappings).
-- **configuration.md:** `inclusion_threshold`, `reorder_penalty`, `distinct_values_cap`, `synonyms`, `column_aliases`.
+- **configuration.md:** `inclusion_threshold`, `reorder_penalty`, `synonyms`, `column_aliases`.
 - **overview.md, mvp-scope.md, README.md** (tracked, on the branch `docs-apply-name-matching-decisions`), **testing-strategy.md** (required name-matching scenarios), **roadmap-and-phases.md**.
 - **Research sources:** [Cupid](https://www.microsoft.com/en-us/research/publication/generic-schema-matching-with-cupid/), [COMA](https://old.dbs.uni-leipzig.de/file/vldb01.pdf), [Valentine benchmark](https://arxiv.org/pdf/2010.07386), [XML matchers survey](https://arxiv.org/pdf/1407.2845), [react-spreadsheet-import](https://docsearch.algolia.com/mcp/docs/repo/ugnissoftware/react-spreadsheet-import), [tableflow csv-import](https://docsearch.algolia.com/mcp/docs/repo/tableflowhq/csv-import), [Dromo mapping guide](https://dromo.io/blog/data-mapping-best-practices-csv-imports), [AMAP](https://sites.udel.edu/se-research/2008/05/05/amap-automatically-mining-abbreviation-expansions-in-programs/).
 
 ## 4. Open items for the next brainstorm
 1. ~~Targets that cannot be written~~ Decided: D10 (never recommended; shown in facts).
-2. ~~Distinct-value listing~~ Decided: D12 (cap 1,000, configurable). Still open: what is shown next to each value besides the count (for example the target column's allowed values).
+2. ~~Distinct-value listing~~ Decided: D12 (every value is kept). Still open: what is shown next to each value besides the count (for example the target column's allowed values).
 3. ~~Value-mapping suggestions~~ Decided: D13 (safe ones only). Still open: the boolean word list and the draft syntax for mappings.
 4. ~~Reference columns~~ Decided: D16. Still open: the hint fact, non-unique lookup warning, missing-lookup-column error, source column named only `Id`, composite and polymorphic references.
 5. ~~Name required?~~ and 6. ~~Weak candidates in state?~~ Decided: D14 (below-threshold candidates are doubtful facts; 0% pairs are not candidates).

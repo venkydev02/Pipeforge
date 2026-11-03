@@ -32,6 +32,18 @@ module Pipeforge
       TargetSchema.new(table_name: target_table, model: model.name, columns: build_columns(model: model))
     end
 
+    # The object that builds the records of the table's model and preloads their parents.
+    #
+    # @param target_table [String] the table to load
+    # @return [ActiveRecordModelAdapter]
+    # @raise [TargetSchemaError] the table does not exist (+target_table_not_found+), or no
+    #   application model uses it (+active_record_model_not_found+)
+    def model_adapter(target_table:)
+      reject_missing_table(target_table: target_table)
+
+      ActiveRecordModelAdapter.new(model: find_model(target_table: target_table))
+    end
+
     private
 
     def reject_missing_table(target_table:)
@@ -113,7 +125,8 @@ module Pipeforge
     end
 
     # Builds the target column from the model's view of the column: its attribute type and
-    # +column_defaults+. For an enum column the labels are in +enum_values+.
+    # +column_defaults+. For an enum column the labels are in +enum_values+, and an integer column
+    # is unsigned when its attribute type is ActiveRecord's unsigned integer.
     def build_column(model:, model_column:, foreign_key:)
       attribute_type = model.type_for_attribute(model_column.name)
       type = attribute_type.type.to_s
@@ -124,6 +137,7 @@ module Pipeforge
         type: type,
         sql_type: model_column.sql_type,
         limit: text_type ? nil : attribute_type.limit,
+        unsigned: attribute_type.is_a?(ActiveRecord::Type::UnsignedInteger),
         max_length: text_type ? attribute_type.limit : nil,
         precision: attribute_type.precision,
         scale: attribute_type.scale,

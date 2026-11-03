@@ -20,7 +20,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   # The metadata of a target column that build_target_column filled with its defaults.
   def default_metadata(**overrides)
     {
-      type: "string", sql_type: "varchar", limit: nil, max_length: nil, precision: nil, scale: nil,
+      type: "string", sql_type: "varchar", limit: nil, unsigned: false, max_length: nil, precision: nil, scale: nil,
       default: nil, enum_values: nil, required: false, foreign_key: nil
     }.merge(overrides)
   end
@@ -95,7 +95,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           "first_name" => {
             "source_column" => "First Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
-              "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => 50,
+              "type" => "string", "sql_type" => "varchar", "limit" => nil, "unsigned" => false, "max_length" => 50,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
               "foreign_key" => nil
             }
@@ -103,7 +103,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           "last_name" => {
             "source_column" => "Last Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
-              "type" => "string", "sql_type" => "varchar", "limit" => nil, "max_length" => nil,
+              "type" => "string", "sql_type" => "varchar", "limit" => nil, "unsigned" => false, "max_length" => nil,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => false,
               "foreign_key" => nil
             }
@@ -114,7 +114,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           {
             "name" => "company_id",
             "metadata" => {
-              "type" => "integer", "sql_type" => "bigint", "limit" => nil, "max_length" => nil,
+              "type" => "integer", "sql_type" => "bigint", "limit" => nil, "unsigned" => false, "max_length" => nil,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
               "foreign_key" => {"association" => "company", "parent_table" => "companies"}
             }

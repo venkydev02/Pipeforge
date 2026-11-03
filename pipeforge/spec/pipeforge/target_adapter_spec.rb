@@ -23,6 +23,14 @@ RSpec.describe Pipeforge::TargetAdapter do
     end
   end
 
+  describe ".model_adapter" do
+    it "stops with target_adapter_not_installed when no adapter is installed" do
+      expect { described_class.model_adapter(target_table: "records") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
+        expect(error.codes).to eq([:target_adapter_not_installed])
+      end
+    end
+  end
+
   describe ".schema" do
     context "when an adapter is installed" do
       before { described_class.install(adapter: adapter) }
@@ -43,6 +51,23 @@ RSpec.describe Pipeforge::TargetAdapter do
         expect { described_class.schema(target_table: "records") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
           expect(error.codes).to eq([:target_adapter_not_installed])
         end
+      end
+    end
+
+    context "when asked for the model adapter" do
+      let(:model_adapter) { double("model adapter") }
+      let(:adapter) { double("target adapter", schema: schema, model_adapter: model_adapter) }
+
+      before { described_class.install(adapter: adapter) }
+
+      it "gives the model adapter the installed adapter returns" do
+        expect(described_class.model_adapter(target_table: "records")).to be(model_adapter)
+      end
+
+      it "asks the adapter for the table it was given" do
+        described_class.model_adapter(target_table: "records")
+
+        expect(adapter).to have_received(:model_adapter).with(target_table: "records")
       end
     end
 

@@ -7,7 +7,7 @@ require "tmpdir"
 # the engine reads its settings from the conventional file, config/pipeforge.yml, in the
 # directory the program runs in. When +config+ is given, it is written to that file first.
 #
-#   in_project_directory(config: "engine:\n  execution:\n    batch_size: 10\n") { ... }
+#   in_project_directory(config: "engine:\n  execution:\n    chunk_size: 10\n") { ... }
 module ProjectDirectoryHelper
   def in_project_directory(config: nil)
     Dir.mktmpdir do |directory|

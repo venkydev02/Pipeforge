@@ -10,10 +10,10 @@ module Pipeforge
   #
   # @example
   #   begin
-  #     Pipeforge::Configuration.load
-  #   rescue Pipeforge::ConfigurationError => error
-  #     error.codes  # => [:unknown_section, :setting_not_positive_whole_number]
-  #     error.errors # => [{code: :unknown_section, message: "unknown section loging", section: "loging"}, ...]
+  #     engine.analyze_column_values(mapped_columns: mapped_columns)
+  #   rescue Pipeforge::InvalidMappedColumnsError => error
+  #     error.codes  # => [:mapped_column_not_in_file, :required_column_unmapped]
+  #     error.errors # => [{code: :mapped_column_not_in_file, message: "...", target_column: "email", source_column: "Mail"}, ...]
   #   end
   class Error < StandardError
     # @return [Array<Hash>] one entry per mistake: +code+, +message+ and the fields that locate it
@@ -49,14 +49,7 @@ module Pipeforge
     end
   end
 
-  # Raised when the configuration file (config/pipeforge.yml) cannot be used. A missing file is
-  # not an error: every setting then has its default. Each code is a subject and what is wrong
-  # with it: +config_file_not_valid_yaml+, +config_file_not_name_value_entries+,
-  # +engine_not_sections+, +unknown_section+, +section_not_settings+, +unknown_setting+,
-  # +setting_not_positive_whole_number+ and +setting_not_whole_number_0_to_100+.
-  class ConfigurationError < Error; end
-
-  # Raised when the mapped columns given to {Engine#analyze_values} cannot be used (checked by
+  # Raised when the mapped columns given to {Engine#analyze_column_values} cannot be used (checked by
   # {MappedDataValidator}). Codes: +mapped_columns_not_name_value_entries+ (the mapped columns
   # are not a Hash; raised alone), +mapped_column_not_name_value_entries+ (an entry is not a
   # Hash), +target_column_not_in_schema+ (the target column is not a column of the table that can

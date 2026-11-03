@@ -1,6 +1,74 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Utilities do
+  describe ".positive_whole_number?" do
+    it "is true for 1" do
+      expect(described_class.positive_whole_number?(value: 1)).to be true
+    end
+
+    it "is true for a larger whole number" do
+      expect(described_class.positive_whole_number?(value: 2000)).to be true
+    end
+
+    it "is false for 0" do
+      expect(described_class.positive_whole_number?(value: 0)).to be false
+    end
+
+    it "is false for a negative whole number" do
+      expect(described_class.positive_whole_number?(value: -3)).to be false
+    end
+
+    it "is false for a decimal number" do
+      expect(described_class.positive_whole_number?(value: 2.5)).to be false
+    end
+
+    it "is false for a whole number written as text" do
+      expect(described_class.positive_whole_number?(value: "5")).to be false
+    end
+
+    it "is false for nil" do
+      expect(described_class.positive_whole_number?(value: nil)).to be false
+    end
+
+    it "is false for true" do
+      expect(described_class.positive_whole_number?(value: true)).to be false
+    end
+  end
+
+  describe ".non_negative_whole_number?" do
+    it "is true for 0" do
+      expect(described_class.non_negative_whole_number?(value: 0)).to be true
+    end
+
+    it "is true for 1" do
+      expect(described_class.non_negative_whole_number?(value: 1)).to be true
+    end
+
+    it "is true for a large whole number" do
+      expect(described_class.non_negative_whole_number?(value: 2000)).to be true
+    end
+
+    it "is false for a negative whole number" do
+      expect(described_class.non_negative_whole_number?(value: -1)).to be false
+    end
+
+    it "is false for a decimal number" do
+      expect(described_class.non_negative_whole_number?(value: 1.5)).to be false
+    end
+
+    it "is false for a whole number written as text" do
+      expect(described_class.non_negative_whole_number?(value: "2")).to be false
+    end
+
+    it "is false for nil" do
+      expect(described_class.non_negative_whole_number?(value: nil)).to be false
+    end
+
+    it "is false for true" do
+      expect(described_class.non_negative_whole_number?(value: true)).to be false
+    end
+  end
+
   describe ".blank?" do
     context "with a string" do
       it "is true for an empty string" do
@@ -92,6 +160,28 @@ RSpec.describe Pipeforge::Utilities do
       it "is false for a plain object" do
         expect(described_class.blank?(value: Object.new)).to be false
       end
+    end
+  end
+
+  describe ".largest_float" do
+    it "is the double precision maximum when the column has no limit" do
+      expect(described_class.largest_float(limit: nil)).to eq(Float::MAX)
+    end
+
+    it "is the double precision maximum for a limit of 53" do
+      expect(described_class.largest_float(limit: 53)).to eq(Float::MAX)
+    end
+
+    it "is the single precision maximum for a limit of 24" do
+      expect(described_class.largest_float(limit: 24)).to eq(3.4028234663852886e38)
+    end
+
+    it "is the single precision maximum for a limit below 24" do
+      expect(described_class.largest_float(limit: 10)).to eq(3.4028234663852886e38)
+    end
+
+    it "is the double precision maximum for a limit just above 24" do
+      expect(described_class.largest_float(limit: 25)).to eq(Float::MAX)
     end
   end
 end

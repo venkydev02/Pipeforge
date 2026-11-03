@@ -12,9 +12,10 @@ module Pipeforge
   # One column of the target table that can be given a source column. A column the engine would
   # never load into (the primary key, an ignored column, a generated column) is not in the
   # schema at all; the adapter leaves it out.
-  #   type                the type name the value stage checks against (integer, string, ...)
+  #   type                the type name the column values stage checks against (integer, string, ...)
   #   sql_type            the type as the table writes it
   #   limit, max_length, precision, scale   the size information that goes with the type
+  #   unsigned            true for an integer column that holds no negative numbers; false for every other column
   #   default             the value filled in when none is given, as the model sees it (a default
   #                       set in the model counts, and an enum shows its label)
   #   enum_values         nil, or for an enum column the label => stored value pairs the model
@@ -25,7 +26,7 @@ module Pipeforge
   #                       a default)
   #   foreign_key         a ForeignKey when the column points to a row of another table, else nil
   TargetColumn = Data.define(
-    :name, :type, :sql_type, :limit, :max_length, :precision, :scale, :default, :enum_values,
+    :name, :type, :sql_type, :limit, :unsigned, :max_length, :precision, :scale, :default, :enum_values,
     :required, :foreign_key
   )
 

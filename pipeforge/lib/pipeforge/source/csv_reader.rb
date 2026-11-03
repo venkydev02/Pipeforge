@@ -6,7 +6,7 @@ module Pipeforge
   module Source
     # The CSV source reader. It reads a CSV file in chunks of raw rows, using smarter_csv, and
     # gives the core the source interface: +headers+ and +each_chunk+. The engine
-    # builds one for its source, and every stage (header analysis, value analysis, run) reads the
+    # builds one for its source, and every stage (header analysis, column values analysis, run) reads the
     # file through it.
     #
     # The header is read once and kept. The rows are read again on every +each_chunk+ call.
@@ -68,33 +68,71 @@ module Pipeforge
       end
 
       # Yields each chunk of the file, in order. The header is checked first, so a file with an
-      # unusable header yields nothing. The chunk size is the +execution.batch_size+ setting. Each
-      # call reads the whole file again.
+      # unusable header yields nothing. Each call reads the whole file again.
       #
       # A block is required: this method exists to go through the real file.
       #
+      # @param offset [Integer] the number of data rows to drop from the start of the file
+      # @param chunk_size [Integer] the most rows in a chunk; the +execution.chunk_size+ setting when not given
+      # @param columns [Array<String>, nil] the only columns to give in each row; nil gives them all.
+      #   Which rows are dropped, kept and counted does not depend on it.
       # @yieldparam rows [Array<Hash{String => String, nil}>] header => raw text, or nil when empty
-      # @return [Integer] the number of data rows read, once the whole file has been read: blank
-      #   lines and rows with only empty cells are not rows. The gem's own line counters also
-      #   count the header and those dropped lines, so they are not used.
+      # @return [Integer] the number of data rows read, the dropped ones included. Blank lines and rows
+      #   with only empty cells are not rows.
       # @raise [ArgumentError] no block is given
       # @raise [EmptySourceError] see +headers+
       # @raise [InvalidHeaderError] see +headers+
       # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
       #   than the header (+source_row_too_long+)
-      def each_chunk
+      def each_chunk(offset: 0, chunk_size: Configuration.execution.chunk_size, columns: nil)
         raise ArgumentError, "each_chunk needs a block" unless block_given?
 
         headers
-        row_count = 0
-        chunk_reader = SmarterCSV::Reader.new(@source_io, OPTIONS.merge(chunk_size: Configuration.execution.batch_size))
-
-        chunk_reader.each_chunk do |chunk, _index|
-          row_count += chunk.size
-          yield chunk
+        rows_read = 0
+        # The gem's own line counters also count the header and the lines it drops, so the rows are counted here.
+        counted_rows = SmarterCSV::Reader.new(@source_io, OPTIONS).each.lazy.map do |row|
+          rows_read += 1
+          row
         end
 
-        row_count
+        # The chunks are cut here and not by the gem's own each_chunk, which cuts them from the start of the file:
+        # an offset would then leave the first chunk after it shorter than chunk_size.
+        # Lazy: the rows are read one chunk at a time, not all at once.
+        rows = counted_rows.drop(offset)
+        rows.each_slice(chunk_size) do |chunk|
+          # The columns are cut after the rows are read, so a row is dropped, kept and counted the same with or
+          # without them, and a row with more cells than the header still stops the read.
+          yield only_columns(rows: chunk, columns: columns)
+        end
+
+        rows_read
+      end
+
+      # Yields each data row of the file, in order, one at a time. The header is checked first, so a file with
+      # an unusable header yields nothing. Blank rows and rows with only empty cells are not rows. Each call
+      # reads the whole file again.
+      #
+      # A block is required: this method exists to go through the real file.
+      #
+      # @yieldparam row [Hash{String => String, nil}] header => raw text, or nil when empty
+      # @return [Integer] the number of data rows read
+      # @raise [ArgumentError] no block is given
+      # @raise [EmptySourceError] see +headers+
+      # @raise [InvalidHeaderError] see +headers+
+      # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
+      #   than the header (+source_row_too_long+)
+      def each_row
+        raise ArgumentError, "each_row needs a block" unless block_given?
+
+        headers
+        rows_read = 0
+
+        SmarterCSV::Reader.new(@source_io, OPTIONS).each do |row|
+          rows_read += 1
+          yield row
+        end
+
+        rows_read
       end
 
       # @return [String] the file path of the source when it has one, else the name of its class
@@ -125,6 +163,13 @@ module Pipeforge
       end
 
       private
+
+      # The rows with only the given columns in each; all of them when no columns are given.
+      def only_columns(rows:, columns:)
+        return rows if columns.nil?
+
+        rows.map { |row| row.slice(*columns) }
+      end
 
       # The real names, as written: a repeated name comes back repeated and a blank cell as "".
       # Empty when the file has no header line to read.
