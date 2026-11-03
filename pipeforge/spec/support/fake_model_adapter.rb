@@ -4,15 +4,19 @@ require "bigdecimal"
 require "date"
 
 # A model adapter for specs of the core, which has no adapter gem. It follows the same contract as a
-# real one: +build_record+ returns an object that answers +valid?+, +errors+ and +attributes+,
-# +preload_parents+ takes the records of a chunk, and +cast_text+ gives the value for a text.
+# real one: +build_record+ returns an object that answers +valid?+, +load+, +errors+ and +attributes+,
+# +preload_parents+ takes the records of a chunk, +transaction+ runs a block, and +cast_text+ gives the
+# value for a text.
 #
 # The errors of a record come from the +errors_of+ lambda, which is given the attributes the record
 # was built from. The +changes_on_validation+ lambda stands for the model's callbacks: it is given the
 # attributes when +valid?+ runs, and what it returns is what +attributes+ answers afterwards. The
-# +casts+ lambda stands for the cast of the model: by default a text is cast to itself, and
+# +load_errors_of+ lambda is given the attributes of a record when it is written: the entries it returns
+# are the database's refusal (the write fails and +errors+ holds them), and an empty list is a write that
+# works. The +casts+ lambda stands for the cast of the model: by default a text is cast to itself, and
 # {.reading} and {.lenient} build adapters that cast by the type of the column. The adapter remembers
-# what it was asked, so a spec can check it.
+# what it was asked, so a spec can check it: +events+ lists, in order, each +:valid+ and +:load+ of a record
+# (with its attributes) and the +:transaction_begin+ and +:transaction_end+ of a run transaction.
 #
 #   adapter = FakeModelAdapter.new(errors_of: ->(attributes:) { [model_error] if attributes["email"] == "x" })
 #   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => nil
@@ -87,16 +91,27 @@ class FakeModelAdapter
   class FakeModelRecord
     attr_reader :attributes, :errors
 
-    def initialize(attributes:, errors:, changes_on_validation:)
+    def initialize(attributes:, errors:, changes_on_validation:, load_errors:, events:)
       @attributes = attributes
       @errors = errors
       @changes_on_validation = changes_on_validation
+      @load_errors = load_errors
+      @events = events
     end
 
     def valid?
+      @events << [:valid, @attributes]
       @attributes = @changes_on_validation.call(attributes: @attributes)
 
       @errors.empty?
+    end
+
+    # Stands for the write: true, or false with the configured database errors in +errors+.
+    def load
+      @events << [:load, @attributes]
+      @errors = @load_errors
+
+      @load_errors.empty?
     end
   end
 
@@ -106,25 +121,45 @@ class FakeModelAdapter
   # @return [Array<Array>] the records given to each +preload_parents+ call, in order
   attr_reader :preload_calls
 
+  # @return [Array<Hash>] the +rollback_at_end+ of each +transaction+ call, in order
+  attr_reader :transaction_calls
+
+  # @return [Array<Array>] what happened to the records and the run transaction, in order
+  attr_reader :events
+
   def initialize(errors_of: ->(attributes:) { [] }, changes_on_validation: ->(attributes:) { attributes },
-    casts: ->(column_name:, text:) { text })
+    load_errors_of: ->(attributes:) { [] }, casts: ->(column_name:, text:) { text })
     @errors_of = errors_of
     @changes_on_validation = changes_on_validation
+    @load_errors_of = load_errors_of
     @casts = casts
     @built_attributes = []
     @preload_calls = []
+    @transaction_calls = []
+    @events = []
   end
 
   def build_record(attributes:)
     @built_attributes << attributes
     FakeModelRecord.new(
       attributes: attributes, errors: @errors_of.call(attributes: attributes),
-      changes_on_validation: @changes_on_validation
+      changes_on_validation: @changes_on_validation,
+      load_errors: @load_errors_of.call(attributes: attributes), events: @events
     )
   end
 
   def preload_parents(records:)
     @preload_calls << records
+  end
+
+  # Stands for the run transaction: remembers +rollback_at_end+, yields and gives the block's result.
+  def transaction(rollback_at_end:)
+    @transaction_calls << {rollback_at_end: rollback_at_end}
+    @events << [:transaction_begin]
+    result = yield
+    @events << [:transaction_end]
+
+    result
   end
 
   # The value the adapter would load for a text; the +casts+ lambda decides, and by default it is the

@@ -16,7 +16,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
     [].tap { |chunks| reader.each_chunk { |rows| chunks << rows } }
   end
 
-  # Reads the file with the given offset, limit or columns and returns the chunks.
+  # Reads the file with the given offset, chunk size or columns and returns the chunks.
   def read_chunks_with(**options)
     [].tap { |chunks| reader.each_chunk(**options) { |rows| chunks << rows } }
   end
@@ -68,46 +68,39 @@ RSpec.describe Pipeforge::Source::CsvReader do
       end
     end
 
-    context "with a limit and chunks of two rows" do
-      let(:chunk_size) { 2 }
+    context "with the chunk size given to the call" do
       let(:csv) { "A\n1\n2\n3\n4\n5\n" }
 
-      it "stops after that many rows, inside a chunk when needed" do
-        expect(read_chunks_with(limit: 3)).to eq([[{"A" => "1"}, {"A" => "2"}], [{"A" => "3"}]])
+      it "yields chunks of at most that many rows" do
+        expect(read_chunks_with(chunk_size: 3)).to eq(
+          [[{"A" => "1"}, {"A" => "2"}, {"A" => "3"}], [{"A" => "4"}, {"A" => "5"}]]
+        )
       end
 
-      it "yields nothing for a limit of zero" do
-        expect(read_chunks_with(limit: 0)).to eq([])
-      end
+      context "when the settings give another chunk size" do
+        let(:chunk_size) { 2 }
 
-      it "gives all the rows when the limit is larger than the file" do
-        expect(read_chunks_with(limit: 50).flatten.size).to eq(5)
-      end
-
-      it "counts after the offset when both are given" do
-        expect(read_chunks_with(offset: 1, limit: 3)).to eq([[{"A" => "2"}, {"A" => "3"}], [{"A" => "4"}]])
-      end
-
-      it "returns the number of rows read until it stopped, which is the limit when there is no offset" do
-        expect(reader.each_chunk(limit: 3) { |_rows| }).to eq(3)
-      end
-
-      it "counts the dropped rows too, so it is the offset plus the limit" do
-        expect(reader.each_chunk(offset: 1, limit: 2) { |_rows| }).to eq(3)
-      end
-
-      context "when a row after the limit cannot be parsed" do
-        let(:csv) { "A,B\n1,2\n1,2,3\n" }
-
-        it "does not parse it, because the read stops at the limit" do
-          expect { reader.each_chunk(limit: 1) { |_rows| } }.not_to raise_error
+        it "uses the one given to the call" do
+          expect(read_chunks_with(chunk_size: 4).map(&:size)).to eq([4, 1])
         end
 
-        it "stops with source_row_too_long when there is no limit" do
-          expect { reader.each_chunk { |_rows| } }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
-            expect(error.codes).to eq([:source_row_too_long])
-          end
+        it "uses the one of the settings when none is given" do
+          expect(read_chunks.map(&:size)).to eq([2, 2, 1])
         end
+      end
+
+      it "yields one row at a time for a chunk size of 1" do
+        expect(read_chunks_with(chunk_size: 1).map(&:size)).to eq([1, 1, 1, 1, 1])
+      end
+
+      it "cuts the chunks after the offset" do
+        expect(read_chunks_with(offset: 1, chunk_size: 3)).to eq(
+          [[{"A" => "2"}, {"A" => "3"}, {"A" => "4"}], [{"A" => "5"}]]
+        )
+      end
+
+      it "returns the number of rows read, the dropped ones included, whatever the chunk size" do
+        expect(reader.each_chunk(offset: 2, chunk_size: 2) { |_rows| }).to eq(5)
       end
     end
 
@@ -258,6 +251,108 @@ RSpec.describe Pipeforge::Source::CsvReader do
 
       it "counts the rows of every chunk, not only the last" do
         expect(read_row_count).to eq(3)
+      end
+    end
+  end
+
+  describe "#each_row" do
+    # Reads the whole file and returns the rows, one by one.
+    def read_rows
+      [].tap { |rows| reader.each_row { |row| rows << row } }
+    end
+
+    it "raises ArgumentError when it is called without a block" do
+      expect { reader.each_row }.to raise_error(ArgumentError, /needs a block/)
+    end
+
+    it "yields each row as a hash of header to text, in file order" do
+      expect(read_rows).to eq([{"A" => "1", "B" => "2"}, {"A" => "3", "B" => "4"}, {"A" => "5", "B" => "6"}])
+    end
+
+    it "returns the number of rows read" do
+      expect(reader.each_row { |_row| }).to eq(3)
+    end
+
+    it "does not depend on the chunk size of the settings" do
+      use_settings(execution: {chunk_size: 1})
+
+      expect(read_rows.size).to eq(3)
+    end
+
+    context "with empty cells" do
+      let(:csv) { "A,B\n1,\n , 4\n" }
+
+      it "gives nil for a cell that is empty or only whitespace, and trims the others" do
+        expect(read_rows).to eq([{"A" => "1", "B" => nil}, {"A" => nil, "B" => "4"}])
+      end
+    end
+
+    context "with blank lines and rows with only empty cells" do
+      let(:csv) { "A,B\n1,2\n\n,\n3,4\n" }
+
+      it "does not yield them, and does not count them" do
+        expect(read_rows).to eq([{"A" => "1", "B" => "2"}, {"A" => "3", "B" => "4"}])
+        expect(reader.each_row { |_row| }).to eq(2)
+      end
+    end
+
+    context "with a file that has only a header" do
+      let(:csv) { "A,B\n" }
+
+      it "yields nothing and returns zero" do
+        expect(reader.each_row { |_row| }).to eq(0)
+      end
+    end
+
+    context "with a file that has no header" do
+      let(:csv) { "" }
+
+      it "raises source_empty and yields nothing" do
+        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::EmptySourceError) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
+      end
+    end
+
+    context "with a header that has a blank cell" do
+      let(:csv) { "A,,C\n1,2,3\n" }
+
+      it "raises source_header_blank before any row is yielded" do
+        yielded = []
+
+        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::InvalidHeaderError)
+        expect(yielded).to eq([])
+      end
+    end
+
+    context "with a row that has more cells than the header" do
+      let(:csv) { "A,B\n1,2\n1,2,3\n" }
+
+      it "raises source_row_too_long, after the rows before it" do
+        yielded = []
+
+        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+          expect(error.codes).to eq([:source_row_too_long])
+        end
+        expect(yielded.size).to eq(1)
+      end
+    end
+
+    context "with a row that cannot be parsed" do
+      let(:csv) { "A,B\n1,\"2\n" }
+
+      it "raises malformed_row" do
+        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+          expect(error.codes).to eq([:malformed_row])
+        end
+      end
+    end
+
+    context "with a row that has fewer cells than the header" do
+      let(:csv) { "A,B,C\n1,2\n" }
+
+      it "fills the missing cells with nil" do
+        expect(read_rows).to eq([{"A" => "1", "B" => "2", "C" => nil}])
       end
     end
   end

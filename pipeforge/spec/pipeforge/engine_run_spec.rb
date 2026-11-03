@@ -21,8 +21,8 @@ RSpec.describe Pipeforge::Engine, "#run" do
     use_settings(execution: {chunk_size: 2})
   end
 
-  def run_engine(**options)
-    engine.run(mode: mode, mapped_columns: mapped_columns, **options) { |chunk_result| chunk_results << chunk_result }
+  def run_engine(run_mode: mode, **options)
+    engine.run(mode: run_mode, mapped_columns: mapped_columns, **options) { |chunk_result| chunk_results << chunk_result }
   end
 
   it "returns the totals of the run" do
@@ -65,11 +65,167 @@ RSpec.describe Pipeforge::Engine, "#run" do
     expect(engine.run(mode: mode, mapped_columns: mapped_columns).processed_rows_count).to eq(3)
   end
 
-  context "with an offset and a limit" do
-    it "processes only those rows, with absolute row numbers" do
-      run_engine(offset: 1, limit: 1)
+  context "with an offset" do
+    it "processes the rows after it to the end of the file, with absolute row numbers" do
+      run_engine(offset: 1)
 
       expect(chunk_results.flat_map(&:failed_rows).map(&:row_number)).to eq([2])
+      expect(chunk_results.map(&:processed_rows_count)).to eq([2])
+    end
+  end
+
+  context "with a chunk size" do
+    it "yields chunks of that size" do
+      run_engine(chunk_size: 1)
+
+      expect(chunk_results.map(&:processed_rows_count)).to eq([1, 1, 1])
+    end
+
+    it "overrides the chunk size of the settings for that call" do
+      run_engine(chunk_size: 3)
+
+      expect(chunk_results.map(&:processed_rows_count)).to eq([3])
+    end
+
+    it "gives the same totals as the chunk size of the settings" do
+      expect(run_engine(chunk_size: 1)).to eq(run_engine)
+    end
+
+    it "uses the chunk size of the settings when none is given" do
+      run_engine
+
+      expect(chunk_results.map(&:processed_rows_count)).to eq([2, 1])
+    end
+  end
+
+  shared_examples "an argument the engine refuses" do |arguments, message|
+    it "stops with an ArgumentError that names the argument and the value" do
+      expect { run_engine(**arguments) }.to raise_error(ArgumentError, message)
+    end
+
+    it "stops before a row is read or a transaction is opened" do
+      expect { run_engine(**arguments) }.to raise_error(ArgumentError)
+
+      expect(model_adapter.built_attributes).to eq([])
+      expect(model_adapter.transaction_calls).to eq([])
+    end
+  end
+
+  context "with a mode that is not :dry_run or :run" do
+    context "when it is a misspelled symbol" do
+      include_examples "an argument the engine refuses", {run_mode: :dryrun},
+        "mode must be :dry_run or :run, got :dryrun"
+    end
+
+    context "when it is text" do
+      include_examples "an argument the engine refuses", {run_mode: "dry_run"},
+        'mode must be :dry_run or :run, got "dry_run"'
+    end
+
+    context "when it is the text run" do
+      include_examples "an argument the engine refuses", {run_mode: "run"},
+        'mode must be :dry_run or :run, got "run"'
+    end
+
+    context "when it is nil" do
+      include_examples "an argument the engine refuses", {run_mode: nil}, "mode must be :dry_run or :run, got nil"
+    end
+  end
+
+  context "with the mode :run" do
+    it "is accepted, and writes the rows" do
+      expect(run_engine(run_mode: :run)).to have_attributes(processed_rows_count: 3, valid_rows_count: 2)
+    end
+  end
+
+  context "with an offset that is not a whole number of at least 0" do
+    context "when it is negative" do
+      include_examples "an argument the engine refuses", {offset: -1},
+        "offset must be a whole number of at least 0, got -1"
+    end
+
+    context "when it is a decimal number" do
+      include_examples "an argument the engine refuses", {offset: 1.5},
+        "offset must be a whole number of at least 0, got 1.5"
+    end
+
+    context "when it is text" do
+      include_examples "an argument the engine refuses", {offset: "2"},
+        'offset must be a whole number of at least 0, got "2"'
+    end
+
+    context "when it is nil" do
+      include_examples "an argument the engine refuses", {offset: nil},
+        "offset must be a whole number of at least 0, got nil"
+    end
+
+    context "when it is true" do
+      include_examples "an argument the engine refuses", {offset: true},
+        "offset must be a whole number of at least 0, got true"
+    end
+  end
+
+  context "with an offset of 0" do
+    it "is accepted, and processes every row" do
+      expect(run_engine(offset: 0)).to have_attributes(processed_rows_count: 3)
+    end
+  end
+
+  context "with an offset past the end of the file" do
+    it "is accepted, and processes nothing" do
+      expect(run_engine(offset: 100)).to have_attributes(processed_rows_count: 0)
+    end
+  end
+
+  context "with a chunk size that is not a whole number of at least 1" do
+    context "when it is 0" do
+      include_examples "an argument the engine refuses", {chunk_size: 0},
+        "chunk_size must be a whole number of at least 1, got 0"
+    end
+
+    context "when it is negative" do
+      include_examples "an argument the engine refuses", {chunk_size: -5},
+        "chunk_size must be a whole number of at least 1, got -5"
+    end
+
+    context "when it is a decimal number" do
+      include_examples "an argument the engine refuses", {chunk_size: 2.5},
+        "chunk_size must be a whole number of at least 1, got 2.5"
+    end
+
+    context "when it is text" do
+      include_examples "an argument the engine refuses", {chunk_size: "big"},
+        'chunk_size must be a whole number of at least 1, got "big"'
+    end
+
+    context "when it is nil" do
+      include_examples "an argument the engine refuses", {chunk_size: nil},
+        "chunk_size must be a whole number of at least 1, got nil"
+    end
+  end
+
+  context "with several arguments that cannot be used" do
+    it "lists every one in a single ArgumentError, in the order mode, offset, chunk_size" do
+      expect { run_engine(run_mode: :dryrun, offset: -1, chunk_size: 0) }.to raise_error(
+        ArgumentError,
+        "mode must be :dry_run or :run, got :dryrun; " \
+        "offset must be a whole number of at least 0, got -1; " \
+        "chunk_size must be a whole number of at least 1, got 0"
+      )
+    end
+
+    it "lists only the ones that cannot be used" do
+      expect { run_engine(offset: -1) }.to raise_error(
+        ArgumentError, "offset must be a whole number of at least 0, got -1"
+      )
+    end
+  end
+
+  context "when an argument and the mapped columns are both wrong" do
+    let(:mapped_columns) { {"level" => {source_column: "Level"}} }
+
+    it "reports the argument first, because it is checked before the mapped columns" do
+      expect { run_engine(chunk_size: 0) }.to raise_error(ArgumentError)
     end
   end
 

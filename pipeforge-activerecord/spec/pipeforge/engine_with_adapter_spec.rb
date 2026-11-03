@@ -39,8 +39,8 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     expect(result.matches["age"][:metadata]).to include(type: "integer", required: false)
   end
 
-  describe "#analyze_values" do
-    subject(:value_result) { engine.analyze_values(mapped_columns: mapped_columns) }
+  describe "#analyze_column_values" do
+    subject(:value_result) { engine.analyze_column_values(mapped_columns: mapped_columns) }
 
     let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,31,10.5\nbob@example.com,2,99999,abc\n" }
     let(:required_columns) { {"email" => {source_column: "Email"}} }

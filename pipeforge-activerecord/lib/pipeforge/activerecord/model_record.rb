@@ -2,17 +2,21 @@
 
 module Pipeforge
   # One unsaved ActiveRecord record, wrapped for the run. It answers what the core asks of a model
-  # record (see {RowCandidate#model_record}): the errors of the model's own validations.
+  # record (see {RowCandidate#model_record}): the errors of the model's own validations, and the write.
   class ActiveRecordModelRecord
     # @return [ActiveRecord::Base] the unsaved record
     attr_reader :record
 
     # The mistakes that the last {#valid?} found, with the shared codes: +value_missing+,
     # +value_too_long+, +value_not_unique+, +parent_missing+, +value_not_allowed+ (an enum label the
-    # model does not know) and, for any other validation, +value_invalid+.
+    # model does not know) and, for any other validation, +value_invalid+. After {#load} was refused
+    # by the database they are its entries instead, with +origin: :database+, the same codes,
+    # +value_out_of_range+ and +database_error+; a callback that stopped the save is +value_invalid+ with
+    # +origin: :model+.
     #
-    # @return [Array<Hash>] one entry {code:, message:, target_column:} for each mistake; empty before
-    #   {#valid?} is called and when the model finds none
+    # @return [Array<Hash>] one entry {origin:, code:, message:, target_column:} for each mistake, with
+    #   +origin+ +:model+ or +:database+; empty before
+    #   {#valid?} is called and when there is none
     attr_reader :errors
 
     # @param record [ActiveRecord::Base] the unsaved record
@@ -37,6 +41,31 @@ module Pipeforge
       @errors.empty?
     end
 
+    # Writes the record to its table in its own transaction (a savepoint when a transaction is
+    # already open). The model's validations are not run again. A mistake from the database is kept
+    # in {#errors} with +origin: :database+ and nothing of this row is kept. A callback of the model that
+    # stops the save is kept with +origin: :model+.
+    #
+    # @return [Boolean] true when the row was written
+    def load
+      @errors = []
+
+      # requires_new makes a real transaction when none is open and a savepoint inside the dry run's,
+      # so only this row is undone when the database refuses it.
+      @record.class.transaction(requires_new: true) { @record.save!(validate: false) }
+
+      true
+    rescue ActiveRecord::StatementInvalid => database_error
+      @errors << database_error_entry(database_error: database_error)
+
+      false
+    rescue ActiveRecord::RecordNotSaved => not_saved_error
+      # A callback of the model stopped the save.
+      @errors << {origin: :model, code: :value_invalid, message: not_saved_error.message, target_column: nil}
+
+      false
+    end
+
     # The values the record holds now: cast to the types of the columns, and after the model's validation
     # has run, so after its callbacks. They are what would be loaded. An enum label the model does not
     # know is included as it was given.
@@ -49,9 +78,35 @@ module Pipeforge
 
     private
 
+    # The entry {origin: :database, code:, message:, target_column:} for one database exception:
+    # RecordNotUnique -> value_not_unique, InvalidForeignKey -> parent_missing,
+    # NotNullViolation -> value_missing, ValueTooLong -> value_too_long,
+    # RangeError -> value_out_of_range, anything else -> database_error (native message kept).
+    def database_error_entry(database_error:)
+      {
+        origin: :database,
+        code: database_code_of(database_error: database_error),
+        message: database_error.message,
+        # The column is not worked out from the message: the wording differs between databases.
+        target_column: nil
+      }
+    end
+
+    def database_code_of(database_error:)
+      case database_error
+      when ActiveRecord::RecordNotUnique then :value_not_unique
+      when ActiveRecord::InvalidForeignKey then :parent_missing
+      when ActiveRecord::NotNullViolation then :value_missing
+      when ActiveRecord::ValueTooLong then :value_too_long
+      when ActiveRecord::RangeError then :value_out_of_range
+      else :database_error
+      end
+    end
+
     def add_unknown_enum_label_errors
       @unknown_enum_labels.each do |column_name, label|
         @errors << {
+          origin: :model,
           code: :value_not_allowed,
           message: "#{column_name}: #{label} is not a label or value of the enum",
           target_column: column_name
@@ -65,6 +120,7 @@ module Pipeforge
         next if @unknown_enum_labels.key?(target_column)
 
         @errors << {
+          origin: :model,
           code: code_of(model_error: model_error),
           message: model_error.full_message,
           target_column: target_column

@@ -83,9 +83,9 @@ RSpec.describe Pipeforge::RowTransformer do
     end
   end
 
-  # The value stage and the run apply the value mapping separately, and must agree on what each
+  # The column values stage and the run apply the value mapping separately, and must agree on what each
   # value becomes and which values are empty.
-  describe "agreement with the value analysis" do
+  describe "agreement with the column values analysis" do
     let(:rows) do
       [
         {"Status" => "yes"}, {"Status" => "N/A"}, {"Status" => nil}, {"Status" => "maybe"}, {"Status" => "yes"},
@@ -102,9 +102,12 @@ RSpec.describe Pipeforge::RowTransformer do
         )
       }
 
-      Pipeforge::ValueAnalyzer::ChunkAnalyzer.call(
-        rows: rows, mapped_columns: analyzer_columns, model_adapter: FakeModelAdapter.new
-      ).columns["status"]
+      summary_builder = Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder.new(
+        target_column: "status", mapped_column: analyzer_columns["status"], model_adapter: FakeModelAdapter.new
+      )
+      rows.each { |row| summary_builder.add_row(row: row) }
+
+      summary_builder.summary
     end
     let(:loaded_values) { rows.map { |row| transformer.result_of_row(row: row)["status"] } }
 

@@ -93,7 +93,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     run_result
 
     expect(failed_rows.find { |failed_row| failed_row.row_number == 7 }.errors).to contain_exactly(
-      include(code: :parent_missing, target_column: "company_id", stage: :precheck)
+      include(origin: :model, code: :parent_missing, target_column: "company_id")
     )
   end
 

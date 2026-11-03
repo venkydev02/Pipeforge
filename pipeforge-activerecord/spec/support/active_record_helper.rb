@@ -24,6 +24,9 @@ require "active_record"
 #   counters    an unsigned integer attribute (the type MySQL gives an unsigned column), next to a signed one
 #   memberships a model with validations: presence, uniqueness, length, numericality, an enum
 #               that must be present, a required parent and a mistake on the record as a whole
+#   accounts    a model with no validations, on a table that refuses what the model does not check:
+#               a repeated email (unique index), an empty email (NOT NULL) and a company that
+#               does not exist (foreign key); a callback stops the save of one nickname
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.verbose = false
 
@@ -95,6 +98,12 @@ ActiveRecord::Schema.define do
     t.integer :tier
     t.references :company
   end
+  create_table(:accounts) do |t|
+    t.string :email, null: false
+    t.string :nickname
+    t.references :company, foreign_key: true
+  end
+  add_index :accounts, :email, unique: true
 end
 
 module AdapterSpecModels
@@ -193,11 +202,17 @@ module AdapterSpecModels
       errors.add(:base, "signups are closed for this email") if email == "closed@example.com"
     end
   end
+
+  class Account < ActiveRecord::Base
+    self.table_name = "accounts"
+    before_save { throw :abort if nickname == "halt" }
+  end
 end
 
 # The specs that save rows leave the tables empty for the next example.
 RSpec.configure do |config|
   config.after do
+    AdapterSpecModels::Account.delete_all
     AdapterSpecModels::Membership.delete_all
     AdapterSpecModels::Company.delete_all
   end

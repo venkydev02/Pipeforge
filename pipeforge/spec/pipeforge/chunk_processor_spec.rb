@@ -54,9 +54,9 @@ RSpec.describe Pipeforge::ChunkProcessor do
       expect(chunk_result.failed_rows.first.mapped_values).to eq("email" => nil, "status" => "active")
     end
 
-    it "gives each failed row its errors with the stage" do
-      expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.map { |error| [error[:code], error[:stage]] } }).to eq(
-        [[[:value_missing, :precheck]], [[:value_too_long, :precheck]]]
+    it "gives each failed row its errors with the origin" do
+      expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.map { |error| [error[:code], error[:origin]] } }).to eq(
+        [[[:value_missing, :schema]], [[:value_too_long, :schema]]]
       )
     end
 
@@ -86,7 +86,7 @@ RSpec.describe Pipeforge::ChunkProcessor do
       let(:errors_of) do
         lambda do |attributes:|
           if attributes["email"] == "dup@example.com"
-            [{code: :value_not_unique, message: "taken", target_column: "email"}]
+            [{origin: :model, code: :value_not_unique, message: "taken", target_column: "email"}]
           else
             []
           end
@@ -135,7 +135,7 @@ RSpec.describe Pipeforge::ChunkProcessor do
       end
 
       it "keeps the empty value in the values of a failed row" do
-        failing = FakeModelAdapter.new(errors_of: ->(attributes:) { [{code: :value_invalid, message: "x", target_column: "email"}] })
+        failing = FakeModelAdapter.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
           target_schema: target_schema, model_adapter: failing
@@ -164,6 +164,75 @@ RSpec.describe Pipeforge::ChunkProcessor do
 
       it "has no failed rows" do
         expect(chunk_result).to have_attributes(failed_rows: [], valid_rows_count: 1, failed_rows_count: 0)
+      end
+    end
+
+    describe "the order of the checks and the writes" do
+      let(:rows) do
+        [
+          {"Mail" => "a@example.com", "State" => "ok"},
+          {"Mail" => "b@example.com", "State" => "ok"},
+          {"Mail" => "c@example.com", "State" => "ok"}
+        ]
+      end
+
+      it "writes each row right after it is validated, before the next row is validated" do
+        chunk_result
+
+        expect(model_adapter.events.map(&:first)).to eq(%i[valid load valid load valid load])
+      end
+
+      it "writes the rows in file order" do
+        chunk_result
+
+        written_emails = model_adapter.events.select { |event| event.first == :load }.map { |event| event.last["email"] }
+        expect(written_emails).to eq(%w[a@example.com b@example.com c@example.com])
+      end
+
+      context "when a row is not valid" do
+        let(:rows) do
+          [
+            {"Mail" => "a@example.com", "State" => "ok"},
+            {"Mail" => nil, "State" => "ok"},
+            {"Mail" => "c@example.com", "State" => "ok"}
+          ]
+        end
+
+        it "does not write that row, and goes on with the next" do
+          chunk_result
+
+          expect(model_adapter.events.map(&:first)).to eq(%i[valid load valid valid load])
+        end
+      end
+    end
+
+    context "when the database refuses a row that passed the validation" do
+      let(:rows) do
+        [{"Mail" => "a@example.com", "State" => "ok"}, {"Mail" => "dup@example.com", "State" => "ok"}, {"Mail" => "c@example.com", "State" => "ok"}]
+      end
+      let(:database_error) do
+        {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column: "email"}
+      end
+      let(:model_adapter) do
+        FakeModelAdapter.new(
+          load_errors_of: ->(attributes:) { (attributes["email"] == "dup@example.com") ? [database_error] : [] }
+        )
+      end
+
+      it "reports that row as failed, with the origin database" do
+        expect(chunk_result.failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors] }).to eq(
+          [[6, [database_error]]]
+        )
+      end
+
+      it "counts it as failed and the others as written" do
+        expect(chunk_result).to have_attributes(processed_rows_count: 3, valid_rows_count: 2, failed_rows_count: 1)
+      end
+
+      it "goes on with the rows after it" do
+        chunk_result
+
+        expect(model_adapter.events.count { |event| event.first == :load }).to eq(3)
       end
     end
   end

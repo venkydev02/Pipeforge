@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "column_limits_checker"
-require_relative "value_analyzer/chunk_profile"
+require_relative "column_value_analyzer/column_summary_builder"
 require_relative "source/csv_reader"
-require_relative "value_analyzer/chunk_analyzer"
 
 module Pipeforge
   # Measures the mapped columns of a CSV source: for each one, how many values are empty, how
@@ -12,19 +11,20 @@ module Pipeforge
   # It is a service: {.call} is given everything it needs and does the whole job, once. It
   # keeps nothing between calls, so any number of engines can use it at the same time.
   #
-  # The file is read once, in chunks, so memory stays bounded. Each chunk is measured on its
-  # own and the partial results are merged in file order, which makes the result independent
-  # of the chunk size. The analyzer reads source values only and never touches the target.
+  # The file is read once, one row at a time, and each value is added to the summary builder of
+  # its column. Every distinct value of every mapped column is kept, because the result is
+  # complete only after the last row, so memory grows with the number of distinct values. The
+  # analyzer reads source values only and never touches the target.
   #
-  # The {Engine} is the way in: {Engine#analyze_values} checks the mapped columns, adds the type
+  # The {Engine} is the way in: {Engine#analyze_column_values} checks the mapped columns, adds the type
   # metadata of the target columns and then calls this service.
   #
   # @api private
   #
   # @example through the engine
-  #   result = engine.analyze_values(mapped_columns: {"email" => {source_column: "Mail"}})
+  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
   #   result.columns["email"].type_compatibility # => {fits: 1170, total: 1188}
-  module ValueAnalyzer
+  module ColumnValueAnalyzer
     # The outcome of one analysis.
     #   source_identifier  the file path of the source, or its class name when it has no path
     #   row_count          data rows read; blank and all-empty rows are not counted
@@ -35,8 +35,8 @@ module Pipeforge
       def to_h
         columns_as_hashes = {}
 
-        columns.each do |source_column, column_summary|
-          columns_as_hashes[source_column] = column_summary.to_h
+        columns.each do |target_column, column_summary|
+          columns_as_hashes[target_column] = column_summary.to_h
         end
 
         {
@@ -75,13 +75,22 @@ module Pipeforge
       def call(source_reader:, mapped_columns:, model_adapter:)
         add_positions(mapped_columns: mapped_columns, header_names: source_reader.headers)
         add_limits_checkers(mapped_columns: mapped_columns)
-        profile = ChunkProfile.empty(mapped_columns: mapped_columns, cap: Configuration.source.distinct_values_cap)
 
-        row_count = source_reader.each_chunk do |rows|
-          profile = profile.merge(later: ChunkAnalyzer.call(rows: rows, mapped_columns: mapped_columns, model_adapter: model_adapter))
+        summary_builders = {}
+        mapped_columns.each do |target_column, mapped_column|
+          summary_builders[target_column] = ColumnSummaryBuilder.new(
+            target_column: target_column, mapped_column: mapped_column, model_adapter: model_adapter
+          )
         end
 
-        Result.new(source_identifier: source_reader.identifier, row_count: row_count, columns: profile.columns)
+        row_count = source_reader.each_row do |row|
+          summary_builders.each_value { |summary_builder| summary_builder.add_row(row: row) }
+        end
+
+        column_summaries = {}
+        summary_builders.each { |target_column, summary_builder| column_summaries[target_column] = summary_builder.summary }
+
+        Result.new(source_identifier: source_reader.identifier, row_count: row_count, columns: column_summaries)
       end
 
       private

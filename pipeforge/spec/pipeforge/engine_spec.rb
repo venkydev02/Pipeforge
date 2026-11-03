@@ -18,7 +18,7 @@ RSpec.describe Pipeforge::Engine do
   let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
 
   # The core is tested without an adapter gem, so the check that one is installed is stubbed.
-  # and so is the model adapter that casts the texts of the value stage: it reads a text as the type of
+  # and so is the model adapter that casts the texts of the column values stage: it reads a text as the type of
   # its column and cannot read any other text.
   before do
     types = target_columns.to_h do |target_column|
@@ -123,8 +123,8 @@ RSpec.describe Pipeforge::Engine do
     end
   end
 
-  describe "#analyze_values" do
-    subject(:result) { engine.analyze_values(mapped_columns: mapped_columns) }
+  describe "#analyze_column_values" do
+    subject(:result) { engine.analyze_column_values(mapped_columns: mapped_columns) }
 
     let(:mapped_columns) do
       {
@@ -152,7 +152,7 @@ RSpec.describe Pipeforge::Engine do
       short_string = build_target_column(name: "status", type: "string", max_length: 1)
       allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(build_target_schema(columns: [short_string]))
 
-      checked = engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
+      checked = engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
 
       expect(checked.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
     end
@@ -166,21 +166,13 @@ RSpec.describe Pipeforge::Engine do
     end
 
     it "returns the same result when it is called again" do
-      expect(engine.analyze_values(mapped_columns: mapped_columns).to_h).to eq(result.to_h)
+      expect(engine.analyze_column_values(mapped_columns: mapped_columns).to_h).to eq(result.to_h)
     end
 
     it "asks the adapter for the table it was given" do
       result
 
       expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_table: "records")
-    end
-
-    context "with a cap on the distinct values in the settings" do
-      let(:settings) { {source: {distinct_values_cap: 2}} }
-
-      it "lists at most that many values per list" do
-        expect(result.columns["code"].distinct_values[:compatible].values.size).to eq(2)
-      end
     end
 
     context "when only some columns are mapped" do
@@ -331,11 +323,11 @@ RSpec.describe Pipeforge::Engine do
       context "when the columns are checked" do
         let(:mapped_columns) { {"status" => {}} }
 
-        it "does not create a value analyzer" do
-          allow(Pipeforge::ValueAnalyzer).to receive(:call).and_call_original
+        it "does not create a column values analyzer" do
+          allow(Pipeforge::ColumnValueAnalyzer).to receive(:call).and_call_original
 
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError)
-          expect(Pipeforge::ValueAnalyzer).not_to have_received(:call)
+          expect(Pipeforge::ColumnValueAnalyzer).not_to have_received(:call)
         end
       end
     end
@@ -401,7 +393,7 @@ RSpec.describe Pipeforge::Engine do
         end
 
         it "shows the facts again, now that every value fits" do
-          edited_result = engine.analyze_values(mapped_columns: edited_mapped_columns)
+          edited_result = engine.analyze_column_values(mapped_columns: edited_mapped_columns)
 
           expect(edited_result.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
         end
@@ -417,8 +409,8 @@ RSpec.describe Pipeforge::Engine do
 
     it "is read from the adapter once, however many times the stages are called" do
       engine.analyze_headers
-      engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
-      engine.analyze_values(mapped_columns: {"code" => {source_column: "Code"}})
+      engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
+      engine.analyze_column_values(mapped_columns: {"code" => {source_column: "Code"}})
 
       expect(Pipeforge::TargetAdapter).to have_received(:schema).once
     end
@@ -446,8 +438,8 @@ RSpec.describe Pipeforge::Engine do
     before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
 
     it "is asked from the adapter once, however many times the stages use it" do
-      engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}})
-      engine.analyze_values(mapped_columns: {"code" => {source_column: "Code"}})
+      engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
+      engine.analyze_column_values(mapped_columns: {"code" => {source_column: "Code"}})
       engine.run(mode: :dry_run, mapped_columns: {"status" => {source_column: "Status"}})
 
       expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records").once
@@ -460,12 +452,12 @@ RSpec.describe Pipeforge::Engine do
 
       it "asks the adapter again on the next call" do
         allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_raise(model_error)
-        expect { engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}}) }
+        expect { engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}) }
           .to raise_error(Pipeforge::TargetSchemaError)
 
         allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.new)
 
-        expect(engine.analyze_values(mapped_columns: {"status" => {source_column: "Status"}}).columns.keys).to eq(["status"])
+        expect(engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}).columns.keys).to eq(["status"])
       end
     end
   end

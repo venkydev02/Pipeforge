@@ -22,7 +22,7 @@ RSpec.describe Pipeforge::RowCandidate do
   let(:schema_checker) { Pipeforge::SchemaChecker.new(target_schema: target_schema) }
 
   def model_error(code:, target_column:, message: "from the model")
-    {code: code, message: message, target_column: target_column}
+    {origin: :model, code: code, message: message, target_column: target_column}
   end
 
   describe ".new" do
@@ -170,16 +170,55 @@ RSpec.describe Pipeforge::RowCandidate do
       expect(candidate.failed_row).to have_attributes(row_number: 7, mapped_values: mapped_values)
     end
 
-    it "has each error with the stage precheck" do
+    it "has each error with the origin it came from" do
       expect(candidate.failed_row.errors).to eq(
-        [{code: :value_not_unique, message: "from the model", target_column: "email", stage: :precheck}]
+        [{origin: :model, code: :value_not_unique, message: "from the model", target_column: "email"}]
       )
+    end
+
+    context "when the schema finds a mistake as well" do
+      let(:mapped_values) { {"email" => nil, "status" => "closed", "note" => nil} }
+      let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column: "email")] } }
+
+      it "has the model's error with the origin model and the schema's with the origin schema" do
+        expect(candidate.failed_row.errors.map { |error| [error[:origin], error[:code]] }).to eq(
+          [[:model, :value_invalid], [:schema, :value_missing]]
+        )
+      end
     end
   end
 
   describe "#load" do
-    it "is not available in the validation layer" do
-      expect { candidate.load }.to raise_error(NotImplementedError, /validation layer/)
+    let(:database_error) do
+      {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column: "email"}
+    end
+
+    context "when the write works" do
+      it "is true, with no errors" do
+        expect(candidate.load).to be(true)
+        expect(candidate.errors).to eq([])
+      end
+
+      it "writes the record once, with the attributes it holds" do
+        candidate.load
+
+        expect(model_adapter.events).to eq([[:load, record_attributes]])
+      end
+    end
+
+    context "when the database refuses the row" do
+      let(:model_adapter) { FakeModelAdapter.new(load_errors_of: ->(attributes:) { [database_error] }) }
+
+      it "is false, with the errors of the database" do
+        expect(candidate.load).to be(false)
+        expect(candidate.errors).to eq([database_error])
+      end
+
+      it "gives a failed row whose errors keep the origin database" do
+        candidate.load
+
+        expect(candidate.failed_row.errors).to eq([database_error])
+      end
     end
   end
 end

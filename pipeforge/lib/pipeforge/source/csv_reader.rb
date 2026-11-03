@@ -6,7 +6,7 @@ module Pipeforge
   module Source
     # The CSV source reader. It reads a CSV file in chunks of raw rows, using smarter_csv, and
     # gives the core the source interface: +headers+ and +each_chunk+. The engine
-    # builds one for its source, and every stage (header analysis, value analysis, run) reads the
+    # builds one for its source, and every stage (header analysis, column values analysis, run) reads the
     # file through it.
     #
     # The header is read once and kept. The rows are read again on every +each_chunk+ call.
@@ -68,25 +68,23 @@ module Pipeforge
       end
 
       # Yields each chunk of the file, in order. The header is checked first, so a file with an
-      # unusable header yields nothing. The chunk size is the +execution.chunk_size+ setting. Each
-      # call reads the whole file again.
+      # unusable header yields nothing. Each call reads the whole file again.
       #
       # A block is required: this method exists to go through the real file.
       #
       # @param offset [Integer] the number of data rows to drop from the start of the file
-      # @param limit [Integer, nil] the most rows to yield after the offset; nil yields them all
+      # @param chunk_size [Integer] the most rows in a chunk; the +execution.chunk_size+ setting when not given
       # @param columns [Array<String>, nil] the only columns to give in each row; nil gives them all.
       #   Which rows are dropped, kept and counted does not depend on it.
       # @yieldparam rows [Array<Hash{String => String, nil}>] header => raw text, or nil when empty
-      # @return [Integer] the number of data rows read, the dropped ones included: all of them once the
-      #   whole file has been read, +offset+ plus +limit+ when the +limit+ stopped the read. Blank lines
-      #   and rows with only empty cells are not rows.
+      # @return [Integer] the number of data rows read, the dropped ones included. Blank lines and rows
+      #   with only empty cells are not rows.
       # @raise [ArgumentError] no block is given
       # @raise [EmptySourceError] see +headers+
       # @raise [InvalidHeaderError] see +headers+
       # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
       #   than the header (+source_row_too_long+)
-      def each_chunk(offset: 0, limit: nil, columns: nil)
+      def each_chunk(offset: 0, chunk_size: Configuration.execution.chunk_size, columns: nil)
         raise ArgumentError, "each_chunk needs a block" unless block_given?
 
         headers
@@ -97,13 +95,41 @@ module Pipeforge
           row
         end
 
-        # Lazy: the rows after the offset and the limit are never parsed.
+        # The chunks are cut here and not by the gem's own each_chunk, which cuts them from the start of the file:
+        # an offset would then leave the first chunk after it shorter than chunk_size.
+        # Lazy: the rows are read one chunk at a time, not all at once.
         rows = counted_rows.drop(offset)
-        rows = rows.take(limit) unless limit.nil?
-        rows.each_slice(Configuration.execution.chunk_size) do |chunk|
+        rows.each_slice(chunk_size) do |chunk|
           # The columns are cut after the rows are read, so a row is dropped, kept and counted the same with or
           # without them, and a row with more cells than the header still stops the read.
           yield only_columns(rows: chunk, columns: columns)
+        end
+
+        rows_read
+      end
+
+      # Yields each data row of the file, in order, one at a time. The header is checked first, so a file with
+      # an unusable header yields nothing. Blank rows and rows with only empty cells are not rows. Each call
+      # reads the whole file again.
+      #
+      # A block is required: this method exists to go through the real file.
+      #
+      # @yieldparam row [Hash{String => String, nil}] header => raw text, or nil when empty
+      # @return [Integer] the number of data rows read
+      # @raise [ArgumentError] no block is given
+      # @raise [EmptySourceError] see +headers+
+      # @raise [InvalidHeaderError] see +headers+
+      # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
+      #   than the header (+source_row_too_long+)
+      def each_row
+        raise ArgumentError, "each_row needs a block" unless block_given?
+
+        headers
+        rows_read = 0
+
+        SmarterCSV::Reader.new(@source_io, OPTIONS).each do |row|
+          rows_read += 1
+          yield row
         end
 
         rows_read

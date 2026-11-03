@@ -134,7 +134,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_invalid for that column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :value_invalid, target_column: "seats"))
+        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_invalid, target_column: "seats"))
       end
     end
 
@@ -153,7 +153,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "gives value_not_allowed for that column" do
         expect(model_record.valid?).to be(false)
-        expect(model_record.errors).to contain_exactly(include(code: :value_not_allowed, target_column: "tier"))
+        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_not_allowed, target_column: "tier"))
       end
 
       it "does not add the blank value the model sees as a second mistake" do
@@ -184,6 +184,152 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         model_record.valid?
 
         expect(model_record.errors).to eq([])
+      end
+    end
+  end
+
+  describe "#load" do
+    subject(:model_record) { model_adapter.build_record(attributes: attributes) }
+
+    let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Account) }
+    let(:attributes) { {"email" => "ann@example.com", "nickname" => "ann", "company_id" => company.id} }
+
+    context "when the table takes the row" do
+      it "is true, with no errors" do
+        expect(model_record.load).to be(true)
+        expect(model_record.errors).to eq([])
+      end
+
+      it "saves the record" do
+        model_record.load
+
+        expect(AdapterSpecModels::Account.where(email: "ann@example.com").count).to eq(1)
+      end
+
+      it "does not run the model's validations again" do
+        validating_adapter = Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Membership)
+        record = validating_adapter.build_record(attributes: {"email" => nil, "tier" => "basic"})
+
+        expect(record.load).to be(false)
+        expect(record.errors.map { |error| error[:code] }).to eq([:value_missing])
+        expect(record.record.errors).to be_empty
+      end
+    end
+
+    context "when the table already has the value of a unique index" do
+      before { AdapterSpecModels::Account.create!(email: "ann@example.com") }
+
+      it "is false, with value_not_unique from the database and no column" do
+        expect(model_record.load).to be(false)
+        expect(model_record.errors).to match(
+          [a_hash_including(origin: :database, code: :value_not_unique, target_column: nil)]
+        )
+      end
+
+      it "keeps the native message" do
+        model_record.load
+
+        expect(model_record.errors.first[:message]).to include("UNIQUE constraint failed: accounts.email")
+      end
+
+      it "leaves the table as it was" do
+        model_record.load
+
+        expect(AdapterSpecModels::Account.count).to eq(1)
+      end
+    end
+
+    context "when a required column is empty" do
+      let(:attributes) { {"email" => nil} }
+
+      it "is false, with value_missing from the database and no column" do
+        expect(model_record.load).to be(false)
+        expect(model_record.errors).to match(
+          [a_hash_including(origin: :database, code: :value_missing, target_column: nil)]
+        )
+      end
+    end
+
+    context "when the parent row does not exist" do
+      let(:attributes) { {"email" => "ann@example.com", "company_id" => 999_999} }
+
+      it "is false, with parent_missing from the database and no column" do
+        expect(model_record.load).to be(false)
+        expect(model_record.errors).to match(
+          [a_hash_including(origin: :database, code: :parent_missing, target_column: nil)]
+        )
+      end
+    end
+
+    context "when a callback of the model stops the save" do
+      let(:attributes) { {"email" => "ann@example.com", "nickname" => "halt"} }
+
+      it "is false, with value_invalid from the model" do
+        expect(model_record.load).to be(false)
+        expect(model_record.errors).to match([a_hash_including(origin: :model, code: :value_invalid, target_column: nil)])
+      end
+    end
+
+    context "when the database says a text is too long" do
+      before do
+        allow(model_record.record).to receive(:save!).and_raise(ActiveRecord::ValueTooLong.new("value too long"))
+      end
+
+      it "reports value_too_long" do
+        model_record.load
+
+        expect(model_record.errors).to match([a_hash_including(code: :value_too_long, target_column: nil)])
+      end
+    end
+
+    context "when the database says a number is out of range" do
+      before do
+        allow(model_record.record).to receive(:save!).and_raise(ActiveRecord::RangeError.new("out of range"))
+      end
+
+      it "reports value_out_of_range" do
+        model_record.load
+
+        expect(model_record.errors).to match([a_hash_including(code: :value_out_of_range)])
+      end
+    end
+
+    context "when the database refuses the row for another reason" do
+      before do
+        allow(model_record.record).to receive(:save!).and_raise(ActiveRecord::StatementInvalid.new("disk is full"))
+      end
+
+      it "reports database_error with the native message" do
+        model_record.load
+
+        expect(model_record.errors).to match([a_hash_including(code: :database_error, message: "disk is full")])
+      end
+    end
+
+    context "when it is called again after a refusal" do
+      it "reports the last call only" do
+        AdapterSpecModels::Account.create!(email: "ann@example.com")
+        model_record.load
+        model_record.record.email = "bob@example.com"
+        model_record.load
+
+        expect(model_record.errors).to eq([])
+      end
+    end
+
+    context "inside an open transaction" do
+      it "undoes only the refused row, and keeps the rows saved before it" do
+        AdapterSpecModels::Account.create!(email: "ann@example.com")
+        refused = model_adapter.build_record(attributes: {"email" => "ann@example.com"})
+        accepted = model_adapter.build_record(attributes: {"email" => "bob@example.com"})
+
+        AdapterSpecModels::Account.transaction do
+          accepted.load
+          refused.load
+
+          expect(AdapterSpecModels::Account.pluck(:email)).to contain_exactly("ann@example.com", "bob@example.com")
+          raise ActiveRecord::Rollback
+        end
       end
     end
   end

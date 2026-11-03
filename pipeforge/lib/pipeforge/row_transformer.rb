@@ -5,7 +5,7 @@ module Pipeforge
   # column feeds each target column) and the value mapping, and nothing else.
   class RowTransformer
     # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, value_mapping:};
-    #   the keys of a value mapping are text, as {Engine#analyze_values} makes them
+    #   the keys of a value mapping are text, as {Engine#analyze_column_values} makes them
     def initialize(mapped_columns:)
       @mapped_columns = mapped_columns
     end

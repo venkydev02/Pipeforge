@@ -4,9 +4,9 @@ require_relative "model_record"
 
 module Pipeforge
   # The ActiveRecord adapter's object for one target table: it builds the application model's
-  # records and preloads their parents. It reads no row of the target except the parent rows the
-  # model's own validation needs. What is asked of one record is answered by the
-  # {ActiveRecordModelRecord} it returns.
+  # records, preloads their parents and runs a block in a transaction. It reads no row of the target
+  # except the parent rows the model's own validation needs. What is asked of one record (checking
+  # it, writing it) is answered by the {ActiveRecordModelRecord} it returns.
   class ActiveRecordModelAdapter
     # @param model [Class] the ActiveRecord model of the target table
     def initialize(model:)
@@ -52,6 +52,25 @@ module Pipeforge
     def cast_text(column_name:, text:)
       # The cast is lenient: abc in an integer column is 0.
       @model.type_for_attribute(column_name).cast(text)
+    end
+
+    # Runs the block in one transaction on the connection of the table's model; with +rollback_at_end+
+    # the transaction is undone when the block ends, so nothing the block wrote is kept.
+    #
+    # @param rollback_at_end [Boolean] undo everything the block wrote when it ends
+    # @yield the work to do inside the transaction
+    # @return [Object] the block's result
+    def transaction(rollback_at_end:, &block)
+      result = nil
+
+      # The model's own connection, so a model kept in another database is written to that database.
+      @model.transaction do
+        result = block.call
+        raise ActiveRecord::Rollback if rollback_at_end
+      end
+
+      # Kept in a variable because a rolled-back transaction returns nil.
+      result
     end
 
     # Loads the parents that the records need, with one query for each +belongs_to+ association. A

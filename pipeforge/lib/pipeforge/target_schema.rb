@@ -12,7 +12,7 @@ module Pipeforge
   # One column of the target table that can be given a source column. A column the engine would
   # never load into (the primary key, an ignored column, a generated column) is not in the
   # schema at all; the adapter leaves it out.
-  #   type                the type name the value stage checks against (integer, string, ...)
+  #   type                the type name the column values stage checks against (integer, string, ...)
   #   sql_type            the type as the table writes it
   #   limit, max_length, precision, scale   the size information that goes with the type
   #   unsigned            true for an integer column that holds no negative numbers; false for every other column

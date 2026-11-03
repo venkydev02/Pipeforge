@@ -215,4 +215,57 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       end
     end
   end
+
+  describe "#transaction" do
+    let(:model) { AdapterSpecModels::Account }
+
+    def save_account(email:)
+      model.create!(email: email)
+    end
+
+    context "without rollback_at_end" do
+      it "keeps what the block wrote" do
+        model_adapter.transaction(rollback_at_end: false) { save_account(email: "ann@example.com") }
+
+        expect(model.count).to eq(1)
+      end
+
+      it "gives the result of the block" do
+        expect(model_adapter.transaction(rollback_at_end: false) { :done }).to eq(:done)
+      end
+
+      it "undoes what the block wrote when the block raises, and raises the error" do
+        expect do
+          model_adapter.transaction(rollback_at_end: false) do
+            save_account(email: "ann@example.com")
+            raise "stop"
+          end
+        end.to raise_error(RuntimeError, "stop")
+
+        expect(model.count).to eq(0)
+      end
+    end
+
+    context "with rollback_at_end" do
+      it "undoes what the block wrote" do
+        model_adapter.transaction(rollback_at_end: true) { save_account(email: "ann@example.com") }
+
+        expect(model.count).to eq(0)
+      end
+
+      it "gives the result of the block although the transaction was undone" do
+        expect(model_adapter.transaction(rollback_at_end: true) { :done }).to eq(:done)
+      end
+
+      it "lets a row saved in it see the rows saved before it" do
+        seen = nil
+        model_adapter.transaction(rollback_at_end: true) do
+          save_account(email: "ann@example.com")
+          seen = model.pluck(:email)
+        end
+
+        expect(seen).to eq(["ann@example.com"])
+      end
+    end
+  end
 end

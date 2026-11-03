@@ -5,7 +5,7 @@ module Pipeforge
   #   first_row_number, last_row_number  absolute 1-based data record numbers of the first and the last
   #                                      row of the chunk (the header is not counted)
   #   processed_rows_count               rows in the chunk
-  #   valid_rows_count                   rows that passed the validation
+  #   valid_rows_count                   rows that passed the validation and were written
   #   failed_rows_count                  rows that did not
   #   failed_rows                        a {FailedRow} for each failed row, in file order
   ChunkResult = Data.define(
@@ -13,18 +13,20 @@ module Pipeforge
     :failed_rows
   )
 
-  # Checks one chunk of rows: each row becomes a {RowCandidate}, and each row that is not valid becomes
-  # a {FailedRow}.
+  # Processes one chunk of rows: each row becomes a {RowCandidate}, which is validated and, when valid,
+  # written before the next row is looked at. A row that is not valid, or that the database refuses,
+  # becomes a {FailedRow}.
   module ChunkProcessor
     class << self
-      # Checks one chunk of rows.
+      # Validates and writes one chunk of rows.
       #
       # @param rows [Array<Hash{String => String, nil}>] one chunk, as the reader yields it
       # @param first_row_number [Integer] absolute 1-based data record number of the first row
       # @param transformer [RowTransformer]
       # @param schema_checker [SchemaChecker]
       # @param target_schema [TargetSchema]
-      # @param model_adapter [#build_record, #preload_parents] the adapter's object for the target table
+      # @param model_adapter [#build_record, #preload_parents] the adapter's object for the target table; the
+      #   record it builds is written with +load+
       # @return [ChunkResult]
       def call(rows:, first_row_number:, transformer:, schema_checker:, target_schema:, model_adapter:)
         candidates = build_candidates(
@@ -38,7 +40,7 @@ module Pipeforge
         # parent of each row.
         model_adapter.preload_parents(records: model_records)
 
-        failed_rows = validate_candidates(candidates: candidates, schema_checker: schema_checker)
+        failed_rows = validate_and_load(candidates: candidates, schema_checker: schema_checker)
 
         ChunkResult.new(
           first_row_number: first_row_number,
@@ -87,14 +89,17 @@ module Pipeforge
         record_attributes
       end
 
-      # Checks every candidate and returns the failed rows of the ones that are not valid, in file order.
-      def validate_candidates(candidates:, schema_checker:)
+      # Takes the candidates one at a time, in row order: validates the candidate and, when it is valid,
+      # loads it before the next candidate is looked at. Returns the failed rows of the chunk.
+      def validate_and_load(candidates:, schema_checker:)
         failed_rows = []
 
         candidates.each do |candidate|
-          unless candidate.valid?(schema_checker: schema_checker)
-            failed_rows << candidate.failed_row
-          end
+          # One row at a time: a later row is validated after the earlier ones are in the table, so the
+          # model's own uniqueness check also finds two rows of the file with the same value.
+          next if candidate.valid?(schema_checker: schema_checker) && candidate.load
+
+          failed_rows << candidate.failed_row
         end
 
         failed_rows

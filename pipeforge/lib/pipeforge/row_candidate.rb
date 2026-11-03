@@ -5,11 +5,14 @@ module Pipeforge
   #   row_number  absolute 1-based data record number (the header is not counted)
   #   mapped_values  the row after the column mapping and the value mapping, keyed by target column. It is
   #                  never the raw source row.
-  #   errors      one entry for each mistake: {stage:, target_column:, code:, message:}
+  #   errors      one entry for each mistake: {origin:, target_column:, code:, message:}. +origin+ is where it
+  #               was found: +:schema+ (the core's checks of the target schema), +:model+ (the application
+  #               model's validations and callbacks) or +:database+ (the database refused the row).
   FailedRow = Data.define(:row_number, :mapped_values, :errors)
 
   # One record on its way through the run, built from the transformed values of a row. {#valid?} checks
-  # it and keeps the errors it finds. It is mutable: {#valid?} replaces its errors each time it runs.
+  # it and {#load} writes it; both keep the errors they find. It is mutable: {#valid?} replaces its
+  # errors each time it runs, and a refused {#load} replaces them with the database's.
   class RowCandidate
     # @return [Integer] absolute 1-based data record number (the header is not counted)
     attr_reader :row_number
@@ -21,13 +24,15 @@ module Pipeforge
     # @return [Hash{String => Object}] the attributes the model record was built from
     attr_reader :record_attributes
 
-    # @return [#valid?, #errors, #attributes] the adapter's wrapper of one record, built from the
-    #   attributes. +valid?+ runs the model's checks and is true when it finds no mistake; +errors+ is one
-    #   entry {code:, message:, target_column:} for each mistake the last +valid?+ found; +attributes+ is
+    # @return [#valid?, #load, #errors, #attributes] the adapter's wrapper of one record, built from the
+    #   attributes. +load+ writes it and is true when the target took it; +valid?+ runs the model's
+    #   checks and is true when it finds no mistake; +errors+ is one
+    #   entry {origin:, code:, message:, target_column:} for each mistake the last +valid?+ or +load+ found;
+    #   +attributes+ is
     #   column => the value the record holds now, cast to the column's type and after the model's callbacks.
     attr_reader :model_record
 
-    # @return [Array<Hash>] one entry {code:, message:, target_column:} for each mistake; empty until
+    # @return [Array<Hash>] one entry {origin:, code:, message:, target_column:} for each mistake; empty until
     #   {#valid?}
     attr_reader :errors
 
@@ -62,22 +67,24 @@ module Pipeforge
       @errors.empty?
     end
 
-    # Loads the valid record into the target.
+    # Writes the row to the target; call it only after {#valid?} returned true. When the database
+    # refuses the row, {#errors} holds the refusal's entries (with +origin: :database+, or +:model+ when a
+    # callback of the model stopped the save).
     #
-    # @return [RowCandidate]
+    # @return [Boolean] true when the row was written
     def load
-      raise NotImplementedError, "loading is not part of the validation layer"
+      loaded = @model_record.load
+      @errors = @model_record.errors unless loaded
+
+      loaded
     end
 
     # The row as the consumer sees it when it did not pass: its transformed values and its errors, each
-    # with the stage it came from (+:precheck+ for the validation).
+    # with the origin it came from.
     #
     # @return [FailedRow]
     def failed_row
-      entries = []
-      @errors.each { |error| entries << error.merge(stage: :precheck) }
-
-      FailedRow.new(row_number: @row_number, mapped_values: @mapped_values, errors: entries)
+      FailedRow.new(row_number: @row_number, mapped_values: @mapped_values, errors: @errors.dup)
     end
 
     private
@@ -85,8 +92,8 @@ module Pipeforge
     # Puts the errors of the two levels together so that a mistake is reported once: the same target
     # column with the same code appears once, and the model-level entry is the one kept.
     #
-    # @param model_errors [Array<Hash>] entries {code:, message:, target_column:}
-    # @param schema_errors [Array<Hash>] entries {code:, message:, target_column:}
+    # @param model_errors [Array<Hash>] entries {origin: :model, code:, message:, target_column:}
+    # @param schema_errors [Array<Hash>] entries {origin: :schema, code:, message:, target_column:}
     # @return [Array<Hash>] the model-level entries, then the schema-level entries not already there
     def merge_errors(model_errors:, schema_errors:)
       merged = model_errors.dup

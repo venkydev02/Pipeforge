@@ -2,10 +2,6 @@
 
 RSpec.describe Pipeforge::Error do
   describe "the errors the engine raises on purpose" do
-    it "includes ConfigurationError" do
-      expect(Pipeforge::ConfigurationError.ancestors).to include(described_class)
-    end
-
     it "includes InvalidMappedColumnsError" do
       expect(Pipeforge::InvalidMappedColumnsError.ancestors).to include(described_class)
     end
@@ -25,53 +21,57 @@ RSpec.describe Pipeforge::Error do
 
   describe ".single" do
     subject(:error) do
-      Pipeforge::ConfigurationError.single(code: :unknown_section, message: "unknown section loging", section: "loging")
+      Pipeforge::InvalidMappedColumnsError.single(
+        code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column: "Mail"
+      )
     end
 
     it "is an error of the class it is called on" do
-      expect(error).to be_a(Pipeforge::ConfigurationError)
+      expect(error).to be_a(Pipeforge::InvalidMappedColumnsError)
     end
 
     it "has the message for a person" do
-      expect(error.message).to eq("unknown section loging")
+      expect(error.message).to eq("Mail is not in the file")
     end
 
     it "has one entry with the code, the message and the fields that locate it" do
       expect(error.errors).to eq(
-        [{code: :unknown_section, message: "unknown section loging", section: "loging"}]
+        [{code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column: "Mail"}]
       )
     end
   end
 
   describe "#codes" do
     subject(:error) do
-      Pipeforge::ConfigurationError.new(
-        errors: [{code: :unknown_section, message: "a"}, {code: :unknown_setting, message: "b"}]
+      Pipeforge::InvalidMappedColumnsError.new(
+        errors: [{code: :mapped_column_not_in_file, message: "a"}, {code: :required_column_unmapped, message: "b"}]
       )
     end
 
     it "lists the code of each entry, in order" do
-      expect(error.codes).to eq(%i[unknown_section unknown_setting])
+      expect(error.codes).to eq(%i[mapped_column_not_in_file required_column_unmapped])
     end
   end
 
   describe "#message" do
-    let(:entries) { [{code: :unknown_section, message: "first mistake"}, {code: :unknown_setting, message: "second mistake"}] }
+    let(:entries) do
+      [{code: :mapped_column_not_in_file, message: "first mistake"}, {code: :required_column_unmapped, message: "second mistake"}]
+    end
 
     it "joins the messages of the entries when no message is given" do
-      error = Pipeforge::ConfigurationError.new(errors: entries)
+      error = Pipeforge::InvalidMappedColumnsError.new(errors: entries)
 
       expect(error.message).to eq("first mistake; second mistake")
     end
 
     it "is the message of the entry when there is one entry" do
-      error = Pipeforge::ConfigurationError.new(errors: [entries.first])
+      error = Pipeforge::InvalidMappedColumnsError.new(errors: [entries.first])
 
       expect(error.message).to eq("first mistake")
     end
 
     it "is the given message when one is given" do
-      error = Pipeforge::ConfigurationError.new(errors: entries, message: "its own layout")
+      error = Pipeforge::InvalidMappedColumnsError.new(errors: entries, message: "its own layout")
 
       expect(error.message).to eq("its own layout")
     end

@@ -27,7 +27,7 @@ flowchart TD
 
     subgraph Core["Core: pipeforge"]
         Headers["analyze_headers: names only"]
-        Values["analyze_values: values and facts"]
+        Values["analyze_column_values: values and facts"]
         Run["run: dry run or run"]
     end
 
@@ -49,7 +49,7 @@ flowchart TD
     Loader -. writes rows .-> DB
 ```
 
-Header and value analysis never read existing target rows. Only the loader writes rows, and the model's own validations, which run for every row, read the parent records and the values they check.
+Header and column values analysis never read existing target rows. Only the loader writes rows, and the model's own validations, which run for every row, read the parent records and the values they check.
 
 This is a simplified view. The full topology, the stage contracts and the end-to-end sequence diagram are canonical in [`docs/architecture/overview.md`](docs/architecture/overview.md); every other doc refers back to that file.
 
@@ -78,11 +78,11 @@ result.unmatched_target_columns  # [{name:, metadata:}] for the target columns l
 | `script/sample_data/users_messy_headers.csv` | Headers that are only partly recognizable: some matches, some columns left unmatched |
 | `script/sample_data/users_bad_values.csv` | The right headers, but values that do not fit their columns (`forty` for an age, `maybe` for a boolean, a name where an id is expected) |
 
-To measure the values of a file, pass the columns you mapped to `analyze_values`, as a plain Hash keyed by target column that you build yourself. Every required target column (NOT NULL in the table, with no default in the table or the model; the timestamps a model fills on save do not count; the header result's metadata shows which) needs an entry:
+To measure the values of a file, pass the columns you mapped to `analyze_column_values`, as a plain Hash keyed by target column that you build yourself. Every required target column (NOT NULL in the table, with no default in the table or the model; the timestamps a model fills on save do not count; the header result's metadata shows which) needs an entry:
 
 ```ruby
 engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users_bad_values.csv"), target_table: "users")
-values = engine.analyze_values(mapped_columns: {
+values = engine.analyze_column_values(mapped_columns: {
   "email" => {source_column: "Email"},
   "first_name" => {source_column: "First Name"},
   "last_name" => {source_column: "Last Name"},

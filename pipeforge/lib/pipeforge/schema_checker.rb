@@ -31,8 +31,8 @@ module Pipeforge
     end
 
     # @param attributes [Hash{String => Object}] target column => value to load
-    # @return [Array<Hash>] one entry {code:, message:, target_column:} for each mistake; empty when the
-    #   record passes
+    # @return [Array<Hash>] one entry {origin: :schema, code:, message:, target_column:} for each mistake;
+    #   empty when the record passes
     def call(attributes:)
       errors = []
 
@@ -55,6 +55,7 @@ module Pipeforge
 
     def missing_error(target_column:)
       {
+        origin: :schema,
         code: :value_missing,
         message: "#{target_column.name} is required but its value is empty",
         target_column: target_column.name
@@ -63,6 +64,7 @@ module Pipeforge
 
     def limit_error(target_column:, violation:)
       {
+        origin: :schema,
         code: violation.code,
         message: "#{target_column.name}: #{violation.detail}",
         target_column: target_column.name

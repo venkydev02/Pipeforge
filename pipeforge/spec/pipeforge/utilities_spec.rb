@@ -1,6 +1,74 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Utilities do
+  describe ".positive_whole_number?" do
+    it "is true for 1" do
+      expect(described_class.positive_whole_number?(value: 1)).to be true
+    end
+
+    it "is true for a larger whole number" do
+      expect(described_class.positive_whole_number?(value: 2000)).to be true
+    end
+
+    it "is false for 0" do
+      expect(described_class.positive_whole_number?(value: 0)).to be false
+    end
+
+    it "is false for a negative whole number" do
+      expect(described_class.positive_whole_number?(value: -3)).to be false
+    end
+
+    it "is false for a decimal number" do
+      expect(described_class.positive_whole_number?(value: 2.5)).to be false
+    end
+
+    it "is false for a whole number written as text" do
+      expect(described_class.positive_whole_number?(value: "5")).to be false
+    end
+
+    it "is false for nil" do
+      expect(described_class.positive_whole_number?(value: nil)).to be false
+    end
+
+    it "is false for true" do
+      expect(described_class.positive_whole_number?(value: true)).to be false
+    end
+  end
+
+  describe ".non_negative_whole_number?" do
+    it "is true for 0" do
+      expect(described_class.non_negative_whole_number?(value: 0)).to be true
+    end
+
+    it "is true for 1" do
+      expect(described_class.non_negative_whole_number?(value: 1)).to be true
+    end
+
+    it "is true for a large whole number" do
+      expect(described_class.non_negative_whole_number?(value: 2000)).to be true
+    end
+
+    it "is false for a negative whole number" do
+      expect(described_class.non_negative_whole_number?(value: -1)).to be false
+    end
+
+    it "is false for a decimal number" do
+      expect(described_class.non_negative_whole_number?(value: 1.5)).to be false
+    end
+
+    it "is false for a whole number written as text" do
+      expect(described_class.non_negative_whole_number?(value: "2")).to be false
+    end
+
+    it "is false for nil" do
+      expect(described_class.non_negative_whole_number?(value: nil)).to be false
+    end
+
+    it "is false for true" do
+      expect(described_class.non_negative_whole_number?(value: true)).to be false
+    end
+  end
+
   describe ".blank?" do
     context "with a string" do
       it "is true for an empty string" do

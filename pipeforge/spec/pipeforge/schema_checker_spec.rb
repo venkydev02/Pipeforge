@@ -30,6 +30,10 @@ RSpec.describe Pipeforge::SchemaChecker do
         it "gives a message that a person can read" do
           expect(errors.first[:message]).to include("email")
         end
+
+        it "gives the origin schema" do
+          expect(errors.first[:origin]).to eq(:schema)
+        end
       end
 
       context "when it is left out of the attributes" do
@@ -62,7 +66,7 @@ RSpec.describe Pipeforge::SchemaChecker do
         let(:attributes) { {"code" => "abcd"} }
 
         it "gives value_too_long for that column, with a message that names it" do
-          expect(errors).to contain_exactly(include(code: :value_too_long, target_column: "code", message: /\Acode: /))
+          expect(errors).to contain_exactly(include(origin: :schema, code: :value_too_long, target_column: "code", message: /\Acode: /))
         end
       end
 

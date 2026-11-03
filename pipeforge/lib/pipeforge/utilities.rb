@@ -23,6 +23,23 @@ module Pipeforge
       Float::MAX
     end
 
+    # Whether a value is a whole number of at least 1. Used for a count that must be positive (a chunk size, a
+    # threshold).
+    #
+    # @param value [Object]
+    # @return [Boolean]
+    def self.positive_whole_number?(value:)
+      value.is_a?(Integer) && value >= 1
+    end
+
+    # Whether a value is a whole number of at least 0. Used for a count that may be zero (an offset).
+    #
+    # @param value [Object]
+    # @return [Boolean]
+    def self.non_negative_whole_number?(value:)
+      value.is_a?(Integer) && value >= 0
+    end
+
     # Whether a value counts as empty: nil, a string with nothing but whitespace, or another
     # object that is itself empty (an empty array, hash or set). Anything else is not empty,
     # including false and 0, so a value mapped to false is loaded as false. (ActiveSupport's
