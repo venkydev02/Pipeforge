@@ -2,9 +2,9 @@
 
 source "https://rubygems.org"
 
-# The two gems of this repository. The adapter depends on the core.
-gemspec path: "pipeforge"
-gemspec path: "pipeforge-activerecord"
+# The gem of this repository: the ActiveRecord adapter, with the core inside it. Another adapter
+# gets its own gemspec at the root; add it here with `gemspec name: "<its name>"`.
+gemspec
 
 group :development, :test do
   gem "rspec", "~> 3.13"

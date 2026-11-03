@@ -1,0 +1,5 @@
+-I lib
+-I spec
+--require spec_helper
+--format documentation
+--color
