@@ -17,7 +17,7 @@ This engine is the fix: a **migration engine built on ActiveRecord**. You give i
 
 ## Architecture
 
-The engine has two parts. The **core** (`pipeforge`) has no database library. The **adapter** (`pipeforge-activerecord`) reads the model's metadata and loads the rows. You install only the adapter; the core comes with it.
+The engine has two parts. The **core** has no database library. The **adapter** (for ActiveRecord, `pipeforge-activerecord`) reads the model's metadata and loads the rows. You install one gem, the adapter's; the core comes inside it.
 
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 45, 'rankSpacing': 65, 'padding': 20}}}%%

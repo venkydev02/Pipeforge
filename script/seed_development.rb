@@ -19,7 +19,7 @@
 # Sample source files that match these tables are in script/sample_data.
 
 require "fileutils"
-require "pipeforge/activerecord"
+require "pipeforge-activerecord"
 
 DATABASE_PATH = File.expand_path("../tmp/development.sqlite3", __dir__)
 

@@ -12,7 +12,7 @@ The **Relational Data Migration Engine** migrates data from a source file into a
 
 CSV is the **current MVP source format**. It is not the system identity; other source formats may be added later without changing the stage design.
 
-The engine is split into a **framework-agnostic core** (`pipeforge`) and one **adapter distribution per database library** (`pipeforge-activerecord` for the MVP). The consumer installs only the adapter (ADR-16).
+The engine is split into a **framework-agnostic core** (`lib/pipeforge`) and one **adapter per database library** (`lib/pipeforge/adapters/activerecord` for the MVP). Each adapter is a gem with its own gemspec that carries the core, and the consumer installs only that gem (ADR-23).
 
 ### 1.1 Minimal Consumer Effort
 The consumer does not write connections or loaders. They supply a source, name the target table, and set behavior options. The adapter is built in. Custom adapters are an advanced extension point (see `target-access.md`).

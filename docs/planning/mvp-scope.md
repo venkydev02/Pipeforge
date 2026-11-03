@@ -12,7 +12,7 @@
 - CSV (read from an offset, optionally)
 
 ### 1.2 Target
-- Rails applications using ActiveRecord, through the `pipeforge-activerecord` distribution (ADR-16)
+- Rails applications using ActiveRecord, through the `pipeforge-activerecord` gem, which carries the core (ADR-23)
 - PostgreSQL (first), SQLite
 - Target named by its table name (for example `"users"`); the ActiveRecord adapter requires a model for it (ADR-20)
 
@@ -22,7 +22,7 @@
 - Single-attribute primary, foreign and unique keys
 
 ### 1.4 Configuration & Interaction
-- Consumed as a Ruby library: the core gem comes with the adapter gem; no gem-shipped CLI in MVP
+- Consumed as a Ruby library: the core comes inside the adapter's gem; no gem-shipped CLI in MVP
 - One-time engine configuration through `pipeforge.yml`; behavior is chosen by options, not code
 - Per-call input: the mapped columns with their value mappings, the mode, and the optional offset, chunk size and loading options (the stages do not depend on each other's output)
 - Review is the consumer's own step; the engine has no build step and no acknowledgement flag (ADR-14, ADR-17)
@@ -50,7 +50,7 @@ Now that row-by-row loading is built (post-load work): review which error codes 
 ## 2. Post-MVP
 
 - **Source formats:** JSON, Parquet, XML
-- **Databases:** MySQL and other ActiveRecord adapters (not verified in MVP); other adapters as their own distributions (ADR-16)
+- **Databases:** MySQL and other ActiveRecord adapters (not verified in MVP); other adapters as their own gems, each carrying the core (ADR-23)
 - **Relationships:** lookup of a foreign key by a parent column, and creating missing parents (ADR-15 defers both)
 - **Schema features:** composite keys, many-to-many splitting, CHECK constraints, partial indexes, generated columns, triggers, partitioning
 - **Load modes:** upsert / update (MVP is insert only)
@@ -75,4 +75,4 @@ Now that row-by-row loading is built (post-load work): review which error codes 
 10. Failed rows are given to the consumer, a chunk at a time, with exact row numbers, the transformed values and each error's stage, column and code. The engine writes no file.
 11. A run with `offset:` (the row number of the last processed row) continues the row numbers.
 12. The totals account for every processed row (valid plus invalid).
-13. Row access is confined to the loader, and the core gem names no ActiveRecord class (tested).
+13. Row access is confined to the loader, and the core names no ActiveRecord class (tested).
