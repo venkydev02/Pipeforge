@@ -100,7 +100,6 @@ module Pipeforge
     # failed rows are the same; the block is called inside that transaction, so it must not write to
     # the target database.
     #
-    # @api private
     # @param mode [Symbol] +:dry_run+ or +:run+
     # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}
     # @param offset [Integer] rows to skip before the first one processed; the +row_number+ of the last
