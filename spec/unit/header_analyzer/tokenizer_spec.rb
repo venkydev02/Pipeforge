@@ -24,6 +24,10 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
       it "treats several separators in a row as one" do
         expect(tokenizer.call(name: "first__ - name")).to eq(%w[first name])
       end
+
+      it "gives no empty token for a separator at the start or the end" do
+        expect(tokenizer.call(name: " first_name ")).to eq(%w[first name])
+      end
     end
 
     context "with words joined without a separator" do
@@ -54,6 +58,14 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
       it "splits a name made of letters, digits and camelCase" do
         expect(tokenizer.call(name: "line1Address")).to eq(%w[line 1 address])
       end
+
+      it "splits an acronym from the digits after it" do
+        expect(tokenizer.call(name: "HTTP2")).to eq(%w[http 2])
+      end
+
+      it "splits digits from the acronym after them" do
+        expect(tokenizer.call(name: "2FA")).to eq(%w[2 fa])
+      end
     end
 
     context "with letters of any case" do
@@ -62,13 +74,25 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
       end
     end
 
-    context "with plural words" do
-      it "keeps a plural as written" do
-        expect(tokenizer.call(name: "companies")).to eq(%w[companies])
+    context "with letters that are not English" do
+      it "keeps accented letters as letters" do
+        expect(tokenizer.call(name: "Straße Café")).to eq(%w[straße café])
       end
 
-      it "keeps a regular plural as written" do
-        expect(tokenizer.call(name: "Names")).to eq(%w[names])
+      it "splits camelCase at a capital that is not English" do
+        expect(tokenizer.call(name: "ÉcoleName")).to eq(%w[école name])
+      end
+    end
+
+    context "with a plural word" do
+      it "keeps the plural as written" do
+        expect(tokenizer.call(name: "companies")).to eq(%w[companies])
+      end
+    end
+
+    context "with a name of one letter" do
+      it "gives that letter as the only token" do
+        expect(tokenizer.call(name: "a")).to eq(%w[a])
       end
     end
 
