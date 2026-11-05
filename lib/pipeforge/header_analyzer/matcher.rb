@@ -100,7 +100,7 @@ module Pipeforge
 
         tokenized_targets.each do |tokenized_target|
           tokenized_sources.each do |tokenized_source|
-            score = @pair_scorer.call(target_tokens: tokenized_target.tokens, source_tokens: tokenized_source.tokens)
+            score = @pair_scorer.call(left_tokens: tokenized_target.tokens, right_tokens: tokenized_source.tokens)
             next unless score.positive?
 
             candidates << Candidate.new(
