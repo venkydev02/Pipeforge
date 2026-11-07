@@ -1,81 +1,152 @@
 # frozen_string_literal: true
 
-# The scorer gets the tokens of the left side and of the right side and gives a percentage.
-# The private methods (word points, pairing, the order check, the percentage) are covered through
-# #call, one context for each.
+# The scorer gets the tokens of the left side and of the right side and gives a percentage. Each
+# context gives the tokens; the example states the score expected from them. The private methods
+# (word points, pairing, the order check, the percentage) are covered through #call, one group for
+# each.
 RSpec.describe Pipeforge::HeaderAnalyzer::PairScorer do
   subject(:scorer) { described_class.new(reorder_penalty: reorder_penalty) }
 
   let(:reorder_penalty) { 10 }
-
-  # The score of the tokens of the left side against the tokens of the right side; each argument
-  # is the tokens separated by spaces.
-  def score_of(left, right)
-    scorer.call(left_tokens: left.split, right_tokens: right.split)
-  end
+  let(:left_tokens) { raise "the context gives left_tokens" }
+  let(:right_tokens) { raise "the context gives right_tokens" }
+  let(:score) { scorer.call(left_tokens: left_tokens, right_tokens: right_tokens) }
 
   describe "#call" do
-    context "when a side has no tokens (the contract)" do
-      it "scores 0 when neither side has tokens" do
-        expect(scorer.call(left_tokens: [], right_tokens: [])).to eq(0.0)
+    describe "the contract" do
+      context "when neither side has tokens" do
+        let(:left_tokens) { [] }
+        let(:right_tokens) { [] }
+
+        it "scores 0" do
+          expect(score).to eq(0.0)
+        end
       end
 
-      it "scores 0 when only the left side has tokens" do
-        expect(scorer.call(left_tokens: %w[name], right_tokens: [])).to eq(0.0)
+      context "when only the left side has tokens" do
+        let(:left_tokens) { %w[name] }
+        let(:right_tokens) { [] }
+
+        it "scores 0" do
+          expect(score).to eq(0.0)
+        end
       end
 
-      it "scores 0 when only the right side has tokens" do
-        expect(scorer.call(left_tokens: [], right_tokens: %w[name])).to eq(0.0)
-      end
-    end
+      context "when only the right side has tokens" do
+        let(:left_tokens) { [] }
+        let(:right_tokens) { %w[name] }
 
-    context "when two tokens are compared (word points)" do
-      it "scores 100 when the tokens are identical" do
-        expect(score_of("first", "first")).to eq(100.0)
-      end
-
-      it "scores the share of the longer token when the shorter one is its prefix" do
-        expect(score_of("first", "f")).to eq(20.0)
-      end
-
-      it "scores 0 when the tokens do not match" do
-        expect(score_of("first", "name")).to eq(0.0)
-      end
-    end
-
-    context "when some tokens have no match (the percentage)" do
-      it "counts the tokens without a match in the score" do
-        expect(score_of("first name", "first")).to eq(66.67)
+        it "scores 0" do
+          expect(score).to eq(0.0)
+        end
       end
     end
 
-    context "when a token matches more than one token on the other side (the pairing)" do
-      it "pairs a token on the left side with only its best match on the right side" do
-        expect(score_of("name", "namesake name")).to eq(66.67)
+    describe "word points" do
+      context "when the tokens are identical" do
+        let(:left_tokens) { %w[first] }
+        let(:right_tokens) { %w[first] }
+
+        it "scores 100" do
+          expect(score).to eq(100.0)
+        end
       end
 
-      it "pairs a token on the right side with only its best match on the left side" do
-        expect(score_of("namesake name", "name")).to eq(66.67)
+      context "when the shorter token is a prefix of the longer one" do
+        let(:left_tokens) { %w[first] }
+        let(:right_tokens) { %w[f] }
+
+        it "scores the share of the longer token that the shorter one covers" do
+          expect(score).to eq(20.0)
+        end
       end
 
-      it "gives a token that lost its match its next best one" do
-        expect(score_of("name namesa", "name namesake")).to eq(87.5)
+      context "when one token is inside the other but is not its prefix" do
+        let(:left_tokens) { %w[name] }
+        let(:right_tokens) { %w[username] }
+
+        it "scores 0" do
+          expect(score).to eq(0.0)
+        end
       end
     end
 
-    context "when the matched tokens appear in a different order (the reorder penalty)" do
-      it "takes the penalty off the score" do
-        expect(score_of("name first", "first name")).to eq(90.0)
-      end
+    describe "the percentage" do
+      context "when some tokens have no match" do
+        let(:left_tokens) { %w[first name] }
+        let(:right_tokens) { %w[first] }
 
-      it "takes the penalty off when a token without a match sits between the matched tokens" do
-        expect(score_of("name of first", "first name")).to eq(70.0)
+        it "counts them in the score" do
+          expect(score).to eq(66.67)
+        end
       end
     end
 
-    context "when the matched tokens appear in the same order" do
-      it "takes no penalty off when a token without a match sits between the matched tokens" do
-        expect(score_of("name of first", "name first")).to eq(80.0)
+    describe "the pairing" do
+      context "when a token on the left side matches several tokens on the right side" do
+        let(:left_tokens) { %w[name] }
+        let(:right_tokens) { %w[namesake name] }
+
+        it "pairs it with only its best match" do
+          expect(score).to eq(66.67)
+        end
+      end
+
+      context "when a token on the right side matches several tokens on the left side" do
+        let(:left_tokens) { %w[namesake name] }
+        let(:right_tokens) { %w[name] }
+
+        it "pairs it with only its best match" do
+          expect(score).to eq(66.67)
+        end
+      end
+
+      context "when a token lost its best match to a better pair" do
+        let(:left_tokens) { %w[name namesa] }
+        let(:right_tokens) { %w[name namesake] }
+
+        it "pairs it with its next best match" do
+          expect(score).to eq(87.5)
+        end
+      end
+    end
+
+    describe "the reorder penalty" do
+      context "when the matched tokens appear in a different order" do
+        let(:left_tokens) { %w[name first] }
+        let(:right_tokens) { %w[first name] }
+
+        it "takes the penalty off the score" do
+          expect(score).to eq(90.0)
+        end
+
+        context "and the best match is not the first token" do
+          let(:left_tokens) { %w[f name] }
+          let(:right_tokens) { %w[name first] }
+
+          it "takes the penalty off the score" do
+            expect(score).to eq(50.0)
+          end
+        end
+      end
+
+      context "when the matched tokens appear in the same order with tokens without a match on both sides" do
+        let(:left_tokens) { %w[name of first] }
+        let(:right_tokens) { %w[by name first] }
+
+        it "takes no penalty off" do
+          expect(score).to eq(66.67)
+        end
+      end
+
+      context "when the penalty is larger than the score" do
+        let(:reorder_penalty) { 100 }
+        let(:left_tokens) { %w[name of first] }
+        let(:right_tokens) { %w[first name] }
+
+        it "scores 0" do
+          expect(score).to eq(0.0)
+        end
       end
     end
   end

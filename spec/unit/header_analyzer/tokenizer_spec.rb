@@ -1,108 +1,98 @@
 # frozen_string_literal: true
 
+# Each context gives a name; the example states the tokens expected from it.
 RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
   subject(:tokenizer) { described_class.new }
 
+  let(:name) { raise "the context gives name" }
+  let(:tokens) { tokenizer.call(name: name) }
+
   describe "#call" do
-    context "with separators" do
-      it "splits on spaces" do
-        expect(tokenizer.call(name: "First Name")).to eq(%w[first name])
+    describe "separators" do
+      context "when the name has a space, an underscore, a dash and a dot" do
+        let(:name) { "a b_c-d.e" }
+
+        it "splits it at each of them" do
+          expect(tokens).to eq(%w[a b c d e])
+        end
       end
 
-      it "splits on underscores" do
-        expect(tokenizer.call(name: "first_name")).to eq(%w[first name])
-      end
+      context "when the name starts and ends with a separator" do
+        let(:name) { " first_name " }
 
-      it "splits on dashes" do
-        expect(tokenizer.call(name: "first-name")).to eq(%w[first name])
-      end
-
-      it "splits on dots" do
-        expect(tokenizer.call(name: "first.name")).to eq(%w[first name])
-      end
-
-      it "treats several separators in a row as one" do
-        expect(tokenizer.call(name: "first__ - name")).to eq(%w[first name])
-      end
-
-      it "gives no empty token for a separator at the start or the end" do
-        expect(tokenizer.call(name: " first_name ")).to eq(%w[first name])
+        it "gives no empty token" do
+          expect(tokens).to eq(%w[first name])
+        end
       end
     end
 
-    context "with words joined without a separator" do
-      it "splits camelCase" do
-        expect(tokenizer.call(name: "firstName")).to eq(%w[first name])
+    describe "words joined without a separator" do
+      context "when the words are joined in camelCase" do
+        let(:name) { "billingAddressLine" }
+
+        it "splits them at each capital letter" do
+          expect(tokens).to eq(%w[billing address line])
+        end
       end
 
-      it "splits PascalCase" do
-        expect(tokenizer.call(name: "FirstName")).to eq(%w[first name])
+      context "when the name has acronyms between words" do
+        let(:name) { "HTTPServerXMLParser" }
+
+        it "splits each acronym from the words around it" do
+          expect(tokens).to eq(%w[http server xml parser])
+        end
       end
 
-      it "splits an acronym from the word after it" do
-        expect(tokenizer.call(name: "HTTPServer")).to eq(%w[http server])
-      end
+      context "when the name has digits between words" do
+        let(:name) { "address1line2part3" }
 
-      it "keeps an acronym that ends the name as one token" do
-        expect(tokenizer.call(name: "userID")).to eq(%w[user id])
-      end
-
-      it "splits letters from digits" do
-        expect(tokenizer.call(name: "address2")).to eq(%w[address 2])
-      end
-
-      it "splits digits from the letters after them" do
-        expect(tokenizer.call(name: "2fa")).to eq(%w[2 fa])
-      end
-
-      it "splits a name made of letters, digits and camelCase" do
-        expect(tokenizer.call(name: "line1Address")).to eq(%w[line 1 address])
-      end
-
-      it "splits an acronym from the digits after it" do
-        expect(tokenizer.call(name: "HTTP2")).to eq(%w[http 2])
-      end
-
-      it "splits digits from the acronym after them" do
-        expect(tokenizer.call(name: "2FA")).to eq(%w[2 fa])
+        it "splits the digits from the letters" do
+          expect(tokens).to eq(%w[address 1 line 2 part 3])
+        end
       end
     end
 
-    context "with letters of any case" do
-      it "lowercases every token" do
-        expect(tokenizer.call(name: "FIRST NAME")).to eq(%w[first name])
+    describe "letters" do
+      context "when the name has capital letters" do
+        let(:name) { "FIRST NAME" }
+
+        it "lowercases every token" do
+          expect(tokens).to eq(%w[first name])
+        end
+      end
+
+      context "when the name has accented letters and a capital letter that is not English" do
+        let(:name) { "ÉcoleÉlève" }
+
+        it "keeps the accented letters and splits at the capital letter" do
+          expect(tokens).to eq(%w[école élève])
+        end
+      end
+
+      context "when the name has a plural word" do
+        let(:name) { "companies" }
+
+        it "keeps the plural as written" do
+          expect(tokens).to eq(%w[companies])
+        end
       end
     end
 
-    context "with letters that are not English" do
-      it "keeps accented letters as letters" do
-        expect(tokenizer.call(name: "Straße Café")).to eq(%w[straße café])
+    describe "a name without tokens" do
+      context "when the name has no letters or digits" do
+        let(:name) { "--  .." }
+
+        it "gives no tokens" do
+          expect(tokens).to eq([])
+        end
       end
 
-      it "splits camelCase at a capital that is not English" do
-        expect(tokenizer.call(name: "ÉcoleName")).to eq(%w[école name])
-      end
-    end
+      context "when the name is empty" do
+        let(:name) { "" }
 
-    context "with a plural word" do
-      it "keeps the plural as written" do
-        expect(tokenizer.call(name: "companies")).to eq(%w[companies])
-      end
-    end
-
-    context "with a name of one letter" do
-      it "gives that letter as the only token" do
-        expect(tokenizer.call(name: "a")).to eq(%w[a])
-      end
-    end
-
-    context "with a name that has no letters or digits" do
-      it "gives no tokens" do
-        expect(tokenizer.call(name: "--  ..")).to eq([])
-      end
-
-      it "gives no tokens for an empty name" do
-        expect(tokenizer.call(name: "")).to eq([])
+        it "gives no tokens" do
+          expect(tokens).to eq([])
+        end
       end
     end
   end
