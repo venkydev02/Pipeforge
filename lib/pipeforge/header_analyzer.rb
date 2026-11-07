@@ -74,7 +74,8 @@ module Pipeforge
 
         Matcher.new(
           inclusion_threshold: settings.inclusion_threshold,
-          pair_scorer: PairScorer.new(reorder_penalty: settings.reorder_penalty)
+          pair_scorer: PairScorer.new(reorder_penalty: settings.reorder_penalty),
+          tokenizer: Tokenizer.new
         )
       end
 

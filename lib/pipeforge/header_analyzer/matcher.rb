@@ -8,13 +8,13 @@ module Pipeforge
     # Matches source columns to target columns by name only. Values, types and constraints never
     # change the result.
     #
-    # Every target column is scored against every source column. A pair with a score of 0 is
-    # never a candidate. The candidates are sorted by score, best first; pairs with the same
-    # score are put in the order of the target column name and then the source column name, so
-    # the result is the same on every run and does not depend on where the columns sit in the
-    # file or the table.
+    # Every target column is scored against every source column. A pair with a score below the
+    # inclusion threshold is never a candidate. The candidates are sorted by score, best first;
+    # pairs with the same score are put in the order of the target column name and then the
+    # source column name, so the result is the same on every run and does not depend on where the
+    # columns sit in the file or the table.
     #
-    # The sorted pairs are walked from the top, down to the inclusion threshold:
+    # The sorted candidates are walked from the top:
     # - a target column that already has a match is skipped;
     # - a source column that was matched with a different score is skipped (the target with the
     #   better score for it keeps it);
@@ -36,7 +36,8 @@ module Pipeforge
     # @example
     #   matcher = Pipeforge::HeaderAnalyzer::Matcher.new(
     #     inclusion_threshold: 55,
-    #     pair_scorer: Pipeforge::HeaderAnalyzer::PairScorer.new(reorder_penalty: 10)
+    #     pair_scorer: Pipeforge::HeaderAnalyzer::PairScorer.new(reorder_penalty: 10),
+    #     tokenizer: Pipeforge::HeaderAnalyzer::Tokenizer.new
     #   )
     #   matcher.call(source_columns: ["First Name"], target_columns: ["first_name"]).matches
     class Matcher
@@ -54,13 +55,13 @@ module Pipeforge
       # A column name with its tokens, for a source column or a target column.
       ColumnTokens = Data.define(:name, :tokens)
 
-      # A source column and a target column that have a score above 0 together.
+      # A source column and a target column whose score reaches the inclusion threshold.
       Candidate = Data.define(:source_column, :target_column, :score)
 
       # @param inclusion_threshold [Numeric] the lowest score of a match
       # @param pair_scorer [PairScorer] scores one target column against one source column
       # @param tokenizer [Tokenizer] splits a column name into tokens
-      def initialize(inclusion_threshold:, pair_scorer:, tokenizer: Tokenizer.new)
+      def initialize(inclusion_threshold:, pair_scorer:, tokenizer:)
         @inclusion_threshold = inclusion_threshold
         @pair_scorer = pair_scorer
         @tokenizer = tokenizer
@@ -94,14 +95,15 @@ module Pipeforge
         tokenized_columns
       end
 
-      # Every pair of a target column and a source column with a score above 0.
+      # Every pair of a target column and a source column whose score reaches the inclusion
+      # threshold.
       def build_candidates(tokenized_sources:, tokenized_targets:)
         candidates = []
 
         tokenized_targets.each do |tokenized_target|
           tokenized_sources.each do |tokenized_source|
             score = @pair_scorer.call(left_tokens: tokenized_target.tokens, right_tokens: tokenized_source.tokens)
-            next unless score.positive?
+            next if score < @inclusion_threshold
 
             candidates << Candidate.new(
               source_column: tokenized_source.name, target_column: tokenized_target.name, score: score
@@ -118,10 +120,9 @@ module Pipeforge
         candidates.sort_by { |candidate| [-candidate.score, candidate.target_column, candidate.source_column] }
       end
 
-      # Walks the ranked candidates down to the inclusion threshold and picks the matches. Each
-      # match is built when it is picked, with an empty +tied_with+ list; a later candidate that
-      # ties with it (the same target column, the same score, an available source column) adds
-      # its source column to that list.
+      # Walks the ranked candidates and picks the matches. Each match is built when it is picked,
+      # with an empty +tied_with+ list; a later candidate that ties with it (the same target
+      # column, the same score, an available source column) adds its source column to that list.
       #
       # @return [Hash] the +matches+ (in the order they were picked), and the names of the
       #   +matched_source_columns+ and +matched_target_columns+ that have a match
@@ -130,18 +131,15 @@ module Pipeforge
         match_score_by_source_column = {}
 
         ranked_candidates.each do |candidate|
-          break if candidate.score < @inclusion_threshold
-
           source_match_score = match_score_by_source_column[candidate.source_column]
           source_available = source_match_score.nil? || source_match_score == candidate.score
-          existing_match = match_by_target_column[candidate.target_column]
+          next unless source_available
 
+          existing_match = match_by_target_column[candidate.target_column]
           if existing_match
-            tied = source_available && existing_match.score == candidate.score
-            existing_match.tied_with << candidate.source_column if tied
+            existing_match.tied_with << candidate.source_column if existing_match.score == candidate.score
             next
           end
-          next unless source_available
 
           match_by_target_column[candidate.target_column] = to_match(candidate: candidate)
           match_score_by_source_column[candidate.source_column] = candidate.score if source_match_score.nil?
