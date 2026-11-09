@@ -5,8 +5,8 @@
 # Configuration.recommendation returns the settings of the context, and the matcher double answers
 # the matcher result of the context. The target schema is plain data, built with the spec helpers.
 #
-# Each context gives the inputs; the example states the result expected from them. Only the contract
-# group checks calls.
+# Each context gives the inputs. The contract group checks the calls; every other example expects
+# the whole Result, built with result_of (the fields a context does not give keep their defaults).
 #
 # The groups follow what .call does, in order:
 #   1. the contract: it builds the matcher from the settings and asks it to match;
@@ -53,6 +53,15 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   def matcher_match(target:, source:, score:, tied_with: [])
     Pipeforge::HeaderAnalyzer::Matcher::Match.new(
       source_column: source, target_column: target, score: score, tied_with: tied_with
+    )
+  end
+
+  # The Result that a context expects; the fields it does not give keep the defaults of the lets.
+  def result_of(matches: [], unmatched_source_columns: [], unmatched_target_columns: [],
+    source_identifier: "users.csv", target_table: "users", model: "User")
+    described_class::Result.new(
+      source_identifier: source_identifier, target_table: target_table, model: model, matches: matches,
+      unmatched_source_columns: unmatched_source_columns, unmatched_target_columns: unmatched_target_columns
     )
   end
 
@@ -136,22 +145,16 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
           )
         end
 
-        it "lists one entry for each match, in the order the matcher gave" do
-          expect(result.matches.map { |match| match[:target_column] }).to eq(%w[first_name phone])
-        end
-
-        it "gives each entry the source column, the score and the tied source columns of its match" do
-          expect(result.matches.map { |match| match.slice(:source_column, :score, :tied_with) }).to eq(
-            [
-              {source_column: "First Name", score: 100.0, tied_with: []},
-              {source_column: "Phone 1", score: 66.67, tied_with: ["Phone 2"]}
-            ]
-          )
-        end
-
-        it "gives each entry the metadata of its target column" do
-          expect(result.matches.map { |match| match[:metadata] }).to eq(
-            [default_metadata(max_length: 50, required: true), default_metadata]
+        it "gives one entry for each match, in the order the matcher gave, with its fields and the metadata of its target column" do
+          expect(result).to eq(
+            result_of(
+              matches: [
+                {target_column: "first_name", source_column: "First Name", score: 100.0, tied_with: [],
+                 metadata: default_metadata(max_length: 50, required: true)},
+                {target_column: "phone", source_column: "Phone 1", score: 66.67, tied_with: ["Phone 2"],
+                 metadata: default_metadata}
+              ]
+            )
           )
         end
       end
@@ -162,7 +165,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:matcher_result) { matcher_result_of(unmatched_source_columns: %w[Zip Notes]) }
 
         it "lists them in the order the matcher gave" do
-          expect(result.unmatched_source_columns).to eq(%w[Zip Notes])
+          expect(result).to eq(result_of(unmatched_source_columns: %w[Zip Notes]))
         end
       end
 
@@ -178,19 +181,20 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         end
         let(:matcher_result) { matcher_result_of(unmatched_target_columns: %w[company_id notes]) }
 
-        it "lists one entry for each, in the order the matcher gave" do
-          expect(result.unmatched_target_columns.map { |entry| entry[:target_column] }).to eq(%w[company_id notes])
-        end
-
-        it "gives each entry the metadata of its target column" do
-          expect(result.unmatched_target_columns.map { |entry| entry[:metadata] }).to eq(
-            [
-              default_metadata(
-                type: "integer", sql_type: "bigint", required: true,
-                foreign_key: {association: "company", parent_table: "companies"}
-              ),
-              default_metadata
-            ]
+        it "gives one entry for each, in the order the matcher gave, with the metadata of its target column" do
+          expect(result).to eq(
+            result_of(
+              unmatched_target_columns: [
+                {
+                  target_column: "company_id",
+                  metadata: default_metadata(
+                    type: "integer", sql_type: "bigint", required: true,
+                    foreign_key: {association: "company", parent_table: "companies"}
+                  )
+                },
+                {target_column: "notes", metadata: default_metadata}
+              ]
+            )
           )
         end
       end
@@ -202,7 +206,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:model) { "Person" }
 
         it "names the table and the model" do
-          expect(result).to have_attributes(target_table: "people", model: "Person")
+          expect(result).to eq(result_of(target_table: "people", model: "Person"))
         end
       end
 
@@ -210,7 +214,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:model) { nil }
 
         it "has no model" do
-          expect(result.model).to be_nil
+          expect(result).to eq(result_of(model: nil))
         end
       end
 
@@ -218,7 +222,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:source_identifier) { "people.csv" }
 
         it "names the source with that identifier" do
-          expect(result.source_identifier).to eq("people.csv")
+          expect(result).to eq(result_of(source_identifier: "people.csv"))
         end
       end
     end
