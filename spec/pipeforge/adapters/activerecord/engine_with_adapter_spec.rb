@@ -9,7 +9,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   let(:csv) { "Email,Company,Age,Balance,Zip\nann@example.com,Acme,31,10.5,10001\n" }
 
   # The match of a target column in the header result.
-  def match_for(target_column)
+  def match_for(target_column:)
     result.matches.find { |match| match[:target_column] == target_column }
   end
 
@@ -31,7 +31,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   end
 
   it "reports the foreign key in the metadata of its column" do
-    expect(match_for("company_id")[:metadata][:foreign_key]).to eq(
+    expect(match_for(target_column: "company_id")[:metadata][:foreign_key]).to eq(
       association: "company", parent_table: "companies"
     )
   end
@@ -41,7 +41,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   end
 
   it "gives the type information of each column in its metadata" do
-    expect(match_for("age")[:metadata]).to include(type: "integer", required: false)
+    expect(match_for(target_column: "age")[:metadata]).to include(type: "integer", required: false)
   end
 
   describe "#analyze_column_values" do

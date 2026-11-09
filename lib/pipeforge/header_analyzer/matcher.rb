@@ -58,7 +58,7 @@ module Pipeforge
       # A source column and a target column whose score reaches the inclusion threshold.
       Candidate = Data.define(:source_column, :target_column, :score)
 
-      # @param inclusion_threshold [Numeric] the lowest score of a match
+      # @param inclusion_threshold [Numeric] the lowest score of a match, a number of at least 1
       # @param pair_scorer [PairScorer] scores one target column against one source column
       # @param tokenizer [Tokenizer] splits a column name into tokens
       def initialize(inclusion_threshold:, pair_scorer:, tokenizer:)
