@@ -38,7 +38,7 @@ module Pipeforge
     end
 
     # Matches the columns of the source to the columns of the target table by name only, and
-    # returns the best matches, keyed by target column, with the metadata of each target column,
+    # returns the best matches, in table order, with the metadata of each target column,
     # and the columns left unmatched. Only the header of the source and the schema of the target
     # are read, never any value or row.
     #

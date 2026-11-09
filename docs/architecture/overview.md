@@ -37,7 +37,7 @@ run(mode:, mapped_columns:, offset:, chunk_size:) { |chunk_result| }
                                           → RunResult (totals); each chunk's failed rows go to the block
 ```
 
-1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, keyed by target column, with the metadata of each target column, and the columns left unmatched.
+1. **`analyze_headers`** reads the source header and the target model's columns, and ranks source columns against target columns **by names only** (ADR-12). It returns the best matches, in table order, with the metadata of each target column, and the columns left unmatched.
 2. **`analyze_column_values`** takes the mapping the consumer settled (target column => source column) and measures the mapped columns in one pass: empty counts, how many values fit the target type, distinct values, and the consumer's `value_mapping`. Calling it again after an edit shows the facts again.
 3. **`run`** is the one public runtime entry point. It checks its input against the source and the target schema, then loads. `mode: :dry_run` rolls everything back; `mode: :run` commits. The stages are public calls that do not depend on each other's output (ADR-18 amendment of 2026-10-25), so a consumer may call `run` without the other two; its exact inputs (the mapped columns with their value mappings) are settled in the run contract.
 
@@ -96,7 +96,7 @@ Source analysis and target schema reading are independent and may run concurrent
 ### 3.1 `analyze_headers`
 * **Input:** the source file and the target table (named by table name), both given to `Engine.new`.
 * **Reads:** the source header row only, and the target model's metadata.
-* **Output:** `HeaderAnalysis`: `matches` keyed by target column (source column, score, `tied_with`, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (name and metadata). A source column is shared by the targets that have the same score for it, and the consumer chooses.
+* **Output:** `HeaderAnalysis`: `matches`, a list in table order (target column, source column, score, `tied_with`, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (a list of target column and metadata; ADR-25). A source column is shared by the targets that have the same score for it, and the consumer chooses.
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_column_values`

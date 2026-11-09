@@ -8,25 +8,30 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "users") }
   let(:csv) { "Email,Company,Age,Balance,Zip\nann@example.com,Acme,31,10.5,10001\n" }
 
+  # The match of a target column in the header result.
+  def match_for(target_column:)
+    result.matches.find { |match| match[:target_column] == target_column }
+  end
+
   it "matches the source columns to the columns of the table, including the foreign key" do
-    expect(result.matches.transform_values { |match| match[:source_column] }).to eq(
-      "email" => "Email", "company_id" => "Company", "age" => "Age", "balance" => "Balance"
+    expect(result.matches.map { |match| [match[:target_column], match[:source_column]] }).to eq(
+      [["email", "Email"], ["age", "Age"], ["balance", "Balance"], ["company_id", "Company"]]
     )
   end
 
   it "lists what is left on both sides" do
     expect(result.unmatched_source_columns).to eq(%w[Zip])
-    expect(result.unmatched_target_columns.map { |target| target[:name] }).to eq(%w[bio active created_at updated_at])
+    expect(result.unmatched_target_columns.map { |target| target[:target_column] }).to eq(%w[bio active created_at updated_at])
   end
 
   it "does not offer the primary key, an ignored column or a generated column" do
-    offered = result.matches.keys + result.unmatched_target_columns.map { |target| target[:name] }
+    offered = result.matches.map { |match| match[:target_column] } + result.unmatched_target_columns.map { |target| target[:target_column] }
 
     expect(offered).not_to include("id", "legacy_code", "shout")
   end
 
   it "reports the foreign key in the metadata of its column" do
-    expect(result.matches["company_id"][:metadata][:foreign_key]).to eq(
+    expect(match_for(target_column: "company_id")[:metadata][:foreign_key]).to eq(
       association: "company", parent_table: "companies"
     )
   end
@@ -36,7 +41,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   end
 
   it "gives the type information of each column in its metadata" do
-    expect(result.matches["age"][:metadata]).to include(type: "integer", required: false)
+    expect(match_for(target_column: "age")[:metadata]).to include(type: "integer", required: false)
   end
 
   describe "#analyze_column_values" do

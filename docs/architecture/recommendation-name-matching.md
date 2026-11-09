@@ -82,7 +82,7 @@ Which source column is recommended for a target column is decided **only** by th
 - A pair with a clear data mismatch (a column of emails into a whole-number column) can still be recommended if the names match. The facts must flag it prominently. At run time those records fail individually and go to the failed rows; nothing loads silently wrong.
 
 ### D7. Every target column is visible in the facts
-The header result shows every target column: either in `matches` (source column, score, `tied_with` and the metadata of the target column) or in `unmatched_target_columns` (name and metadata), plus `unmatched_source_columns`.
+The header result shows every target column: either in `matches` (target column, source column, score, `tied_with` and the metadata of the target column) or in `unmatched_target_columns` (target column and metadata), plus `unmatched_source_columns`; both are lists in table order (ADR-25).
 
 **Why.** A target column with no recommendation looks as if the engine forgot it. Visibility does not depend on whether a column found a match.
 **Decided (ADR-12 amendment of 2026-10-23):** a pair below the inclusion threshold (`recommendation.inclusion_threshold`, default 55) is not a match, so there are no weak guesses; the columns are listed as unmatched.

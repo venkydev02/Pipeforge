@@ -63,8 +63,8 @@ RSpec.describe Pipeforge::Engine do
       before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
 
       it "matches the source columns to the target columns" do
-        expect(result.matches.transform_values { |match| match[:source_column] }).to eq(
-          "status" => "Status", "code" => "Code"
+        expect(result.matches.map { |match| [match[:target_column], match[:source_column]] }).to eq(
+          [["status", "Status"], ["code", "Code"]]
         )
       end
 
@@ -87,7 +87,7 @@ RSpec.describe Pipeforge::Engine do
         let(:source_io) { csv_io("Stat,Code\n1,2\n") }
 
         it "leaves a weaker pair unmatched instead of a match" do
-          expect(result.matches.keys).to eq(%w[code])
+          expect(result.matches.map { |match| match[:target_column] }).to eq(%w[code])
           expect(result.unmatched_source_columns).to eq(%w[Stat])
         end
       end
@@ -428,7 +428,7 @@ RSpec.describe Pipeforge::Engine do
 
         allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
 
-        expect(engine.analyze_headers.matches.keys).to eq(%w[status code])
+        expect(engine.analyze_headers.matches.map { |match| match[:target_column] }).to eq(%w[status code])
       end
     end
   end
