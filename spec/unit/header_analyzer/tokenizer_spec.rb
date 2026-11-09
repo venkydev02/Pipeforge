@@ -8,6 +8,24 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
   let(:tokens) { tokenizer.call(name: name) }
 
   describe "#call" do
+    describe "the contract" do
+      context "when the name has no letters or digits" do
+        let(:name) { "--  .." }
+
+        it "gives no tokens" do
+          expect(tokens).to eq([])
+        end
+      end
+
+      context "when the name is empty" do
+        let(:name) { "" }
+
+        it "gives no tokens" do
+          expect(tokens).to eq([])
+        end
+      end
+    end
+
     describe "separators" do
       context "when the name has a space, an underscore, a dash and a dot" do
         let(:name) { "a b_c-d.e" }
@@ -74,24 +92,6 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Tokenizer do
 
         it "keeps the plural as written" do
           expect(tokens).to eq(%w[companies])
-        end
-      end
-    end
-
-    describe "a name without tokens" do
-      context "when the name has no letters or digits" do
-        let(:name) { "--  .." }
-
-        it "gives no tokens" do
-          expect(tokens).to eq([])
-        end
-      end
-
-      context "when the name is empty" do
-        let(:name) { "" }
-
-        it "gives no tokens" do
-          expect(tokens).to eq([])
         end
       end
     end
