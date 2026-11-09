@@ -37,22 +37,13 @@ module Pipeforge
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
     # max_length, precision, scale, default, enum_values (nil, or label => stored value),
     # required and foreign_key (nil, or {association:, parent_table:}).
+    #
+    # Everything in it is a plain Hash, Array, String, number, boolean or nil, so +to_h+ gives the
+    # result as plain JSON types, ready to store or send.
     Result = Data.define(
       :source_identifier, :target_table, :model, :matches, :unmatched_source_columns,
       :unmatched_target_columns
-    ) do
-      # @return [Hash] the result as plain JSON types, ready to store or send
-      def to_h
-        {
-          source_identifier: source_identifier,
-          target_table: target_table,
-          model: model,
-          matches: matches,
-          unmatched_source_columns: unmatched_source_columns,
-          unmatched_target_columns: unmatched_target_columns
-        }
-      end
-    end
+    )
 
     class << self
       # @param source_headers [Array<String>] the column names of the source, in file order,

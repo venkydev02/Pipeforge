@@ -410,5 +410,5 @@
   * `mapped_columns`, the input of `analyze_column_values` and `run`, stays a Hash keyed by target column: the consumer builds it, with one entry for each target column.
 * **Consequences:**
   * The consumer finds the match of a target column with `matches.find { |match| match[:target_column] == "email" }` and no longer indexes `matches` by name.
-  * `Result#to_h` is unchanged in kind: a list of hashes is plain JSON.
+  * `Result#to_h` (the one `Data` gives) still returns plain JSON types: a list of hashes is plain JSON.
   * The README, `overview.md`, `protocols.md` and the specs that read the header result are updated in the same change.
