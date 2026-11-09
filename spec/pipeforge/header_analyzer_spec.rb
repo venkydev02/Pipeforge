@@ -32,21 +32,26 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       )
     end
 
+    # The match of a target column in the result.
+    def match_for(target_column)
+      result.matches.find { |match| match[:target_column] == target_column }
+    end
+
     it "keys the matches by target column, in table order" do
-      expect(result.matches.keys).to eq(%w[first_name last_name])
+      expect(result.matches.map { |match| match[:target_column] }).to eq(%w[first_name last_name])
     end
 
     it "gives each match its source column and score" do
-      expect(result.matches["first_name"]).to include(source_column: "First Name", score: 100.0)
-      expect(result.matches["last_name"]).to include(source_column: "Last Name", score: 100.0)
+      expect(match_for("first_name")).to include(source_column: "First Name", score: 100.0)
+      expect(match_for("last_name")).to include(source_column: "Last Name", score: 100.0)
     end
 
     it "has an empty tied_with when nothing tied" do
-      expect(result.matches["first_name"][:tied_with]).to eq([])
+      expect(match_for("first_name")[:tied_with]).to eq([])
     end
 
     it "gives each match the metadata of its target column" do
-      expect(result.matches["first_name"][:metadata]).to eq(default_metadata(max_length: 50, required: true))
+      expect(match_for("first_name")[:metadata]).to eq(default_metadata(max_length: 50, required: true))
     end
 
     context "with an enum column" do
@@ -56,7 +61,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       end
 
       it "gives the labels and stored values of the enum in its metadata" do
-        expect(result.matches["status"][:metadata]).to include(default: "draft", enum_values: {"draft" => 0, "placed" => 1})
+        expect(match_for("status")[:metadata]).to include(default: "draft", enum_values: {"draft" => 0, "placed" => 1})
       end
     end
 
@@ -68,7 +73,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       expect(result.unmatched_target_columns).to eq(
         [
           {
-            name: "company_id",
+            target_column: "company_id",
             metadata: default_metadata(
               type: "integer", sql_type: "bigint", required: true,
               foreign_key: {association: "company", parent_table: "companies"}
@@ -91,28 +96,28 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         "source_identifier" => "users.csv",
         "target_table" => "users",
         "model" => "User",
-        "matches" => {
-          "first_name" => {
-            "source_column" => "First Name", "score" => 100.0, "tied_with" => [],
+        "matches" => [
+          {
+            "target_column" => "first_name", "source_column" => "First Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "unsigned" => false, "max_length" => 50,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
               "foreign_key" => nil
             }
           },
-          "last_name" => {
-            "source_column" => "Last Name", "score" => 100.0, "tied_with" => [],
+          {
+            "target_column" => "last_name", "source_column" => "Last Name", "score" => 100.0, "tied_with" => [],
             "metadata" => {
               "type" => "string", "sql_type" => "varchar", "limit" => nil, "unsigned" => false, "max_length" => nil,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => false,
               "foreign_key" => nil
             }
           }
-        },
+        ],
         "unmatched_source_columns" => %w[Zip],
         "unmatched_target_columns" => [
           {
-            "name" => "company_id",
+            "target_column" => "company_id",
             "metadata" => {
               "type" => "integer", "sql_type" => "bigint", "limit" => nil, "unsigned" => false, "max_length" => nil,
               "precision" => nil, "scale" => nil, "default" => nil, "enum_values" => nil, "required" => true,
@@ -128,11 +133,11 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       let(:target_columns) { [build_target_column(name: "phone")] }
 
       it "matches the source column whose name comes first" do
-        expect(result.matches["phone"]).to include(source_column: "Phone 1", score: 66.67)
+        expect(match_for("phone")).to include(source_column: "Phone 1", score: 66.67)
       end
 
       it "lists the other one in tied_with" do
-        expect(result.matches["phone"][:tied_with]).to eq(["Phone 2"])
+        expect(match_for("phone")[:tied_with]).to eq(["Phone 2"])
       end
 
       it "still lists it among the unmatched source columns" do
@@ -145,8 +150,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       let(:target_columns) { [build_target_column(name: "last_name"), build_target_column(name: "full_name")] }
 
       it "puts the source column in each of their entries" do
-        expect(result.matches.transform_values { |match| match[:source_column] }).to eq(
-          "last_name" => "Name", "full_name" => "Name"
+        expect(result.matches.map { |match| [match[:target_column], match[:source_column]] }).to eq(
+          [["last_name", "Name"], ["full_name", "Name"]]
         )
       end
 
@@ -159,9 +164,9 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
       let(:source_headers) { ["Zip"] }
 
       it "has no matches and lists every column as unmatched" do
-        expect(result.matches).to eq({})
+        expect(result.matches).to eq([])
         expect(result.unmatched_source_columns).to eq(%w[Zip])
-        expect(result.unmatched_target_columns.map { |target| target[:name] }).to eq(%w[first_name last_name company_id])
+        expect(result.unmatched_target_columns.map { |target| target[:target_column] }).to eq(%w[first_name last_name company_id])
       end
     end
 
@@ -171,7 +176,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
 
       context "with the default reorder penalty" do
         it "takes 10 points off a reordered match" do
-          expect(result.matches["first_name"][:score]).to eq(90.0)
+          expect(match_for("first_name")[:score]).to eq(90.0)
         end
       end
 
@@ -179,7 +184,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:settings) { {recommendation: {reorder_penalty: 40}} }
 
         it "takes that many points off, and the match stays when it still reaches the threshold" do
-          expect(result.matches["first_name"][:score]).to eq(60.0)
+          expect(match_for("first_name")[:score]).to eq(60.0)
         end
       end
 
@@ -187,7 +192,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
         let(:settings) { {recommendation: {inclusion_threshold: 95}} }
 
         it "leaves the pair unmatched" do
-          expect(result.matches).to eq({})
+          expect(result.matches).to eq([])
           expect(result.unmatched_source_columns).to eq(["Name First"])
         end
       end

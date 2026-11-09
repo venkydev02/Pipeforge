@@ -15,21 +15,23 @@ module Pipeforge
   #   result = Pipeforge::HeaderAnalyzer.call(
   #     source_headers: ["First Name", "Zip"], source_identifier: "users.csv", target_schema: schema
   #   )
-  #   result.matches["first_name"]  # => {source_column: "First Name", score: 100.0, metadata: {...}}
+  #   result.matches.first
+  #   # => {target_column: "first_name", source_column: "First Name", score: 100.0, tied_with: [],
+  #   #     metadata: {...}}
   module HeaderAnalyzer
     # The outcome of the header stage.
     #   source_identifier            the file path of the source, or its class name
     #   target_table, model          the table and the model the adapter read it from (nil when
     #                                the adapter has no model)
-    #   matches                      {target column => {source_column:, score:, tied_with:,
-    #                                metadata:}}, in table order: the pairs at or above the
+    #   matches                      [{target_column:, source_column:, score:, tied_with:,
+    #                                metadata:}], in table order: the pairs at or above the
     #                                inclusion threshold. A source column can be in several
     #                                entries when their scores are the same; the consumer chooses
     #                                which target to keep. +tied_with+ lists the other source
     #                                columns that had the same score for this target and were
     #                                free to take it (empty when nothing tied).
     #   unmatched_source_columns     source columns in no match, in file order
-    #   unmatched_target_columns     [{name:, metadata:}] for the target columns without a match,
+    #   unmatched_target_columns     [{target_column:, metadata:}] for the target columns without a match,
     #                                in table order
     #
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
@@ -99,10 +101,11 @@ module Pipeforge
       end
 
       def build_matches(matcher_result:, metadata_by_target_column:)
-        matches = {}
+        matches = []
 
         matcher_result.matches.each do |match|
-          matches[match.target_column] = {
+          matches << {
+            target_column: match.target_column,
             source_column: match.source_column,
             score: match.score,
             tied_with: match.tied_with,
@@ -117,7 +120,9 @@ module Pipeforge
         unmatched_target_entries = []
 
         matcher_result.unmatched_target_columns.each do |target_column_name|
-          unmatched_target_entries << {name: target_column_name, metadata: metadata_by_target_column.fetch(target_column_name)}
+          unmatched_target_entries << {
+            target_column: target_column_name, metadata: metadata_by_target_column.fetch(target_column_name)
+          }
         end
 
         unmatched_target_entries

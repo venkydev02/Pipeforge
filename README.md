@@ -67,9 +67,9 @@ This creates `tmp/development.sqlite3` (two tables: `users`, the target, and `co
 ```ruby
 engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users.csv"), target_table: "users")
 result = engine.analyze_headers
-result.matches                   # target column => {source_column:, score:, metadata:}
+result.matches                   # [{target_column:, source_column:, score:, tied_with:, metadata:}], in table order
 result.unmatched_source_columns  # source columns that matched no target column
-result.unmatched_target_columns  # [{name:, metadata:}] for the target columns left without a match
+result.unmatched_target_columns  # [{target_column:, metadata:}] for the target columns left without a match
 ```
 
 | Sample file | What it shows |
