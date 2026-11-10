@@ -44,7 +44,7 @@ module Pipeforge
     # Writes the record to its table in its own transaction (a savepoint when a transaction is
     # already open). The model's validations are not run again. A mistake from the database is kept
     # in {#errors} with +origin: :database+ and nothing of this row is kept. A callback of the model that
-    # stops the save is kept with +origin: :model+.
+    # stops the save, and a number outside the range of the type of its column, are kept with +origin: :model+.
     #
     # @return [Boolean] true when the row was written
     def load
@@ -62,6 +62,12 @@ module Pipeforge
     rescue ActiveRecord::RecordNotSaved => not_saved_error
       # A callback of the model stopped the save.
       @errors << {origin: :model, code: :value_invalid, message: not_saved_error.message, target_column: nil}
+
+      false
+    rescue ActiveModel::RangeError => range_error
+      # ActiveRecord refuses the value itself, before any SQL, so it is not a StatementInvalid. Its message
+      # names no column.
+      @errors << {origin: :model, code: :value_out_of_range, message: range_error.message, target_column: nil}
 
       false
     end
