@@ -3,82 +3,76 @@
 require_relative "model_adapter"
 
 module Pipeforge
-  # The target adapter for ActiveRecord. It reads the structure of a table and of the
-  # application model that uses it, and nothing else: no row of the table is read.
+  # The target adapter for ActiveRecord. It reads the structure of a model's table and of the
+  # application model itself, and nothing else: no row of the table is read.
   #
-  # The target is named by its table. The adapter finds the model that uses the table among the
-  # models that are loaded; it never loads any itself. A table with no loaded model cannot be
-  # used. When a model has subclasses on the same table (single table inheritance) the base
-  # class is used; when several unrelated models share the table, the one with the first class
-  # name is used, and its name is in the schema.
+  # The target is named by its model class (+"User"+). The adapter finds the class among the models
+  # that are loaded; it never loads any itself. The table is the model's own table. A name that no
+  # loaded model has cannot be used.
   #
   # Only the columns that can be given a source column are in the schema. The primary key (filled
   # by the database), the columns the model ignores and the generated columns are left out, so
   # the rest of the engine never hears of them.
   #
   # @example
-  #   schema = Pipeforge::ActiveRecordAdapter.new.schema(target_table: "users")
-  #   schema.columns.map(&:name)  # => ["id", "email", "company_id"]
+  #   schema = Pipeforge::ActiveRecordAdapter.new.schema(target_model: "User")
+  #   schema.columns.map(&:name)  # => ["email", "company_id"]
   class ActiveRecordAdapter
     # The column types whose size is a number of characters; for the others it is a number of bytes.
     TEXT_TYPES = %w[string text].freeze
 
-    # @param target_table [String] the table to read
+    # @param target_model [String] the name of the model to read
     # @return [TargetSchema]
-    # @raise [TargetSchemaError] the table does not exist (+target_table_not_found+), or no
-    #   application model uses it (+active_record_model_not_found+)
-    def schema(target_table:)
-      reject_missing_table(target_table: target_table)
-      model = find_model(target_table: target_table)
+    # @raise [TargetSchemaError] no loaded model has that name (+active_record_model_not_found+), or
+    #   the table of the model does not exist (+target_table_not_found+)
+    def schema(target_model:)
+      model = find_model(target_model: target_model)
+      reject_missing_table(model: model)
 
-      TargetSchema.new(table_name: target_table, model: model.name, columns: build_columns(model: model))
+      TargetSchema.new(table_name: model.table_name, model: model.name, columns: build_columns(model: model))
     end
 
-    # The object that builds the records of the table's model and preloads their parents.
+    # The object that builds the records of the model and preloads their parents.
     #
-    # @param target_table [String] the table to load
+    # @param target_model [String] the name of the model to load through
     # @return [ActiveRecordModelAdapter]
-    # @raise [TargetSchemaError] the table does not exist (+target_table_not_found+), or no
-    #   application model uses it (+active_record_model_not_found+)
-    def model_adapter(target_table:)
-      reject_missing_table(target_table: target_table)
+    # @raise [TargetSchemaError] no loaded model has that name (+active_record_model_not_found+), or
+    #   the table of the model does not exist (+target_table_not_found+)
+    def model_adapter(target_model:)
+      model = find_model(target_model: target_model)
+      reject_missing_table(model: model)
 
-      ActiveRecordModelAdapter.new(model: find_model(target_table: target_table))
+      ActiveRecordModelAdapter.new(model: model)
     end
 
     private
 
-    def reject_missing_table(target_table:)
-      table_exists = ActiveRecord::Base.with_connection do |connection|
-        connection.data_source_exists?(target_table)
+    # The loaded model with that name. An abstract class is not a model of a table, so it is not found.
+    def find_model(target_model:)
+      model = ActiveRecord::Base.descendants.find do |candidate|
+        candidate.name == target_model && !candidate.abstract_class?
+      end
+      return model unless model.nil?
+
+      raise TargetSchemaError.single(
+        code: :active_record_model_not_found,
+        message: "no loaded model is named #{target_model}; the model must be loaded before the schema is read",
+        model: target_model
+      )
+    end
+
+    def reject_missing_table(model:)
+      # The connection of the model, because a model can use another database than ActiveRecord::Base.
+      table_exists = model.with_connection do |connection|
+        connection.data_source_exists?(model.table_name)
       end
       return if table_exists
 
       raise TargetSchemaError.single(
         code: :target_table_not_found,
-        message: "table #{target_table} does not exist in the database",
-        table: target_table
+        message: "table #{model.table_name} of #{model.name} does not exist in the database",
+        table: model.table_name
       )
-    end
-
-    # The application model of the table, among the models that are loaded; the base class when
-    # there is single table inheritance.
-    def find_model(target_table:)
-      candidates = ActiveRecord::Base.descendants.select do |model|
-        !model.abstract_class? && model.table_name == target_table
-      end
-      base_models = candidates.reject { |model| candidates.include?(model.superclass) }
-
-      if base_models.empty?
-        raise TargetSchemaError.single(
-          code: :active_record_model_not_found,
-          message: "no loaded model uses the table #{target_table}; the model must be loaded " \
-                   "before the schema is read",
-          table: target_table
-        )
-      end
-
-      base_models.min_by { |model| model.name.to_s }
     end
 
     def build_columns(model:)

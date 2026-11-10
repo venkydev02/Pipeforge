@@ -3,7 +3,7 @@
 # The core's run writes the rows through the ActiveRecord adapter, end to end, against an in-memory
 # database: a run keeps the rows, a dry run keeps none, and both report the same failed rows.
 RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter installed" do
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "accounts") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Account") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }

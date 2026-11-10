@@ -6,7 +6,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "memberships") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Membership") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
@@ -146,7 +146,7 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "counters") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Counter") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Hits,Misses\n40000,1\n65535,1\n65536,1\n-1,1\n0,40000\n" }
@@ -181,7 +181,7 @@ RSpec.describe Pipeforge::Engine, "#run with float columns" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "measurements") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Measurement") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Ratio,Weight\n1.5,1.5\n1e50,1e50\n1e39,1e9999\n3.4e38,1.7e308\n" }

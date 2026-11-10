@@ -15,7 +15,7 @@ module Pipeforge
   # ({#analyze_column_values}).
   #
   # @example
-  #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_table: "users")
+  #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_model: "User")
   #   header_analysis = engine.analyze_headers
   #   value_analysis = engine.analyze_column_values(
   #     mapped_columns: {"email" => {source_column: "Mail", value_mapping: {"N/A" => nil}}}
@@ -27,14 +27,15 @@ module Pipeforge
     # @param source_io [IO] the CSV source, for example +File.open("data/users.csv")+. It must
     #   respond to +read+, +rewind+ and +seek+; it is wrapped in a {Source::ReusableIO}, so it
     #   can be read again.
-    # @param target_table [String] the table the data will be loaded into
+    # @param target_model [String] the name of the model the data will be loaded through,
+    #   for example +"User"+
     #
     # @raise [TargetAdapterError] no adapter gem is loaded (+target_adapter_not_installed+)
     # @raise [Source::UnsupportedSourceError] the source is missing a method the engine needs
-    def initialize(source_io:, target_table:)
+    def initialize(source_io:, target_model:)
       TargetAdapter.ensure_installed
       @source_reader = Source::CsvReader.new(source_io: Source::ReusableIO.new(io: source_io))
-      @target_table = target_table
+      @target_model = target_model
     end
 
     # Matches the columns of the source to the columns of the target table by name only, and
@@ -162,7 +163,7 @@ module Pipeforge
         source_header_names: @source_reader.headers,
         target_column_names: target_columns_by_name.keys,
         required_target_column_names: target_schema.columns.select(&:required).map(&:name),
-        target_table: @target_table
+        target_table: target_schema.table_name
       ).call(mapped_columns: mapped_columns)
     end
 
@@ -170,7 +171,7 @@ module Pipeforge
     def model_adapter
       if @model_adapter.nil?
         # Kept only once the adapter has answered, so a failed ask is asked again on the next call.
-        @model_adapter = TargetAdapter.model_adapter(target_table: @target_table)
+        @model_adapter = TargetAdapter.model_adapter(target_model: @target_model)
       end
 
       @model_adapter
@@ -180,7 +181,7 @@ module Pipeforge
     # kept. A failed read is not kept, so the next call asks again.
     def target_schema
       if @target_schema.nil?
-        @target_schema = TargetAdapter.schema(target_table: @target_table)
+        @target_schema = TargetAdapter.schema(target_model: @target_model)
       end
 
       @target_schema

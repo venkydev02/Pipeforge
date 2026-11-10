@@ -30,7 +30,7 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 ### 1.4 Staged Engine Methods (ADR-14, ADR-17)
 
 ```text
-Engine.new(source_io:, target_table:)      the source and the target table, given once
+Engine.new(source_io:, target_model:)      the source and the target model, given once
 analyze_headers                           → HeaderAnalysis      (names only, no values)
 analyze_column_values(mapped_columns:)           → ColumnValueAnalyzer::Result (values, facts, value mappings)
 run(mode:, mapped_columns:, offset:, chunk_size:) { |chunk_result| }
@@ -129,7 +129,7 @@ sequenceDiagram
 
     Note over Core: Stage 1: names
     Core->>Src: Read header row only
-    Core->>Adapter: schema(target_table:)
+    Core->>Adapter: schema(target_model:)
     Adapter-->>Core: TargetSchema (metadata only)
     Core->>Consumer: HeaderAnalysis (matches, unmatched columns, metadata)
 

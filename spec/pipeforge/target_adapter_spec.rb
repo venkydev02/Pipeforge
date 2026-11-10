@@ -23,7 +23,7 @@ RSpec.describe Pipeforge::TargetAdapter do
 
   describe ".model_adapter" do
     it "stops with target_adapter_not_installed when no adapter is installed" do
-      expect { described_class.model_adapter(target_table: "records") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
+      expect { described_class.model_adapter(target_model: "Record") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
         expect(error.codes).to eq([:target_adapter_not_installed])
       end
     end
@@ -34,19 +34,19 @@ RSpec.describe Pipeforge::TargetAdapter do
       before { described_class.install(adapter: adapter) }
 
       it "gives the schema the adapter returns" do
-        expect(described_class.schema(target_table: "records")).to eq(schema)
+        expect(described_class.schema(target_model: "Record")).to eq(schema)
       end
 
       it "asks the adapter for the table it was given" do
-        described_class.schema(target_table: "records")
+        described_class.schema(target_model: "Record")
 
-        expect(adapter).to have_received(:schema).with(target_table: "records")
+        expect(adapter).to have_received(:schema).with(target_model: "Record")
       end
     end
 
     context "when no adapter is installed" do
       it "stops with target_adapter_not_installed" do
-        expect { described_class.schema(target_table: "records") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
+        expect { described_class.schema(target_model: "Record") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
           expect(error.codes).to eq([:target_adapter_not_installed])
         end
       end
@@ -59,13 +59,13 @@ RSpec.describe Pipeforge::TargetAdapter do
       before { described_class.install(adapter: adapter) }
 
       it "gives the model adapter the installed adapter returns" do
-        expect(described_class.model_adapter(target_table: "records")).to be(model_adapter)
+        expect(described_class.model_adapter(target_model: "Record")).to be(model_adapter)
       end
 
       it "asks the adapter for the table it was given" do
-        described_class.model_adapter(target_table: "records")
+        described_class.model_adapter(target_model: "Record")
 
-        expect(adapter).to have_received(:model_adapter).with(target_table: "records")
+        expect(adapter).to have_received(:model_adapter).with(target_model: "Record")
       end
     end
 
@@ -78,7 +78,7 @@ RSpec.describe Pipeforge::TargetAdapter do
       end
 
       it "uses the last one installed" do
-        expect(described_class.schema(target_table: "records")).to eq(second_schema)
+        expect(described_class.schema(target_model: "Record")).to eq(second_schema)
       end
     end
   end

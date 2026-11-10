@@ -9,9 +9,9 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
   end
 
   describe "#schema" do
-    subject(:schema) { adapter.schema(target_table: target_table) }
+    subject(:schema) { adapter.schema(target_model: target_model) }
 
-    let(:target_table) { "users" }
+    let(:target_model) { "AdapterSpecModels::User" }
 
     it "names the table and the model" do
       expect(schema).to have_attributes(table_name: "users", model: "AdapterSpecModels::User")
@@ -42,7 +42,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with an attribute of ActiveRecord's unsigned integer type" do
-      let(:target_table) { "counters" }
+      let(:target_model) { "AdapterSpecModels::Counter" }
 
       it "reports that column as unsigned, with its size" do
         expect(column_named(schema, "hits")).to have_attributes(type: "integer", limit: 2, unsigned: true)
@@ -54,7 +54,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with float columns" do
-      let(:target_table) { "measurements" }
+      let(:target_model) { "AdapterSpecModels::Measurement" }
 
       it "gives 24 as the limit of a single precision float" do
         expect(column_named(schema, "ratio")).to have_attributes(type: "float", limit: 24)
@@ -104,7 +104,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with a column the model declares with another type than the table" do
-      let(:target_table) { "tickets" }
+      let(:target_model) { "AdapterSpecModels::Ticket" }
 
       it "gives the type the model declares" do
         expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "varchar")
@@ -112,7 +112,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with enum columns and a default set only in the model" do
-      let(:target_table) { "shipments" }
+      let(:target_model) { "AdapterSpecModels::Shipment" }
 
       it "gives the labels and stored values of an enum stored as a number" do
         expect(column_named(schema, "status").enum_values).to eq("draft" => 0, "placed" => 1, "shipped" => 2)
@@ -148,7 +148,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with a model that does not record timestamps" do
-      let(:target_table) { "receipts" }
+      let(:target_model) { "AdapterSpecModels::Receipt" }
 
       it "requires the NOT NULL timestamps, because nothing fills them" do
         expect(schema.columns.select(&:required).map(&:name)).to eq(%w[number created_at updated_at])
@@ -178,7 +178,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       end
 
       context "with NOT NULL columns, with and without a default" do
-        let(:target_table) { "invoices" }
+        let(:target_model) { "AdapterSpecModels::Invoice" }
 
         it "does not require the one with a default" do
           expect(column_named(schema, "status").required).to be(false)
@@ -199,7 +199,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with a polymorphic association" do
-      let(:target_table) { "comments" }
+      let(:target_model) { "AdapterSpecModels::Comment" }
 
       it "does not describe its column as a foreign key" do
         expect(column_named(schema, "commentable_id").foreign_key).to be_nil
@@ -207,7 +207,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with a composite foreign key" do
-      let(:target_table) { "order_lines" }
+      let(:target_model) { "AdapterSpecModels::OrderLine" }
 
       it "does not describe its columns as foreign keys" do
         expect(schema.columns.map(&:foreign_key)).to all(be_nil)
@@ -215,45 +215,74 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "with a composite primary key" do
-      let(:target_table) { "orders" }
+      let(:target_model) { "AdapterSpecModels::Order" }
 
       it "leaves out every column of the key" do
         expect(schema.columns).to be_empty
       end
     end
 
-    context "with single table inheritance" do
-      let(:target_table) { "vehicles" }
+    context "when the model is a subclass under single table inheritance" do
+      let(:target_model) { "AdapterSpecModels::Car" }
 
-      it "reads the table through the base class" do
-        expect(schema.model).to eq("AdapterSpecModels::Vehicle")
+      it "reads the model named, with the table it shares with its base class" do
+        expect(schema).to have_attributes(table_name: "vehicles", model: "AdapterSpecModels::Car")
       end
     end
 
-    context "with two unrelated models on one table" do
-      let(:target_table) { "notes" }
+    context "when two unrelated models share one table" do
+      let(:target_model) { "AdapterSpecModels::Note" }
 
-      it "uses the model whose class name comes first" do
-        expect(schema.model).to eq("AdapterSpecModels::Memo")
+      it "reads the model named, and not the other one" do
+        expect(schema).to have_attributes(table_name: "notes", model: "AdapterSpecModels::Note")
       end
     end
 
-    context "when the table does not exist" do
-      let(:target_table) { "missing" }
+    context "when the table of the model does not exist" do
+      let(:target_model) { "AdapterSpecModels::Ghost" }
 
-      it "stops with target_table_not_found and the table" do
+      it "stops with target_table_not_found and the table of the model" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :target_table_not_found, table: "missing")
+          expect(error.errors.first).to include(code: :target_table_not_found, table: "ghosts")
         end
       end
     end
 
-    context "when no model uses the table" do
-      let(:target_table) { "orphans" }
+    context "when the model uses another database and its table is there" do
+      let(:target_model) { "AdapterSpecModels::Reading" }
 
-      it "stops with active_record_model_not_found and the table" do
+      it "reads the table in the database of the model" do
+        expect(schema).to have_attributes(table_name: "readings", model: "AdapterSpecModels::Reading")
+        expect(schema.columns.map(&:name)).to eq(%w[label])
+      end
+    end
+
+    context "when the model uses another database and its table is only in the default database" do
+      let(:target_model) { "AdapterSpecModels::UserInOtherDatabase" }
+
+      it "stops with target_table_not_found and the table of the model" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found, table: "orphans")
+          expect(error.errors.first).to include(code: :target_table_not_found, table: "users")
+        end
+      end
+    end
+
+    context "when no loaded model has the name" do
+      let(:target_model) { "AdapterSpecModels::Nowhere" }
+
+      it "stops with active_record_model_not_found and the name" do
+        expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+          expect(error.errors.first).to include(code: :active_record_model_not_found, model: "AdapterSpecModels::Nowhere")
+        end
+      end
+    end
+
+    context "when the model named is an abstract class" do
+      let(:target_model) { "AdapterSpecModels::AbstractRecord" }
+
+      it "stops with active_record_model_not_found and the name" do
+        expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+          expect(error.errors.first).to include(code: :active_record_model_not_found, model: "AdapterSpecModels::AbstractRecord")
         end
       end
     end
@@ -264,7 +293,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
         statement_names << payload[:name]
       end
 
-      adapter.schema(target_table: "users")
+      adapter.schema(target_model: "AdapterSpecModels::User")
       ActiveSupport::Notifications.unsubscribe(subscription)
 
       expect(statement_names.uniq).to eq(["SCHEMA"])
@@ -272,24 +301,29 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
   end
 
   describe "#model_adapter" do
-    it "gives the model adapter of the model that uses the table" do
-      expect(adapter.model_adapter(target_table: "memberships")).to be_a(Pipeforge::ActiveRecordModelAdapter)
+    it "gives the model adapter of the model named" do
+      expect(adapter.model_adapter(target_model: "AdapterSpecModels::Membership")).to be_a(Pipeforge::ActiveRecordModelAdapter)
     end
 
     it "builds the records of that model" do
-      model_record = adapter.model_adapter(target_table: "memberships").build_record(attributes: {"email" => "a@example.com"})
+      model_record = adapter.model_adapter(target_model: "AdapterSpecModels::Membership")
+        .build_record(attributes: {"email" => "a@example.com"})
 
       expect(model_record.record).to be_a(AdapterSpecModels::Membership)
     end
 
-    it "stops with target_table_not_found when the table does not exist" do
-      expect { adapter.model_adapter(target_table: "nowhere") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+    it "gives the model adapter of a model that uses another database" do
+      expect(adapter.model_adapter(target_model: "AdapterSpecModels::Reading")).to be_a(Pipeforge::ActiveRecordModelAdapter)
+    end
+
+    it "stops with target_table_not_found when the table of the model does not exist" do
+      expect { adapter.model_adapter(target_model: "AdapterSpecModels::Ghost") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
         expect(error.codes).to eq([:target_table_not_found])
       end
     end
 
-    it "stops with active_record_model_not_found when no model uses the table" do
-      expect { adapter.model_adapter(target_table: "orphans") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+    it "stops with active_record_model_not_found when no loaded model has the name" do
+      expect { adapter.model_adapter(target_model: "AdapterSpecModels::Nowhere") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
         expect(error.codes).to eq([:active_record_model_not_found])
       end
     end
@@ -297,11 +331,11 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
 
   describe "the core's target adapter" do
     it "is this adapter, once the gem is loaded" do
-      expect(Pipeforge::TargetAdapter.schema(target_table: "users").model).to eq("AdapterSpecModels::User")
+      expect(Pipeforge::TargetAdapter.schema(target_model: "AdapterSpecModels::User").model).to eq("AdapterSpecModels::User")
     end
 
     it "gives the model adapter of this adapter" do
-      expect(Pipeforge::TargetAdapter.model_adapter(target_table: "memberships")).to be_a(Pipeforge::ActiveRecordModelAdapter)
+      expect(Pipeforge::TargetAdapter.model_adapter(target_model: "AdapterSpecModels::Membership")).to be_a(Pipeforge::ActiveRecordModelAdapter)
     end
   end
 end
