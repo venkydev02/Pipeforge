@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The core of the relational data migration engine. It has no database library: the target is
+# The core of Pipeforge, a relational data migration library. It has no database library: the target is
 # reached through an adapter gem, such as pipeforge-activerecord, which registers itself when
 # it is loaded. See docs/architecture/overview.md.
 require_relative "pipeforge/version"

@@ -52,7 +52,7 @@ Now that row-by-row loading is built (post-load work): review which error codes 
 - **Source formats:** JSON, Parquet, XML
 - **Databases:** MySQL and other ActiveRecord adapters (not verified in MVP); other adapters as their own gems, each carrying the core (ADR-23)
 - **Relationships:** lookup of a foreign key by a parent column, and creating missing parents (ADR-15 defers both)
-- **Schema features:** composite keys, many-to-many splitting, CHECK constraints, partial indexes, generated columns, triggers, partitioning
+- **Schema features:** composite keys, many-to-many splitting, CHECK constraints, partial indexes, generated columns, array columns, triggers, partitioning
 - **Load modes:** upsert / update (MVP is insert only)
 - **Execution:** whole-job transactions (the dry run is the only outer transaction), concurrency greater than 1, distributed execution
 - **Interaction:** gem-shipped CLI or rake tasks, interactive reviewer, web/GUI
