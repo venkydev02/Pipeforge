@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine, "#run" do
-  subject(:engine) { described_class.new(source_io: csv_io(csv), target_table: "records") }
+  subject(:engine) { described_class.new(source_io: csv_io(csv), target_model: "Record") }
 
   let(:csv) { "Mail,Level\na@example.com,1\n,2\nc@example.com,3\n" }
   let(:target_columns) do
@@ -46,7 +46,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   it "asks the adapter for the model adapter of the table it was given" do
     run_engine
 
-    expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records")
+    expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record")
   end
 
   it "gives the same result in a dry run and in a run" do

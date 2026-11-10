@@ -5,7 +5,7 @@
 RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   subject(:result) { engine.analyze_headers }
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "users") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::User") }
   let(:csv) { "Email,Company,Age,Balance,Zip\nann@example.com,Acme,31,10.5,10001\n" }
 
   # The match of a target column in the header result.
@@ -87,7 +87,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with an enum column of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "shipments") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Shipment") }
       let(:csv) { "Status,Priority\ndraft,low\n1,high\nnope,9\n" }
       let(:mapped_columns) do
         {"status" => {source_column: "Status"}, "priority" => {source_column: "Priority"}}
@@ -100,7 +100,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with a date column of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "events") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Event") }
       let(:csv) { "Day\n2024-02-03\n2024-2-3\n\"Feb 3, 2024\"\n2024-02-30\ngarbage\n" }
       let(:mapped_columns) { {"starts_on" => {source_column: "Day"}} }
 
@@ -116,7 +116,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with an unsigned integer attribute of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_table: "counters") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Counter") }
       let(:csv) { "Hits,Misses\n40000,40000\n-1,-1\n" }
       let(:mapped_columns) do
         {"hits" => {source_column: "Hits"}, "misses" => {source_column: "Misses"}}

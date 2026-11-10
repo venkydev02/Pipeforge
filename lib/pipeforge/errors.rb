@@ -65,7 +65,7 @@ module Pipeforge
 
   # Raised by a target adapter that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table+). A code that belongs
-  # to one adapter carries its name, for example +active_record_model_not_found+.
+  # to one adapter carries its name, for example +active_record_model_not_found+ (field +model+).
   class TargetSchemaError < Error; end
 
   # The errors about the source file: the file itself, its header and its rows.

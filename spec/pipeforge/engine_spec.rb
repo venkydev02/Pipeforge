@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine do
-  subject(:engine) { described_class.new(source_io: source_io, target_table: "records") }
+  subject(:engine) { described_class.new(source_io: source_io, target_model: "Record") }
 
   # The settings the parts of the engine read from Configuration.
   let(:settings) { {} }
@@ -75,7 +75,7 @@ RSpec.describe Pipeforge::Engine do
       it "asks the adapter for the table it was given" do
         result
 
-        expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_table: "records")
+        expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_model: "Record")
       end
 
       it "names the source by its class when it has no path" do
@@ -145,7 +145,7 @@ RSpec.describe Pipeforge::Engine do
     it "asks the adapter for the model adapter of the table it was given" do
       result
 
-      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records")
+      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record")
     end
 
     it "checks each value as the value the model adapter casts it to" do
@@ -174,7 +174,7 @@ RSpec.describe Pipeforge::Engine do
     it "asks the adapter for the table it was given" do
       result
 
-      expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_table: "records")
+      expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_model: "Record")
     end
 
     context "when only some columns are mapped" do
@@ -444,7 +444,7 @@ RSpec.describe Pipeforge::Engine do
       engine.analyze_column_values(mapped_columns: {"code" => {source_column: "Code"}})
       engine.run(mode: :dry_run, mapped_columns: {"status" => {source_column: "Status"}})
 
-      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_table: "records").once
+      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record").once
     end
 
     context "when asking for it fails" do

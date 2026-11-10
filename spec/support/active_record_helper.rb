@@ -10,7 +10,9 @@ require "active_record"
 #               column, timestamps
 #   vehicles    single table inheritance (Vehicle, with Car and Truck below it)
 #   notes       two unrelated models on one table (Note and Memo)
-#   orphans     a table with no model
+#   orphans     a table that no model uses
+#   readings    a table of a second database, which a model of its own reads (and a model of that
+#               database named like users, a table that database does not have)
 #   comments    a polymorphic association (not described as a foreign key)
 #   order_lines a composite foreign key (not described as a foreign key)
 #   invoices    NOT NULL columns with and without a default (a value and a function), and a
@@ -207,6 +209,35 @@ module AdapterSpecModels
     self.table_name = "accounts"
     before_save { throw :abort if nickname == "halt" }
   end
+
+  # A model whose table is never created, and a class that is no model of a table.
+  class Ghost < ActiveRecord::Base
+    self.table_name = "ghosts"
+  end
+
+  class AbstractRecord < ActiveRecord::Base
+    self.abstract_class = true
+  end
+
+  # Models that use another database than ActiveRecord::Base: a second in-memory SQLite database,
+  # whatever database the rest of the specs use. Its only table is readings.
+  class OtherDatabaseRecord < ActiveRecord::Base
+    self.abstract_class = true
+    establish_connection(adapter: "sqlite3", database: ":memory:", pool: 1)
+  end
+
+  class Reading < OtherDatabaseRecord
+    self.table_name = "readings"
+  end
+
+  # Named like a table of the default database, which the other database does not have.
+  class UserInOtherDatabase < OtherDatabaseRecord
+    self.table_name = "users"
+  end
+end
+
+AdapterSpecModels::OtherDatabaseRecord.with_connection do |connection|
+  connection.create_table(:readings) { |t| t.string :label }
 end
 
 # The specs that save rows leave the tables empty for the next example.

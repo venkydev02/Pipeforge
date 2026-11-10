@@ -16,7 +16,7 @@ puts <<~TEXT
   Pipeforge console. The sample database is seeded: Sample::User and Sample::Company.
   Sample source files are in script/sample_data. Try:
 
-    engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users.csv"), target_table: "users")
+    engine = Pipeforge::Engine.new(source_io: File.open("script/sample_data/users.csv"), target_model: "Sample::User")
     engine.analyze_headers
 
 TEXT

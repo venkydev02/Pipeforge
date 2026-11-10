@@ -329,7 +329,7 @@
   * *(Removed by the amendment of 2026-10-25.)* **Open:** `raw_lines` and the fingerprint are not built by this refactor; they come with the source fingerprint work (ADR-18 item 11).
 
 ### ADR-20: The Target Is a Table Name; the Adapter Finds the Model
-* **Status:** Accepted (2026-10-16). **Replaces `target_model:` with `target_table:`** in ADR-16 item 4 and ADR-19 item 2 (`schema(target_table:)`), and reverses the earlier choice to name the target by model class.
+* **Status:** Accepted (2026-10-16). **Amended by ADR-26 (2026-11-10): the target is named by its model class again.** **Replaces `target_model:` with `target_table:`** in ADR-16 item 4 and ADR-19 item 2 (`schema(target_table:)`), and reverses the earlier choice to name the target by model class.
 * **Context:** The core is framework agnostic (ADR-16). A model class is an ActiveRecord idea, but every database library has tables. A table name is the one name every adapter understands, so the core and the stage results name the target by its table.
 * **Decision:**
   1. **The consumer names the target by its table**, for example `target_table: "users"`. The core, the stage results and the error entries use that name.
@@ -412,3 +412,17 @@
   * The consumer finds the match of a target column with `matches.find { |match| match[:target_column] == "email" }` and no longer indexes `matches` by name.
   * `Result#to_h` (the one `Data` gives) still returns plain JSON types: a list of hashes is plain JSON.
   * The README, `overview.md`, `protocols.md` and the specs that read the header result are updated in the same change.
+
+### ADR-26: The Target Is Named by Its Model Class Name
+* **Status:** Accepted (2026-11-10). **Amends ADR-20**: replaces `target_table:` with `target_model:`, and reverses ADR-20's choice of naming the target by its table.
+* **Context:** ADR-20 named the target by its table so that the core knows no ActiveRecord idea. The engine supports one adapter with one database connection, and for that adapter the model is the real handle: it decides the table, the validations, the enums and the associations. Naming the table left two things undecided: which model to use when several share a table, and which class to use under single table inheritance (ADR-20 listed the first as open).
+* **Decision:**
+  1. **The consumer names the target by the name of its model class**, for example `target_model: "User"` or `"Admin::User"`. The core and the adapter contract (`schema(target_model:)`, `model_adapter(target_model:)`) pass the name through; the core never turns it into a class.
+  2. **The ActiveRecord adapter finds the class among the loaded models, by name,** and never loads one. A name that no loaded, non-abstract model has stops with `active_record_model_not_found` (field `model`).
+  3. **The table is the model's `table_name`.** A model whose table does not exist stops with `target_table_not_found` (field `table`, the model's table). `TargetSchema` keeps `table_name` and `model`, and so do the header result and the other error entries.
+  4. **A class named under single table inheritance is used as named.** There is no choice of a base class and none among unrelated models that share a table.
+* **Consequences:**
+  * A consumer names the class they already know; the scan by table name and its two tie rules are gone.
+  * The core still names no database library or ActiveRecord class: the name is an opaque text to it. A second adapter decides what a model name means for it.
+  * The table check stays, on the model's table, so a model whose migration has not run gives a stable code and not ActiveRecord's raw error.
+  * `README.md`, `overview.md`, `configuration.md`, `protocols.md`, `target-access.md` and the specs that say `target_table:` are updated in the same change.

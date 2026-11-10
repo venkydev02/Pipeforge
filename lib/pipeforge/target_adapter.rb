@@ -12,7 +12,7 @@ module Pipeforge
   #   Pipeforge::TargetAdapter.install(adapter: Pipeforge::ActiveRecordAdapter.new)
   #
   # @example the core reads the target through the module
-  #   Pipeforge::TargetAdapter.schema(target_table: "users")
+  #   Pipeforge::TargetAdapter.schema(target_model: "User")
   module TargetAdapter
     class << self
       # @param adapter [#schema, nil] the object that does the work, following the adapter
@@ -33,17 +33,18 @@ module Pipeforge
         )
       end
 
-      # The structure of the target table.
+      # The structure of the target table of a model.
       #
-      # @param target_table [String]
+      # @param target_model [String] the name of the model
       # @return [TargetSchema]
       # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
-      def schema(target_table:)
+      # @raise [TargetSchemaError] the model or its table cannot be found
+      def schema(target_model:)
         ensure_installed
-        @adapter.schema(target_table: target_table)
+        @adapter.schema(target_model: target_model)
       end
 
-      # The adapter's object for one target table. The run asks for it once and uses it for every
+      # The adapter's object for one target model. The run asks for it once and uses it for every
       # record: +build_record(attributes:)+ returns the adapter's wrapper of one record (see
       # {RunProcessor::RowCandidate#model_record}), +preload_parents(records:)+ loads the parents a chunk
       # needs, and +cast_text(column_name:, text:)+ gives the value the adapter would load for a text
@@ -52,13 +53,13 @@ module Pipeforge
       # +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which writes the
       # record.
       #
-      # @param target_table [String]
+      # @param target_model [String] the name of the model
       # @return [#build_record, #preload_parents, #cast_text, #transaction] the model adapter
       # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
-      # @raise [TargetSchemaError] the table or its model cannot be found
-      def model_adapter(target_table:)
+      # @raise [TargetSchemaError] the model or its table cannot be found
+      def model_adapter(target_model:)
         ensure_installed
-        @adapter.model_adapter(target_table: target_table)
+        @adapter.model_adapter(target_model: target_model)
       end
     end
   end
