@@ -161,8 +161,18 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
   end
 
   describe "#cast_text" do
-    def cast(column_name, text)
+    # What the adapter answers for a text.
+    def reading(column_name, text)
       model_adapter.cast_text(column_name: column_name, text: text)
+    end
+
+    # The cast value of a text the adapter can read.
+    def cast(column_name, text)
+      reading(column_name, text)[:cast_value]
+    end
+
+    it "says it can read a text and gives the number the model would load, for an integer column" do
+      expect(reading("seats", "12")).to eq(casted: true, cast_value: 12)
     end
 
     it "gives the number the model would load for a text in an integer column" do
@@ -202,12 +212,12 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("starts_on", "20240203")).to eq(Date.new(2024, 2, 3))
       end
 
-      it "gives nil for a text the model cannot read" do
-        expect(cast("starts_on", "garbage")).to be_nil
+      it "says it cannot read a text the model cannot read" do
+        expect(reading("starts_on", "garbage")).to eq(casted: false)
       end
 
-      it "gives nil for a day that is not in the calendar" do
-        expect(cast("starts_on", "2024-02-30")).to be_nil
+      it "says it cannot read a day that is not in the calendar" do
+        expect(reading("starts_on", "2024-02-30")).to eq(casted: false)
       end
     end
 
@@ -218,8 +228,8 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("starts_at", "2024-02-03 10:00:00 +0530")).to be_a(Time)
       end
 
-      it "gives nil for a text the model cannot read" do
-        expect(cast("starts_at", "garbage")).to be_nil
+      it "says it cannot read a text the model cannot read" do
+        expect(reading("starts_at", "garbage")).to eq(casted: false)
       end
     end
 
@@ -238,8 +248,12 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("settings", '"hello"')).to eq("hello")
       end
 
-      it "gives nil for a text that is not JSON" do
-        expect(cast("settings", "{oops")).to be_nil
+      it "says it cannot read a text that is not JSON" do
+        expect(reading("settings", "{oops")).to eq(casted: false)
+      end
+
+      it "says it can read the JSON null, with nothing to load" do
+        expect(reading("settings", "null")).to eq(casted: true, cast_value: nil)
       end
     end
 

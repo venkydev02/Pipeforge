@@ -5,8 +5,9 @@ module Pipeforge
     # Decides whether one text fits the column and what it is cast to. It is a service: {.call} is a pure
     # function of its arguments and keeps nothing between calls.
     #
-    # A text fits when the adapter can read it (it casts it to something other than nil) and the cast value
-    # is within the limits of the column. Every type is cast, including a type the core knows no limit for.
+    # A text fits when the adapter can read it (its answer says +casted+) and the cast value is within the
+    # limits of the column. A text the adapter reads as nothing (the JSON null) fits: it has no limit to break.
+    # Every type is cast, including a type the core knows no limit for.
     module ValueFitChecker
       # The outcome of checking one text.
       #   fits       whether the text fits the column
@@ -21,9 +22,13 @@ module Pipeforge
         # @param model_adapter [#cast_text] the adapter's object for the target table
         # @return [FitCheck]
         def call(text:, target_column:, limits_checker:, model_adapter:)
-          cast_value = model_adapter.cast_text(column_name: target_column, text: text)
-          # A nil cast means the adapter cannot read the text: it does not fit and there is no changed value.
-          return FitCheck.new(fits: false, casted_to: nil) if cast_value.nil?
+          reading = model_adapter.cast_text(column_name: target_column, text: text)
+          # The adapter cannot read the text: it does not fit and there is no changed value.
+          return FitCheck.new(fits: false, casted_to: nil) unless reading[:casted]
+
+          cast_value = reading[:cast_value]
+          # A text read as nothing (the JSON null) loads as an empty column, so there is nothing to limit.
+          return FitCheck.new(fits: true, casted_to: nil) if cast_value.nil?
 
           # The changed value is given even when the text does not fit, because the cast value can be the
           # reason: 999.999 is cast to 1000.0 in a decimal column of scale 2.

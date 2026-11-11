@@ -29,14 +29,14 @@ module Pipeforge
         if json_column?(column_name: column_name) && value.is_a?(String)
           json_reading = read_json(text: value)
 
-          unless json_reading[:parsed]
+          unless json_reading[:casted]
             # The record cannot hold a text that is not JSON, so it is set aside and reported by the record
             # as value_not_json.
-            invalid_json_texts[column_name] = json_reading[:value]
+            invalid_json_texts[column_name] = value
             next
           end
 
-          value = json_reading[:value]
+          value = json_reading[:cast_value]
         end
 
         enum_mapping = @model.defined_enums[column_name]
@@ -64,22 +64,22 @@ module Pipeforge
       )
     end
 
-    # The value the model would load for a text in a column: the text cast by the attribute type of the
-    # column, or nil when the type cannot read the text. For a json or jsonb column that is the object or
-    # list the text describes. It reads no row and writes nothing.
+    # What the model would load for a text in a column: the text cast by the attribute type of the column.
+    # For a json or jsonb column that is the object, list or string the text describes. It reads no row and
+    # writes nothing.
     #
     # @param column_name [String] a column of the table
     # @param text [String] a non-empty value from the file
-    # @return [Object, nil] the cast value, or nil when the type cannot read the text
+    # @return [Hash] +{casted: true, cast_value: <the cast value>}+ when the type can read the text (the
+    #   +cast_value+ is nil for the JSON null), and +{casted: false}+ when it cannot
     def cast_text(column_name:, text:)
-      if json_column?(column_name: column_name)
-        json_reading = read_json(text: text)
-
-        return json_reading[:parsed] ? json_reading[:value] : nil
-      end
+      return read_json(text: text) if json_column?(column_name: column_name)
 
       # The cast is lenient: abc in an integer column is 0.
-      @model.type_for_attribute(column_name).cast(text)
+      cast_value = @model.type_for_attribute(column_name).cast(text)
+      return {casted: false} if cast_value.nil?
+
+      {casted: true, cast_value: cast_value}
     end
 
     # Runs the block in one transaction on the connection of the table's model; with +rollback_at_end+
@@ -125,15 +125,15 @@ module Pipeforge
     # Reads a text as JSON.
     #
     # @param text [String] the text for a json or jsonb column
-    # @return [Hash] +parsed+ is true when the text is JSON, and then +value+ is the object, list or string it
-    #   describes (nil for the JSON null); +parsed+ is false when it is not JSON, and then +value+ is the text
+    # @return [Hash] +{casted: true, cast_value: <what the text describes>}+ when the text is JSON (the
+    #   +cast_value+ is nil for the JSON null), and +{casted: false}+ when it is not
     def read_json(text:)
       # decode, not the column type's deserialize: deserialize hides a parse error as nil, the same nil as for the
       # text null, so the two could not be told apart. cast would keep the text as a String, which the column
       # then stores as a JSON string.
-      {parsed: true, value: ActiveSupport::JSON.decode(text)}
+      {casted: true, cast_value: ActiveSupport::JSON.decode(text)}
     rescue JSON::ParserError
-      {parsed: false, value: text}
+      {casted: false}
     end
 
     # Whether the column is a json or jsonb column.

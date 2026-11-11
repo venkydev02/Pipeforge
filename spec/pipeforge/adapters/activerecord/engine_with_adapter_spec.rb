@@ -176,11 +176,21 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
     context "with a json column" do
       let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Profile") }
-      let(:csv) { "Name,Settings\nann,\"{\"\"theme\"\":\"\"dark\"\"}\"\nbob,{oops\n" }
+      let(:csv) { "Name,Settings\nann,\"{\"\"theme\"\":\"\"dark\"\"}\"\nbob,{oops\ncat,null\ndee,\n" }
       let(:mapped_columns) { {"settings" => {source_column: "Settings"}} }
 
-      it "counts a text that describes JSON as fitting, and one that does not as not fitting" do
-        expect(value_result.columns["settings"].type_compatibility).to eq(fits: 1, total: 2)
+      it "counts a text that describes JSON, and the JSON null, as fitting, and one that does not as not fitting" do
+        expect(value_result.columns["settings"].type_compatibility).to eq(fits: 2, total: 3)
+      end
+
+      it "lists the JSON null as a value that fits" do
+        compatible = value_result.columns["settings"].distinct_values[:compatible].values.map { |entry| entry[:value] }
+
+        expect(compatible).to include("null")
+      end
+
+      it "counts an empty cell as empty, and not as a value" do
+        expect(value_result.columns["settings"].empty).to eq(1)
       end
 
       it "lists the text that is not JSON, for a value mapping to fix" do

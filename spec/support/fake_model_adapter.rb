@@ -19,8 +19,8 @@ require "date"
 # (with its attributes) and the +:transaction_begin+ and +:transaction_end+ of a run transaction.
 #
 #   adapter = FakeModelAdapter.new(errors_of: ->(attributes:) { [model_error] if attributes["email"] == "x" })
-#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => nil
-#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => 0
+#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => {casted: false}
+#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => {casted: true, cast_value: 0}
 class FakeModelAdapter
   # What ActiveRecord reads as false; it reads every other text as true.
   FALSE_WORDS = %w[0 f false off].freeze
@@ -162,9 +162,14 @@ class FakeModelAdapter
     result
   end
 
-  # The value the adapter would load for a text; the +casts+ lambda decides, and by default it is the
-  # text itself. A lambda that returns nil stands for an adapter that cannot read the text.
+  # What the adapter would load for a text; the +casts+ lambda decides, and by default it is the text
+  # itself. A lambda that returns nil stands for an adapter that cannot read the text.
+  #
+  # @return [Hash] +{casted: true, cast_value:}+, or +{casted: false}+ when the lambda gives nil
   def cast_text(column_name:, text:)
-    @casts.call(column_name: column_name, text: text)
+    cast_value = @casts.call(column_name: column_name, text: text)
+    return {casted: false} if cast_value.nil?
+
+    {casted: true, cast_value: cast_value}
   end
 end

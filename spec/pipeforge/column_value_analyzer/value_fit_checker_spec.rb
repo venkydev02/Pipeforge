@@ -23,6 +23,14 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ValueFitChecker do
       end
     end
 
+    context "with an adapter that reads a text as nothing" do
+      let(:model_adapter) { instance_double(FakeModelAdapter, cast_text: {casted: true, cast_value: nil}) }
+
+      it "fits the text, with no changed value" do
+        expect(check(text: "null", model_adapter: model_adapter, type: "integer")).to have_attributes(fits: true, casted_to: nil)
+      end
+    end
+
     context "with a column of a type that the core knows no limit for" do
       let(:model_adapter) { FakeModelAdapter.lenient(types: {"data" => "integer"}) }
 

@@ -47,8 +47,9 @@ module Pipeforge
       # The adapter's object for one target model. The run asks for it once and uses it for every
       # record: +build_record(attributes:)+ returns the adapter's wrapper of one record (see
       # {RunProcessor::RowCandidate#model_record}), +preload_parents(records:)+ loads the parents a chunk
-      # needs, and +cast_text(column_name:, text:)+ gives the value the adapter would load for a text
-      # in a column, or nil when it cannot read the text. +transaction(rollback_at_end:)+ runs a block
+      # needs, and +cast_text(column_name:, text:)+ says whether the adapter can read a text in a
+      # column (+casted+) and, when it can, the value it would load (+cast_value+): +{casted: true,
+      # cast_value: 42}+, or +{casted: false}+. +transaction(rollback_at_end:)+ runs a block
       # inside one transaction of the target database, rolled back when the block ends if
       # +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which writes the
       # record.
