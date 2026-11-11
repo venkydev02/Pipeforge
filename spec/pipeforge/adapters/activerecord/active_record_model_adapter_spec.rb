@@ -83,6 +83,81 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(model_record.record.kind).to eq("wholesale")
       end
     end
+
+    context "with a json column" do
+      let(:model) { AdapterSpecModels::Profile }
+      let(:attributes) { {"name" => "ann", "settings" => settings_text} }
+      let(:settings_text) { '{"theme":"dark","size":3}' }
+
+      it "holds the object the text describes" do
+        expect(model_record.record.settings).to eq("theme" => "dark", "size" => 3)
+      end
+
+      context "and the text is a list" do
+        let(:settings_text) { "[1,2]" }
+
+        it "holds the list" do
+          expect(model_record.record.settings).to eq([1, 2])
+        end
+      end
+
+      context "and the text is a JSON string written with its quotes" do
+        let(:settings_text) { '"hello"' }
+
+        it "holds that string" do
+          expect(model_record.record.settings).to eq("hello")
+        end
+      end
+
+      context "and the text is not JSON" do
+        let(:settings_text) { "{oops" }
+
+        it "holds nothing" do
+          expect(model_record.record.settings).to be_nil
+        end
+
+        it "keeps the text, as given, for the record to report" do
+          expect(model_record.attributes["settings"]).to eq("{oops")
+        end
+      end
+
+      context "and the text is the JSON null" do
+        let(:settings_text) { "null" }
+
+        it "holds nothing" do
+          expect(model_record.record.settings).to be_nil
+        end
+
+        it "leaves nothing for the record to report" do
+          expect(model_record.valid?).to be(true)
+        end
+      end
+
+      context "and the value is empty" do
+        let(:settings_text) { nil }
+
+        it "holds nothing" do
+          expect(model_record.record.settings).to be_nil
+        end
+      end
+
+      context "and the value is already an object" do
+        let(:settings_text) { {"theme" => "dark"} }
+
+        it "keeps the object" do
+          expect(model_record.record.settings).to eq("theme" => "dark")
+        end
+      end
+    end
+
+    context "with a jsonb column", :postgresql_only do
+      let(:model) { AdapterSpecModels::Profile }
+      let(:attributes) { {"name" => "ann", "extras" => '{"beta":true}'} }
+
+      it "holds the object the text describes" do
+        expect(model_record.record.extras).to eq("beta" => true)
+      end
+    end
   end
 
   describe "#cast_text" do
@@ -145,6 +220,34 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
 
       it "gives nil for a text the model cannot read" do
         expect(cast("starts_at", "garbage")).to be_nil
+      end
+    end
+
+    context "with a json column" do
+      let(:model) { AdapterSpecModels::Profile }
+
+      it "gives the object that a text describes" do
+        expect(cast("settings", '{"theme":"dark","size":3}')).to eq("theme" => "dark", "size" => 3)
+      end
+
+      it "gives the list that a text describes" do
+        expect(cast("settings", "[1,2]")).to eq([1, 2])
+      end
+
+      it "gives the string for a JSON string written with its quotes" do
+        expect(cast("settings", '"hello"')).to eq("hello")
+      end
+
+      it "gives nil for a text that is not JSON" do
+        expect(cast("settings", "{oops")).to be_nil
+      end
+    end
+
+    context "with a jsonb column", :postgresql_only do
+      let(:model) { AdapterSpecModels::Profile }
+
+      it "gives the object that a text describes" do
+        expect(cast("extras", '{"beta":true}')).to eq("beta" => true)
       end
     end
   end
