@@ -40,6 +40,24 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     expect(result.model).to eq("AdapterSpecModels::User")
   end
 
+  context "when the table has an array column", :postgresql_only do
+    let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Playlist") }
+    let(:csv) { "Title,Track ids\nmix,\"{1,2}\"\n" }
+
+    it "refuses a mapping to the array column, as a column that cannot be loaded" do
+      expect { engine.analyze_column_values(mapped_columns: {"track_ids" => {source_column: "Track ids"}}) }
+        .to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
+          expect(error.errors.map { |entry| entry[:code] }).to eq([:target_column_not_in_schema])
+        end
+    end
+
+    it "loads the other columns of the table" do
+      totals = engine.run(mode: :dry_run, mapped_columns: {"title" => {source_column: "Title"}}) { |chunk| }
+
+      expect(totals).to have_attributes(processed_rows_count: 1, valid_rows_count: 1, failed_rows_count: 0)
+    end
+  end
+
   it "gives the type information of each column in its metadata" do
     expect(match_for(target_column: "age")[:metadata]).to include(type: "integer", required: false)
   end
@@ -129,6 +147,30 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
         expect(compatible_values.call("hits")).to eq(%w[40000])
         expect(compatible_values.call("misses")).to eq(%w[-1])
+      end
+    end
+
+    context "with a bigint column and an integer column declared with no size, given 3000000000" do
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Quantity") }
+      let(:csv) { "Plain,Big\n3000000000,3000000000\n" }
+      let(:mapped_columns) do
+        {"plain_count" => {source_column: "Plain"}, "big_count" => {source_column: "Big"}}
+      end
+
+      it "counts the value as fitting the bigint column" do
+        expect(value_result.columns["big_count"].type_compatibility).to eq(fits: 1, total: 1)
+      end
+
+      context "and the database is SQLite" do
+        it "counts the value as fitting the integer column, which SQLite holds in 8 bytes", :sqlite_only do
+          expect(value_result.columns["plain_count"].type_compatibility).to eq(fits: 1, total: 1)
+        end
+      end
+
+      context "and the database is PostgreSQL" do
+        it "counts the value as not fitting the integer column, which holds 4 bytes", :postgresql_only do
+          expect(value_result.columns["plain_count"].type_compatibility).to eq(fits: 0, total: 1)
+        end
       end
     end
 

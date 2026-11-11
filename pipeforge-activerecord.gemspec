@@ -8,10 +8,10 @@ Gem::Specification.new do |spec|
   spec.authors = ["venky"]
   spec.email = ["developervenkatesh6@gmail.com"]
 
-  spec.summary = "A deterministic relational data migration engine, for ActiveRecord."
+  spec.summary = "A deterministic relational data migration library, for ActiveRecord."
   spec.description = "Matches the columns of a CSV source to a target table by name, measures the values, " \
                      "and loads them through the application's ActiveRecord models. " \
-                     "The engine itself (the core) comes inside this gem."
+                     "The core of the library comes inside this gem."
 
   # Version floor = max(feature floor, support floor). Revisit at each Ruby/Rails end-of-life.
   spec.required_ruby_version = ">= 3.3"

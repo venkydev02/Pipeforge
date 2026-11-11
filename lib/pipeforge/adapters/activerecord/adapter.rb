@@ -11,8 +11,8 @@ module Pipeforge
   # loaded model has cannot be used.
   #
   # Only the columns that can be given a source column are in the schema. The primary key (filled
-  # by the database), the columns the model ignores and the generated columns are left out, so
-  # the rest of the engine never hears of them.
+  # by the database), the columns the model ignores, the generated columns and the array columns
+  # are left out, so the rest of the engine never hears of them.
   #
   # @example
   #   schema = Pipeforge::ActiveRecordAdapter.new.schema(target_model: "User")
@@ -20,6 +20,13 @@ module Pipeforge
   class ActiveRecordAdapter
     # The column types whose size is a number of characters; for the others it is a number of bytes.
     TEXT_TYPES = %w[string text].freeze
+
+    # The attribute type ActiveRecord gives an integer column of SQLite, compared by name because the
+    # SQLite adapter of ActiveRecord is loaded only when SQLite is used.
+    SQLITE_INTEGER_TYPE = "ActiveRecord::ConnectionAdapters::SQLite3Adapter::SQLite3Integer"
+
+    # The size SQLite gives an integer column whose declared type has no size, such as +bigint+.
+    SQLITE_INTEGER_BYTES = 8
 
     # @param target_model [String] the name of the model to read
     # @return [TargetSchema]
@@ -93,12 +100,19 @@ module Pipeforge
       target_columns
     end
 
-    # Whether the column can be given a source column: it is not the primary key and not a
-    # generated column. The columns the model ignores are not in its column list at all.
+    # Whether the column can be given a source column: it is not the primary key, not a generated
+    # column and not an array column. The columns the model ignores are not in its column list at all.
     def writable?(model_column:, primary_keys:)
       return false if primary_keys.include?(model_column.name)
+      return false if model_column.virtual?
 
-      !model_column.virtual?
+      !array_column?(model_column: model_column)
+    end
+
+    # Whether each cell of the column holds a list of values. Only some databases have such columns
+    # (PostgreSQL), so the question is asked only of a column that can answer it.
+    def array_column?(model_column:)
+      model_column.respond_to?(:array?) && model_column.array?
     end
 
     # Whether a row cannot be loaded without a source column for the column: the column refuses
@@ -132,7 +146,7 @@ module Pipeforge
         name: model_column.name,
         type: type,
         sql_type: model_column.sql_type,
-        limit: text_type ? nil : attribute_type.limit,
+        limit: text_type ? nil : size_in_bytes(attribute_type: attribute_type),
         unsigned: attribute_type.is_a?(ActiveRecord::Type::UnsignedInteger),
         max_length: text_type ? attribute_type.limit : nil,
         precision: attribute_type.precision,
@@ -142,6 +156,16 @@ module Pipeforge
         required: required?(model: model, model_column: model_column),
         foreign_key: foreign_key
       )
+    end
+
+    # The limit of the attribute type: the size in bytes of an integer, the significand bits of a float.
+    # A SQLite integer declared with no size holds 8 bytes, which is what its attribute type assumes.
+    def size_in_bytes(attribute_type:)
+      limit = attribute_type.limit
+      return limit unless limit.nil?
+      return limit unless attribute_type.class.ancestors.any? { |ancestor| ancestor.name == SQLITE_INTEGER_TYPE }
+
+      SQLITE_INTEGER_BYTES
     end
 
     # The foreign key columns of the model, by column name, from its +belongs_to+ associations.

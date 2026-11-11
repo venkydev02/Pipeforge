@@ -33,6 +33,26 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(column_named(schema, "age")).to have_attributes(type: "integer", limit: 2, max_length: nil)
     end
 
+    context "with a bigint column and an integer column declared with no size" do
+      let(:target_model) { "AdapterSpecModels::Quantity" }
+
+      it "gives 8 bytes as the limit of the bigint column" do
+        expect(column_named(schema, "big_count")).to have_attributes(type: "integer", limit: 8)
+      end
+
+      context "and the database is SQLite" do
+        it "gives 8 bytes as the limit of the integer column, the size SQLite holds", :sqlite_only do
+          expect(column_named(schema, "plain_count")).to have_attributes(type: "integer", limit: 8)
+        end
+      end
+
+      context "and the database is PostgreSQL" do
+        it "gives 4 bytes as the limit of the integer column, the size of its integer type", :postgresql_only do
+          expect(column_named(schema, "plain_count")).to have_attributes(type: "integer", limit: 4)
+        end
+      end
+    end
+
     it "reports an integer column as signed" do
       expect(column_named(schema, "age")).to have_attributes(unsigned: false)
     end
@@ -89,6 +109,14 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(column_named(schema, "shout")).to be_nil
     end
 
+    context "when the table has array columns", :postgresql_only do
+      let(:target_model) { "AdapterSpecModels::Playlist" }
+
+      it "lists only the column that is not an array" do
+        expect(schema.columns.map(&:name)).to eq(%w[title])
+      end
+    end
+
     it "offers the timestamps for mapping" do
       expect(schema.columns.select { |target_column| target_column.name.end_with?("_at") }).to all(have_attributes(type: "datetime"))
     end
@@ -108,6 +136,12 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
 
       it "gives the type the model declares" do
         expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "varchar")
+      end
+
+      context "and the database is PostgreSQL" do
+        it "gives no limit, because the model declares the integer with no size", :postgresql_only do
+          expect(column_named(schema, "rank").limit).to be_nil
+        end
       end
     end
 
