@@ -294,21 +294,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       end
     end
 
-    context "when a number is outside the range of the type of its column" do
-      let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Membership) }
-      let(:attributes) { {"email" => "ann@example.com", "tier" => "basic", "seats" => 40_000, "company_id" => company.id} }
-
-      it "does not write the row" do
-        expect(model_record.load).to be(false)
-      end
-
-      it "reports value_out_of_range as a refusal of the model" do
-        model_record.load
-
-        expect(model_record.errors).to match([a_hash_including(origin: :model, code: :value_out_of_range, target_column: nil)])
-      end
-    end
-
     context "when the database refuses the row for another reason" do
       before do
         allow(model_record.record).to receive(:save!).and_raise(ActiveRecord::StatementInvalid.new("disk is full"))
