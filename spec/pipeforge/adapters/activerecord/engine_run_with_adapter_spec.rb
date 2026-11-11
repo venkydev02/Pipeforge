@@ -213,3 +213,55 @@ RSpec.describe Pipeforge::Engine, "#run with float columns" do
     expect(failed_rows.map(&:row_number)).to eq([2, 3])
   end
 end
+
+RSpec.describe Pipeforge::Engine, "#run with a json column" do
+  subject(:run_result) do
+    engine.run(mode: mode, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
+  end
+
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Profile") }
+  let(:chunk_results) { [] }
+  let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
+  let(:failed_codes) { failed_rows.flat_map { |failed_row| failed_row.errors.map { |error| error[:code] } } }
+  let(:csv) do
+    <<~CSV
+      Name,Settings
+      ann,"{""theme"":""dark"",""size"":3}"
+      bob,"{oops"
+      cat,null
+    CSV
+  end
+  let(:mapped_columns) { {"name" => {source_column: "Name"}, "settings" => {source_column: "Settings"}} }
+
+  context "when the rows are loaded" do
+    let(:mode) { :run }
+
+    before { run_result }
+
+    it "stores the text of a JSON object as an object" do
+      expect(AdapterSpecModels::Profile.find_by(name: "ann").settings).to eq("theme" => "dark", "size" => 3)
+    end
+
+    it "loads a row whose text is the JSON null, with the column empty" do
+      expect(AdapterSpecModels::Profile.find_by(name: "cat")).to have_attributes(settings: nil)
+    end
+
+    it "does not load a row whose text is not JSON" do
+      expect(AdapterSpecModels::Profile.find_by(name: "bob")).to be_nil
+    end
+
+    it "reports the row whose text is not JSON as failed, with value_not_json" do
+      expect(failed_codes).to eq([:value_not_json])
+    end
+  end
+
+  context "when it is a dry run" do
+    let(:mode) { :dry_run }
+
+    before { run_result }
+
+    it "reports the same failed row as a run" do
+      expect(failed_codes).to eq([:value_not_json])
+    end
+  end
+end

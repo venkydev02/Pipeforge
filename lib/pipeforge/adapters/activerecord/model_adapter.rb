@@ -13,15 +13,32 @@ module Pipeforge
       @model = model
     end
 
-    # Instantiates the model from the attributes.
+    # Instantiates the model from the attributes. The text of a json or jsonb column is read as JSON; a text
+    # that is not JSON, and an enum label the model does not know, are not given to the model: the record
+    # reports them.
     #
     # @param attributes [Hash{String => Object}] target column => value to load
     # @return [ActiveRecordModelRecord] the unsaved record, wrapped
     def build_record(attributes:)
       model_attributes = {}
       unknown_enum_labels = {}
+      invalid_json_texts = {}
 
       attributes.each do |column_name, value|
+        # Only a text is read as JSON; nil (an empty cell) and an object a value mapping gave are assigned as they are.
+        if json_column?(column_name: column_name) && value.is_a?(String)
+          json_reading = read_json(text: value)
+
+          unless json_reading[:parsed]
+            # The record cannot hold a text that is not JSON, so it is set aside and reported by the record
+            # as value_not_json.
+            invalid_json_texts[column_name] = json_reading[:value]
+            next
+          end
+
+          value = json_reading[:value]
+        end
+
         enum_mapping = @model.defined_enums[column_name]
 
         if enum_mapping.nil? || value.nil?
@@ -40,16 +57,27 @@ module Pipeforge
         end
       end
 
-      ActiveRecordModelRecord.new(record: @model.new(model_attributes), unknown_enum_labels: unknown_enum_labels)
+      ActiveRecordModelRecord.new(
+        record: @model.new(model_attributes),
+        unknown_enum_labels: unknown_enum_labels,
+        invalid_json_texts: invalid_json_texts
+      )
     end
 
     # The value the model would load for a text in a column: the text cast by the attribute type of the
-    # column, or nil when the type cannot read the text. It reads no row and writes nothing.
+    # column, or nil when the type cannot read the text. For a json or jsonb column that is the object or
+    # list the text describes. It reads no row and writes nothing.
     #
     # @param column_name [String] a column of the table
     # @param text [String] a non-empty value from the file
     # @return [Object, nil] the cast value, or nil when the type cannot read the text
     def cast_text(column_name:, text:)
+      if json_column?(column_name: column_name)
+        json_reading = read_json(text: text)
+
+        return json_reading[:parsed] ? json_reading[:value] : nil
+      end
+
       # The cast is lenient: abc in an integer column is 0.
       @model.type_for_attribute(column_name).cast(text)
     end
@@ -93,6 +121,25 @@ module Pipeforge
     end
 
     private
+
+    # Reads a text as JSON.
+    #
+    # @param text [String] the text for a json or jsonb column
+    # @return [Hash] +parsed+ is true when the text is JSON, and then +value+ is the object, list or string it
+    #   describes (nil for the JSON null); +parsed+ is false when it is not JSON, and then +value+ is the text
+    def read_json(text:)
+      # decode, not the column type's deserialize: deserialize hides a parse error as nil, the same nil as for the
+      # text null, so the two could not be told apart. cast would keep the text as a String, which the column
+      # then stores as a JSON string.
+      {parsed: true, value: ActiveSupport::JSON.decode(text)}
+    rescue JSON::ParserError
+      {parsed: false, value: text}
+    end
+
+    # Whether the column is a json or jsonb column.
+    def json_column?(column_name:)
+      [:json, :jsonb].include?(@model.type_for_attribute(column_name).type)
+    end
 
     # The label when the value is a label of the enum, the stored value when it is a stored value
     # written as text, and nil when it is neither.
