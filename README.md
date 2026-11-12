@@ -90,14 +90,16 @@ value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
 value_analysis.columns["status"].type_compatibility
 # => {fits: 4, total: 5}
-value_analysis.columns["status"].distinct_values[:incompatible].values.map(&:to_h)
-# => [{value: "this status is far too long to fit", count: 1, casted_to: "this status is far too long to fit", reason: :value_too_long}]
+too_long = value_analysis.columns["status"].distinct_values.incompatible.first
+too_long.value    # => "this status is far too long to fit"
+too_long.count    # => 1
+too_long.reason   # => :value_too_long
 
-value_analysis.columns["company_id"].distinct_values[:compatible].values.map(&:to_h)
-# => [{value: "1", count: 1, casted_to: 1}, {value: "2", count: 1, casted_to: 2}, {value: "Initech", count: 1, casted_to: 0}, {value: "4", count: 1, casted_to: 4}]
+value_analysis.columns["company_id"].distinct_values.compatible.map { |listed| [listed.value, listed.casted_to] }
+# => [["1", 1], ["2", 2], ["Initech", 0], ["4", 4]]
 ```
 
-Look at `Initech`. It sits in a column of ids, and `casted_to: 0` says what the text is cast to (every listed value has `casted_to`): the cast of the ActiveRecord model reads text that is not a number as 0, so the value counts as fitting and would load as company 0. The same goes for `forty` in an age column. Call this the cast trap. Pipeforge follows the model's cast on purpose, because a dry run has to report what a real run does. Compare `casted_to` with `value` before you trust a count.
+Look at `Initech`. It sits in a column of ids, and its `casted_to` of 0 says what the text is cast to (every listed value has `casted_to`): the cast of the ActiveRecord model reads text that is not a number as 0, so the value counts as fitting and would load as company 0. The same goes for `forty` in an age column. Call this the cast trap. Pipeforge follows the model's cast on purpose, because a dry run has to report what a real run does. Compare `casted_to` with `value` before you trust a count.
 
 ### 3. Fix values with a value mapping
 

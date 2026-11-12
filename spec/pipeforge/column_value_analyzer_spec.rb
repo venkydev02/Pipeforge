@@ -83,19 +83,19 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists the values that fit, with their counts" do
-        expect(result.columns["age"].distinct_values[:compatible].values)
+        expect(result.columns["age"].distinct_values.compatible)
           .to eq([compatible_value(value: "30", count: 1, casted_to: 30), compatible_value(value: "25", count: 1, casted_to: 25)])
       end
 
       it "lists the values that do not fit, with their counts" do
-        expect(result.columns["age"].distinct_values[:incompatible].values).to eq([incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)])
+        expect(result.columns["age"].distinct_values.incompatible).to eq([incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)])
       end
 
       it "leaves empty values out of both lists" do
         notes = result.columns["notes"].distinct_values
 
-        expect(notes[:compatible].values.map { |listed| listed.value }).to eq(["first line\nsecond line", "hi"])
-        expect(notes[:incompatible].values).to be_empty
+        expect(notes.compatible.map(&:value)).to eq(["first line\nsecond line", "hi"])
+        expect(notes.incompatible).to be_empty
       end
     end
 
@@ -173,7 +173,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists the values over the limit as not fitting" do
-        expect(result.columns["name"].distinct_values[:incompatible].values)
+        expect(result.columns["name"].distinct_values.incompatible)
           .to eq(
             [
               incompatible_value(value: "Alice", count: 1, casted_to: "Alice", reason: :value_too_long),
@@ -192,7 +192,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists no value as not fitting" do
-        expect(result.columns["data"].distinct_values[:incompatible].values).to be_empty
+        expect(result.columns["data"].distinct_values.incompatible).to be_empty
       end
     end
 
@@ -236,7 +236,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists the values that do not fit, so a value mapping can be written for them" do
-        expect(result.columns["joined"].distinct_values[:incompatible].values)
+        expect(result.columns["joined"].distinct_values.incompatible)
           .to eq(
             [
               incompatible_value(value: "03/04/2025", count: 1, casted_to: nil, reason: :value_not_castable),
@@ -266,7 +266,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists no values" do
-        expect(result.columns["b"].distinct_values.values).to all(have_attributes(values: []))
+        expect(result.columns["b"].distinct_values).to have_attributes(compatible: [], incompatible: [])
       end
     end
 
@@ -376,11 +376,11 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "string"), "b" => maps_to(source_column: "B", type: "string")} }
 
       it "keeps a comma inside quotes as part of the value" do
-        expect(result.columns["a"].distinct_values[:compatible].values).to eq([compatible_value(value: "x, y", count: 1, casted_to: "x, y")])
+        expect(result.columns["a"].distinct_values.compatible).to eq([compatible_value(value: "x, y", count: 1, casted_to: "x, y")])
       end
 
       it "reads a doubled quote as one quote" do
-        expect(result.columns["b"].distinct_values[:compatible].values).to eq([compatible_value(value: "say \"hi\"", count: 1, casted_to: "say \"hi\"")])
+        expect(result.columns["b"].distinct_values.compatible).to eq([compatible_value(value: "say \"hi\"", count: 1, casted_to: "say \"hi\"")])
       end
     end
 
@@ -389,7 +389,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"s" => maps_to(source_column: "S", type: "string")} }
 
       it "keeps them as different values" do
-        expect(result.columns["s"].distinct_values[:compatible].values.map(&:value))
+        expect(result.columns["s"].distinct_values.compatible.map(&:value))
           .to eq(%w[Active active ACTIVE])
       end
     end
@@ -445,7 +445,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"status" => maps_to(source_column: "Status", type: "string"), "code" => maps_to(source_column: "Code", type: "string")} }
 
       def listed(target_column:, list: :compatible)
-        result.columns[target_column].distinct_values[list].values
+        result.columns[target_column].distinct_values.public_send(list)
       end
 
       it "lists every different value, in the order the values first appeared" do
@@ -472,11 +472,11 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"n" => maps_to(source_column: "N", type: "integer")} }
 
       it "lists every value that fits" do
-        expect(result.columns["n"].distinct_values[:compatible].values.size).to eq(1200)
+        expect(result.columns["n"].distinct_values.compatible.size).to eq(1200)
       end
 
       it "lists every value that does not fit" do
-        expect(result.columns["n"].distinct_values[:incompatible].values.map(&:value)).to eq(%w[x y])
+        expect(result.columns["n"].distinct_values.incompatible.map(&:value)).to eq(%w[x y])
       end
 
       it "counts every value in the totals" do
@@ -489,7 +489,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"n" => maps_to(source_column: "N", type: "integer")} }
 
       it "lists it, because no value is left out" do
-        expect(result.columns["n"].distinct_values[:compatible].values).to eq(
+        expect(result.columns["n"].distinct_values.compatible).to eq(
           [compatible_value(value: "1", count: 3, casted_to: 1), compatible_value(value: "2", count: 1, casted_to: 2)]
         )
       end
@@ -505,7 +505,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists the values that would be loaded, not the values in the file" do
-        expect(result.columns["status"].distinct_values[:compatible].values)
+        expect(result.columns["status"].distinct_values.compatible)
           .to eq([compatible_value(value: "1", count: 2, casted_to: 1), compatible_value(value: "0", count: 1, casted_to: 0)])
       end
 
@@ -513,7 +513,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:value_mapping) { {"Active" => "1", "Inactive" => "1"} }
 
         it "lists them as one value, with their counts added" do
-          expect(result.columns["status"].distinct_values[:compatible].values).to eq([compatible_value(value: "1", count: 3, casted_to: 1)])
+          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 3, casted_to: 1)])
         end
       end
 
@@ -534,7 +534,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:value_mapping) { {"Active" => "1"} }
 
         it "applies the mapping to the trimmed value" do
-          expect(result.columns["status"].distinct_values[:compatible].values).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
+          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
         end
       end
 
@@ -550,7 +550,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "keeps listing the values that still do not fit" do
-        expect(result.columns["status"].distinct_values[:incompatible].values)
+        expect(result.columns["status"].distinct_values.incompatible)
           .to eq([incompatible_value(value: "broken", count: 1, casted_to: nil, reason: :value_not_castable)])
       end
 
@@ -574,7 +574,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:value_mapping) { {"Active" => 1} }
 
         it "measures and lists it as its text" do
-          expect(result.columns["status"].distinct_values[:compatible].values).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
+          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
         end
       end
 
@@ -582,7 +582,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:value_mapping) { {"Active" => "yes"} }
 
         it "lists the value it maps to among the values that do not fit" do
-          expect(result.columns["status"].distinct_values[:incompatible].values).to include(incompatible_value(value: "yes", count: 2, casted_to: nil, reason: :value_not_castable))
+          expect(result.columns["status"].distinct_values.incompatible).to include(incompatible_value(value: "yes", count: 2, casted_to: nil, reason: :value_not_castable))
         end
       end
 
@@ -614,7 +614,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "lists it as false" do
-        expect(result.columns["flag"].distinct_values[:compatible].values)
+        expect(result.columns["flag"].distinct_values.compatible)
           .to eq([compatible_value(value: "false", count: 2, casted_to: false), compatible_value(value: "Yes", count: 1, casted_to: true)])
       end
     end

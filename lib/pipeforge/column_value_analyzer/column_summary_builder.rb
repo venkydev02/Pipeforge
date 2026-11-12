@@ -5,24 +5,31 @@ require_relative "listed_values"
 
 module Pipeforge
   module ColumnValueAnalyzer
+    # The distinct texts of one column, split by whether the column accepts them. Each list holds every
+    # different text, most frequent first, and the texts with the same count in the order they first appeared.
+    #   compatible    Array<CompatibleValue>    the texts the column accepts
+    #   incompatible  Array<IncompatibleValue>  the texts the column does not accept: +reason+ says why, either
+    #                                           +:value_not_castable+ (the adapter could not cast the text) or
+    #                                           the code of the limit the cast value breaks
+    #                                           (+:value_too_long+, +:value_out_of_range+, +:value_not_allowed+)
+    DistinctValueLists = Data.define(:compatible, :incompatible)
+
     # What the scan found out about one mapped target column. A Result holds it under the name of the
     # target column.
-    #   source_column       the source column it is read from
-    #   position            the position of the source column in the file, starting at 1
-    #   empty               how many cells are empty
-    #   type_compatibility  {fits:, total:}: how many of the non-empty values fit the target type
-    #   distinct_values     {compatible:, incompatible:}, each a DistinctValues; a value of the compatible list
-    #                       is a CompatibleValue (+value+, +count+, +casted_to+) and a value of the
-    #                       incompatible list is an IncompatibleValue (the same, and +reason+:
-    #                       +:value_not_castable+ when the adapter could not cast the text, or the code of
-    #                       the limit the cast value breaks: +:value_too_long+, +:value_out_of_range+,
-    #                       +:value_not_allowed+)
-    #   value_mapping       the consumer's mapping of source values to the values to load; the
-    #                       counts and the lists above describe the values after applying it,
-    #                       that is, what would be loaded
+    #   source_column       String                 the source column it is read from
+    #   position            Integer                the position of the source column in the file, starting at 1
+    #   empty               Integer                how many cells are empty
+    #   type_compatibility  Hash                   {fits:, total:}: how many of the non-empty values fit the
+    #                                              target type
+    #   distinct_values     DistinctValueLists     the texts that fit and the texts that do not
+    #   value_mapping       Hash                   the consumer's mapping of source values to the values to load;
+    #                                              the counts and the lists above describe the values after
+    #                                              applying it, that is, what would be loaded
     ColumnSummary = Data.define(
       :source_column, :position, :empty, :type_compatibility, :distinct_values, :value_mapping
     ) do
+      # Writes the summary in plain JSON types, to store it.
+      #
       # @return [Hash] plain JSON types, with each list as an array of hashes with the fields of its listed values
       def to_h
         {
@@ -31,8 +38,8 @@ module Pipeforge
           empty: empty,
           type_compatibility: type_compatibility,
           distinct_values: {
-            compatible: distinct_values[:compatible].values.map(&:to_h),
-            incompatible: distinct_values[:incompatible].values.map(&:to_h)
+            compatible: distinct_values.compatible.map(&:to_h),
+            incompatible: distinct_values.incompatible.map(&:to_h)
           },
           value_mapping: value_mapping
         }
@@ -95,7 +102,10 @@ module Pipeforge
           position: @position,
           empty: @empty,
           type_compatibility: {fits: @fits, total: @total},
-          distinct_values: {compatible: @compatible_values, incompatible: @incompatible_values},
+          distinct_values: DistinctValueLists.new(
+            compatible: @compatible_values.values,
+            incompatible: @incompatible_values.values
+          ),
           value_mapping: @value_mapping
         )
       end

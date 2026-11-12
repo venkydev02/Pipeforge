@@ -26,8 +26,12 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
     context "before any row is added" do
       it "has nothing counted" do
         expect(summary).to have_attributes(empty: 0, type_compatibility: {fits: 0, total: 0})
-        expect(summary.distinct_values[:compatible].values).to eq([])
-        expect(summary.distinct_values[:incompatible].values).to eq([])
+        expect(summary.distinct_values.compatible).to eq([])
+        expect(summary.distinct_values.incompatible).to eq([])
+      end
+
+      it "gives the distinct values as the two lists, each an array of its listed values" do
+        expect(summary.distinct_values).to be_a(Pipeforge::ColumnValueAnalyzer::DistinctValueLists)
       end
 
       it "has the source column, the position and an empty value mapping" do
@@ -47,11 +51,11 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "lists the values that fit, with how often each appeared" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "30", count: 2, casted_to: 30)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "30", count: 2, casted_to: 30)])
       end
 
       it "lists the values that do not fit, with the reason that the adapter could not cast them" do
-        expect(summary.distinct_values[:incompatible].values)
+        expect(summary.distinct_values.incompatible)
           .to eq([incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)])
       end
     end
@@ -66,7 +70,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "gives the value each text is cast to, the one that is the text itself included" do
-        expect(summary.distinct_values[:compatible].values).to eq(
+        expect(summary.distinct_values.compatible).to eq(
           [
             compatible_value(value: "30", count: 2, casted_to: 30),
             compatible_value(value: "1,000", count: 1, casted_to: 1),
@@ -84,10 +88,10 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("200.5", "5") }
 
       it "lists it as not fitting, with the limit it breaks and the value it is cast to" do
-        expect(summary.distinct_values[:incompatible].values).to eq(
+        expect(summary.distinct_values.incompatible).to eq(
           [incompatible_value(value: "200.5", count: 1, casted_to: 200, reason: :value_out_of_range)]
         )
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "5", count: 1, casted_to: 5)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "5", count: 1, casted_to: 5)])
       end
     end
 
@@ -98,11 +102,11 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("abc", "abcdef") }
 
       it "lists it as not fitting, with the reason that it is too long" do
-        expect(summary.distinct_values[:incompatible].values).to eq([incompatible_value(value: "abcdef", count: 1, casted_to: "abcdef", reason: :value_too_long)])
+        expect(summary.distinct_values.incompatible).to eq([incompatible_value(value: "abcdef", count: 1, casted_to: "abcdef", reason: :value_too_long)])
       end
 
       it "lists a text inside the limit as fitting" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "abc", count: 1, casted_to: "abc")])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "abc", count: 1, casted_to: "abc")])
       end
     end
 
@@ -113,7 +117,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("draft", "nope") }
 
       it "lists it as not fitting, with the reason that it is not allowed" do
-        expect(summary.distinct_values[:incompatible].values).to eq([incompatible_value(value: "nope", count: 1, casted_to: "nope", reason: :value_not_allowed)])
+        expect(summary.distinct_values.incompatible).to eq([incompatible_value(value: "nope", count: 1, casted_to: "nope", reason: :value_not_allowed)])
       end
     end
 
@@ -121,7 +125,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("x", "x") }
 
       it "keeps the reason it was listed with, and counts it again" do
-        expect(summary.distinct_values[:incompatible].values).to eq([incompatible_value(value: "x", count: 2, casted_to: nil, reason: :value_not_castable)])
+        expect(summary.distinct_values.incompatible).to eq([incompatible_value(value: "x", count: 2, casted_to: nil, reason: :value_not_castable)])
       end
     end
 
@@ -132,7 +136,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("x") }
 
       it "lists it as not fitting, with the reason that it could not be read" do
-        expect(summary.distinct_values[:incompatible].values).to eq([incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)])
+        expect(summary.distinct_values.incompatible).to eq([incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)])
       end
 
       it "does not ask the limits checker about it" do
@@ -151,7 +155,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "lists it as fitting, with casted_to nil because the value is nothing" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "null", count: 2, casted_to: nil)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "null", count: 2, casted_to: nil)])
       end
     end
 
@@ -164,7 +168,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("2024-2-3", "2024-02-03") }
 
       it "lists the json value as casted_to for each text, the one that is the json value itself included" do
-        expect(summary.distinct_values[:compatible].values).to eq(
+        expect(summary.distinct_values.compatible).to eq(
           [
             compatible_value(value: "2024-2-3", count: 1, casted_to: "2024-02-03"),
             compatible_value(value: "2024-02-03", count: 1, casted_to: "2024-02-03")
@@ -180,7 +184,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("no") }
 
       it "lists false as casted_to" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "no", count: 1, casted_to: false)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "no", count: 1, casted_to: false)])
       end
     end
 
@@ -193,7 +197,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells('{"a": 1}') }
 
       it "lists the object as casted_to, whichever way the text writes it" do
-        expect(summary.distinct_values[:compatible].values).to eq(
+        expect(summary.distinct_values.compatible).to eq(
           [compatible_value(value: '{"a": 1}', count: 1, casted_to: {"a" => 1})]
         )
       end
@@ -214,7 +218,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "lists a mapped value as the value it maps to" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "7", count: 1, casted_to: 7)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "7", count: 1, casted_to: 7)])
       end
 
       it "keeps the value mapping on the summary" do
@@ -228,7 +232,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("30", "thirty") }
 
       it "lists them as one value" do
-        expect(summary.distinct_values[:compatible].values).to eq([compatible_value(value: "30", count: 2, casted_to: 30)])
+        expect(summary.distinct_values.compatible).to eq([compatible_value(value: "30", count: 2, casted_to: 30)])
       end
     end
 
@@ -236,7 +240,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells(*Array.new(1500) { |number| number.to_s }) }
 
       it "lists every one of them" do
-        expect(summary.distinct_values[:compatible].values.size).to eq(1500)
+        expect(summary.distinct_values.compatible.size).to eq(1500)
       end
 
       it "counts every one of them" do
@@ -311,18 +315,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 end
 
 RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummary do
-  def compatible_distinct_values(value:, casted_to:)
-    Pipeforge::ColumnValueAnalyzer::DistinctValues.new(listed_value_class: Pipeforge::ColumnValueAnalyzer::CompatibleValue).tap do |list|
-      list.record(value: value, casted_to: casted_to)
-    end
-  end
-
-  def incompatible_distinct_values(value:, casted_to:, reason:)
-    Pipeforge::ColumnValueAnalyzer::DistinctValues.new(listed_value_class: Pipeforge::ColumnValueAnalyzer::IncompatibleValue).tap do |list|
-      list.record(value: value, casted_to: casted_to, reason: reason)
-    end
-  end
-
   describe "#to_h" do
     subject(:hash) do
       described_class.new(
@@ -330,10 +322,10 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummary do
         position: 2,
         empty: 1,
         type_compatibility: {fits: 1, total: 2},
-        distinct_values: {
-          compatible: compatible_distinct_values(value: "30", casted_to: 30),
-          incompatible: incompatible_distinct_values(value: "x", casted_to: nil, reason: :value_not_castable)
-        },
+        distinct_values: Pipeforge::ColumnValueAnalyzer::DistinctValueLists.new(
+          compatible: [compatible_value(value: "30", count: 1, casted_to: 30)],
+          incompatible: [incompatible_value(value: "x", count: 1, casted_to: nil, reason: :value_not_castable)]
+        ),
         value_mapping: {"x" => "0"}
       ).to_h
     end
