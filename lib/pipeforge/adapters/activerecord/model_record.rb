@@ -78,8 +78,7 @@ module Pipeforge
     #
     # @return [Hash{String => Object}] column => value
     def attributes
-      # The record cannot hold a label it does not know or a text that is not JSON, so they are added back as
-      # they were given.
+      # The record cannot hold these, so they are added back as they were given.
       @record.attributes.merge(@unknown_enum_labels).merge(@invalid_json_texts)
     end
 

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "distinct_values"
-require_relative "value_fit_checker"
+require_relative "listed_values"
 
 module Pipeforge
   module ColumnValueAnalyzer
@@ -11,16 +11,19 @@ module Pipeforge
     #   position            the position of the source column in the file, starting at 1
     #   empty               how many cells are empty
     #   type_compatibility  {fits:, total:}: how many of the non-empty values fit the target type
-    #   distinct_values     {compatible:, incompatible:}, each a DistinctValues; an entry of either list
-    #                       carries +casted_to+ when the adapter would load the value as something else
+    #   distinct_values     {compatible:, incompatible:}, each a DistinctValues; a value of the compatible list
+    #                       is a CompatibleValue (+value+, +count+, +casted_to+) and a value of the
+    #                       incompatible list is an IncompatibleValue (the same, and +reason+:
+    #                       +:value_not_castable+ when the adapter could not cast the text, or the code of
+    #                       the limit the cast value breaks: +:value_too_long+, +:value_out_of_range+,
+    #                       +:value_not_allowed+)
     #   value_mapping       the consumer's mapping of source values to the values to load; the
     #                       counts and the lists above describe the values after applying it,
     #                       that is, what would be loaded
     ColumnSummary = Data.define(
       :source_column, :position, :empty, :type_compatibility, :distinct_values, :value_mapping
     ) do
-      # @return [Hash] plain JSON types, with each list as an array of {value:, count:} (and casted_to: for
-      #   a value that is loaded as something else, in either list)
+      # @return [Hash] plain JSON types, with each list as an array of hashes with the fields of its listed values
       def to_h
         {
           source_column: source_column,
@@ -28,8 +31,8 @@ module Pipeforge
           empty: empty,
           type_compatibility: type_compatibility,
           distinct_values: {
-            compatible: distinct_values[:compatible].values,
-            incompatible: distinct_values[:incompatible].values
+            compatible: distinct_values[:compatible].values.map(&:to_h),
+            incompatible: distinct_values[:incompatible].values.map(&:to_h)
           },
           value_mapping: value_mapping
         }
@@ -58,8 +61,8 @@ module Pipeforge
         @empty = 0
         @fits = 0
         @total = 0
-        @compatible = DistinctValues.new
-        @incompatible = DistinctValues.new
+        @compatible_values = DistinctValues.new(listed_value_class: CompatibleValue)
+        @incompatible_values = DistinctValues.new(listed_value_class: IncompatibleValue)
       end
 
       # Records the cell of one row.
@@ -92,7 +95,7 @@ module Pipeforge
           position: @position,
           empty: @empty,
           type_compatibility: {fits: @fits, total: @total},
-          distinct_values: {compatible: @compatible, incompatible: @incompatible},
+          distinct_values: {compatible: @compatible_values, incompatible: @incompatible_values},
           value_mapping: @value_mapping
         )
       end
@@ -102,26 +105,31 @@ module Pipeforge
       # A value that is already listed is only counted, because the list it is in says whether it fits. Only a
       # new value is cast and checked.
       def record_value(text:)
-        if @compatible.listed?(value: text)
+        if @compatible_values.listed?(value: text)
           @fits += 1
-          @compatible.record(value: text)
-        elsif @incompatible.listed?(value: text)
-          @incompatible.record(value: text)
+          @compatible_values.record(value: text)
+        elsif @incompatible_values.listed?(value: text)
+          @incompatible_values.record(value: text)
         else
           record_new_value(text: text)
         end
       end
 
       def record_new_value(text:)
-        fit_check = ValueFitChecker.call(
-          text: text, target_column: @target_column, limits_checker: @limits_checker, model_adapter: @model_adapter
-        )
+        cast_result = @model_adapter.cast_text(column_name: @target_column, text: text)
 
-        if fit_check.fits
+        unless cast_result.castable
+          @incompatible_values.record(value: text, casted_to: nil, reason: :value_not_castable)
+          return
+        end
+
+        violation = @limits_checker.violation_of(value: cast_result.cast_value)
+
+        if violation.nil?
           @fits += 1
-          @compatible.record(value: text, casted_to: fit_check.casted_to)
+          @compatible_values.record(value: text, casted_to: cast_result.json_value)
         else
-          @incompatible.record(value: text, casted_to: fit_check.casted_to)
+          @incompatible_values.record(value: text, casted_to: cast_result.json_value, reason: violation.code)
         end
       end
     end

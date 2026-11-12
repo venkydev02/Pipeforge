@@ -19,17 +19,17 @@ require "date"
 # (with its attributes) and the +:transaction_begin+ and +:transaction_end+ of a run transaction.
 #
 #   adapter = FakeModelAdapter.new(errors_of: ->(attributes:) { [model_error] if attributes["email"] == "x" })
-#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => {casted: false}
-#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => {casted: true, cast_value: 0}
+#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => Pipeforge::CastResult::NOT_CASTABLE
+#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => a CastResult with the cast value 0
 class FakeModelAdapter
   # What ActiveRecord reads as false; it reads every other text as true.
   FALSE_WORDS = %w[0 f false off].freeze
 
-  # The words a strict adapter reads as a boolean: it cannot read any other text.
+  # The words a strict adapter reads as a boolean: it cannot cast any other text.
   STRICT_FALSE_WORDS = %w[0 f false off n no].freeze
   STRICT_TRUE_WORDS = %w[1 t true on y yes].freeze
 
-  # An adapter that reads a text only when it is a value of the type of its column, and cannot read
+  # An adapter that reads a text only when it is a value of the type of its column, and cannot cast
   # (casts to nil) any other text. It stands for an adapter that is strict, and lets a spec about the
   # counting and the lists use texts that do not fit.
   #
@@ -49,7 +49,7 @@ class FakeModelAdapter
   end
 
   # An adapter that casts as ActiveRecord does: leniently, so +abc+ in an integer column is 0, +1,000+
-  # is 1 and +no+ in a boolean column is true. A date it cannot read is nil.
+  # is 1 and +no+ in a boolean column is true. A date it cannot cast is nil.
   #
   # @param types [Hash{String => String}] column => type name; a column not listed is cast to its text
   # @param scales [Hash{String => Integer}] decimal column => its scale, to which a decimal is rounded
@@ -163,13 +163,13 @@ class FakeModelAdapter
   end
 
   # What the adapter would load for a text; the +casts+ lambda decides, and by default it is the text
-  # itself. A lambda that returns nil stands for an adapter that cannot read the text.
+  # itself. A lambda that returns nil stands for an adapter that cannot cast the text.
   #
-  # @return [Hash] +{casted: true, cast_value:}+, or +{casted: false}+ when the lambda gives nil
+  # @return [Pipeforge::CastResult] {Pipeforge::CastResult::NOT_CASTABLE} when the lambda gives nil
   def cast_text(column_name:, text:)
     cast_value = @casts.call(column_name: column_name, text: text)
-    return {casted: false} if cast_value.nil?
+    return Pipeforge::CastResult::NOT_CASTABLE if cast_value.nil?
 
-    {casted: true, cast_value: cast_value}
+    Pipeforge::CastResult.new(castable: true, cast_value: cast_value, json_value: cast_value.as_json)
   end
 end

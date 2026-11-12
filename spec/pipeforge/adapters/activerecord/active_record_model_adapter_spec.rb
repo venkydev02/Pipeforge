@@ -162,17 +162,17 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
 
   describe "#cast_text" do
     # What the adapter answers for a text.
-    def reading(column_name, text)
+    def cast_result(column_name, text)
       model_adapter.cast_text(column_name: column_name, text: text)
     end
 
-    # The cast value of a text the adapter can read.
+    # The cast value of a text the adapter can cast.
     def cast(column_name, text)
-      reading(column_name, text)[:cast_value]
+      cast_result(column_name, text).cast_value
     end
 
-    it "says it can read a text and gives the number the model would load, for an integer column" do
-      expect(reading("seats", "12")).to eq(casted: true, cast_value: 12)
+    it "says it can cast a text and gives the number the model would load, for an integer column" do
+      expect(cast_result("seats", "12")).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 12, json_value: 12))
     end
 
     it "gives the number the model would load for a text in an integer column" do
@@ -203,6 +203,56 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       expect(queries_on("memberships") { cast("seats", "12") }).to eq([])
     end
 
+    context "with the json value" do
+      it "is the number for a text in an integer column" do
+        expect(cast_result("seats", "12").json_value).to eq(12)
+      end
+
+      it "is the cast number for a text that is not a number" do
+        expect(cast_result("seats", "abc").json_value).to eq(0)
+      end
+
+      it "is the label for the label of an enum" do
+        expect(cast_result("tier", "pro").json_value).to eq("pro")
+      end
+
+      it "is the text itself for a string column" do
+        expect(cast_result("email", "ann@example.com").json_value).to eq("ann@example.com")
+      end
+
+      it "is the label for an enum label the model does not know" do
+        expect(cast_result("tier", "nope")).to eq(Pipeforge::CastResult.new(castable: true, cast_value: "nope", json_value: "nope"))
+      end
+
+      it "is the cast number for a number outside the range of its column" do
+        expect(cast_result("seats", "99999")).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 99_999, json_value: 99_999))
+      end
+
+      it "is the number rounded to the scale, written as a text, for a decimal column" do
+        expect(cast_result("fee", "12.345").json_value).to eq("12.35")
+      end
+
+      context "with a boolean column" do
+        let(:model) { AdapterSpecModels::User }
+
+        it "is true for a text that is read as true" do
+          expect(cast_result("active", "yes").json_value).to be(true)
+        end
+      end
+
+      context "with a date column" do
+        let(:model) { AdapterSpecModels::Event }
+
+        it "is the date written as year, month and day" do
+          expect(cast_result("starts_on", "2024-2-3").json_value).to eq("2024-02-03")
+        end
+
+        it "is the time of a datetime with its offset and milliseconds" do
+          expect(cast_result("starts_at", "2024-02-03 10:00:00 +0530").json_value).to eq("2024-02-03T10:00:00.000+05:30")
+        end
+      end
+    end
+
     context "with a date column" do
       let(:model) { AdapterSpecModels::Event }
 
@@ -212,12 +262,12 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("starts_on", "20240203")).to eq(Date.new(2024, 2, 3))
       end
 
-      it "says it cannot read a text the model cannot read" do
-        expect(reading("starts_on", "garbage")).to eq(casted: false)
+      it "says it cannot cast a text the model cannot cast" do
+        expect(cast_result("starts_on", "garbage")).to eq(Pipeforge::CastResult::NOT_CASTABLE)
       end
 
-      it "says it cannot read a day that is not in the calendar" do
-        expect(reading("starts_on", "2024-02-30")).to eq(casted: false)
+      it "says it cannot cast a day that is not in the calendar" do
+        expect(cast_result("starts_on", "2024-02-30")).to eq(Pipeforge::CastResult::NOT_CASTABLE)
       end
     end
 
@@ -228,8 +278,8 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("starts_at", "2024-02-03 10:00:00 +0530")).to be_a(Time)
       end
 
-      it "says it cannot read a text the model cannot read" do
-        expect(reading("starts_at", "garbage")).to eq(casted: false)
+      it "says it cannot cast a text the model cannot cast" do
+        expect(cast_result("starts_at", "garbage")).to eq(Pipeforge::CastResult::NOT_CASTABLE)
       end
     end
 
@@ -248,12 +298,16 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
         expect(cast("settings", '"hello"')).to eq("hello")
       end
 
-      it "says it cannot read a text that is not JSON" do
-        expect(reading("settings", "{oops")).to eq(casted: false)
+      it "says it cannot cast a text that is not JSON" do
+        expect(cast_result("settings", "{oops")).to eq(Pipeforge::CastResult::NOT_CASTABLE)
       end
 
-      it "says it can read the JSON null, with nothing to load" do
-        expect(reading("settings", "null")).to eq(casted: true, cast_value: nil)
+      it "says it can cast the JSON null, with nothing to load" do
+        expect(cast_result("settings", "null")).to eq(Pipeforge::CastResult.new(castable: true, cast_value: nil, json_value: nil))
+      end
+
+      it "gives the object the text describes as the json value" do
+        expect(cast_result("settings", '{"a": 1}').json_value).to eq("a" => 1)
       end
     end
 
