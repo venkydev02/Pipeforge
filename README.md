@@ -34,7 +34,7 @@ Failed row: a row that did not load, with its row number, the values after mappi
 |---|---|---|
 | Which column is which? | `analyze_headers` | a match for each target column with a score from 0 to 100, the file columns that matched nothing, and for each target column its type, whether it is required, its default, its enum labels and the table a foreign key points to |
 | Which values will not fit? | `analyze_column_values` | for each mapped column, how many cells are empty, how many values fit, and the values that do not |
-| Which values need translating? | `analyze_column_values` | every distinct value with its count, ready to become a value mapping; measure again after an edit and the counts show what would load |
+| Which values need translating? | `analyze_column_values` | every distinct value of the file with its count, ready to become a value mapping; measure again after an edit and each value shows what it would load as |
 | Will each row load, in this model and this database? | `run` | every failed row with the layer that refused it (see the three layers below) |
 | What would a run do? | `run(mode: :dry_run)` | the same failed rows and totals as a real run, with the target left unchanged |
 
@@ -107,7 +107,7 @@ Look at `Initech`. It sits in a column of ids, and its `casted_to` of 0 says wha
 mapped_columns["company_id"][:value_mapping] = {"Initech" => "3"}
 ```
 
-The keys are texts as they appear in the file. A value that maps to `nil` or to an empty text is loaded as empty. The file is read again on every call, so you can edit a mapping and measure again. Pipeforge never looks up a parent row by name; you decide that `Initech` is company 3, with the list of distinct values in front of you.
+The keys are texts as they appear in the file. A value that maps to `nil` or to an empty text is loaded as empty. The file is read again on every call, so you can edit a mapping and measure again. Pipeforge never looks up a parent row by name; you decide that `Initech` is company 3, with the list of distinct values in front of you. Measure again and the list still shows `Initech`, the text of the file, now with `mapped_value` `"3"` (what it would load as) and `casted_to` 3. A `mapped_value` keeps the shape you gave it: a number, `false`, or a Hash for a json column. `mapping_applied` says whether your mapping had an entry for the text: a value that does not fit and has `mapping_applied` false still needs a mapping, and one with it true has a mapping that does not fit.
 
 ### 4. Dry run, then run
 
@@ -173,15 +173,17 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
   "distinct_values": {
     "compatible_count": 4,
     "compatible": [
-      {"value": "active", "count": 2, "casted_to": "active"},
-      {"value": "inactive", "count": 1, "casted_to": "inactive"},
-      {"value": "suspended", "count": 1, "casted_to": "suspended"}
+      {"value": "active", "count": 2, "mapping_applied": false, "mapped_value": "active", "casted_to": "active"},
+      {"value": "inactive", "count": 1, "mapping_applied": false, "mapped_value": "inactive", "casted_to": "inactive"},
+      {"value": "suspended", "count": 1, "mapping_applied": false, "mapped_value": "suspended", "casted_to": "suspended"}
     ],
     "incompatible_count": 1,
     "incompatible": [
       {
         "value": "this status is far too long to fit",
         "count": 1,
+        "mapping_applied": false,
+        "mapped_value": "this status is far too long to fit",
         "casted_to": "this status is far too long to fit",
         "reason": "value_too_long"
       }

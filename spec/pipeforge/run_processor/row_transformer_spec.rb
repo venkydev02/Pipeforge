@@ -114,7 +114,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     end
 
     it "lists the same values to load" do
-      listed_values = column_summary.distinct_values.compatible.map(&:value)
+      listed_values = column_summary.distinct_values.compatible.map(&:mapped_value)
 
       expect(listed_values).to match_array(loaded_values.compact.uniq)
     end

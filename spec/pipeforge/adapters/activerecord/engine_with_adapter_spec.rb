@@ -228,6 +228,19 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
         expect(value_result.columns["settings"].empty).to eq(1)
       end
 
+      context "and a value mapping gives a Hash" do
+        let(:csv) { "Name,Settings\nann,default\n" }
+        let(:mapped_columns) do
+          {"settings" => {source_column: "Settings", value_mapping: {"default" => {"theme" => "dark"}}}}
+        end
+
+        it "lists the text of the file as a value that fits, with the Hash as its mapped value" do
+          expect(value_result.columns["settings"].distinct_values.compatible).to eq(
+            [compatible_value(value: "default", count: 1, mapping_applied: true, mapped_value: {"theme" => "dark"}, casted_to: {"theme" => "dark"})]
+          )
+        end
+      end
+
       it "lists the text that is not JSON, for a value mapping to fix" do
         incompatible = value_result.columns["settings"].distinct_values.incompatible.map(&:value)
 

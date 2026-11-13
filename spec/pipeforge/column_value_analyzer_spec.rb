@@ -509,16 +509,25 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 1)
       end
 
-      it "lists the values that would be loaded, not the values in the file" do
-        expect(result.columns["status"].distinct_values.compatible)
-          .to eq([compatible_value(value: "1", count: 2, casted_to: 1), compatible_value(value: "0", count: 1, casted_to: 0)])
+      it "lists the values of the file, each with the value it would be loaded as" do
+        expect(result.columns["status"].distinct_values.compatible).to eq(
+          [
+            compatible_value(value: "Active", count: 2, mapping_applied: true, mapped_value: "1", casted_to: 1),
+            compatible_value(value: "Inactive", count: 1, mapping_applied: true, mapped_value: "0", casted_to: 0)
+          ]
+        )
       end
 
       context "when two values map to the same value" do
         let(:value_mapping) { {"Active" => "1", "Inactive" => "1"} }
 
-        it "lists them as one value, with their counts added" do
-          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 3, casted_to: 1)])
+        it "lists each of them, with the value they map to" do
+          expect(result.columns["status"].distinct_values.compatible).to eq(
+            [
+              compatible_value(value: "Active", count: 2, mapping_applied: true, mapped_value: "1", casted_to: 1),
+              compatible_value(value: "Inactive", count: 1, mapping_applied: true, mapped_value: "1", casted_to: 1)
+            ]
+          )
         end
       end
 
@@ -539,7 +548,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:value_mapping) { {"Active" => "1"} }
 
         it "applies the mapping to the trimmed value" do
-          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
+          expect(result.columns["status"].distinct_values.compatible)
+            .to eq([compatible_value(value: "Active", count: 2, mapping_applied: true, mapped_value: "1", casted_to: 1)])
         end
       end
 
@@ -578,16 +588,19 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       context "when a value maps to something that is not text" do
         let(:value_mapping) { {"Active" => 1} }
 
-        it "measures and lists it as its text" do
-          expect(result.columns["status"].distinct_values.compatible).to eq([compatible_value(value: "1", count: 2, casted_to: 1)])
+        it "measures the number as it is, and lists it as the value the text maps to" do
+          expect(result.columns["status"].distinct_values.compatible)
+            .to eq([compatible_value(value: "Active", count: 2, mapping_applied: true, mapped_value: 1, casted_to: 1)])
         end
       end
 
       context "when a value maps to a value that does not fit either" do
         let(:value_mapping) { {"Active" => "yes"} }
 
-        it "lists the value it maps to among the values that do not fit" do
-          expect(result.columns["status"].distinct_values.incompatible).to include(incompatible_value(value: "yes", count: 2, casted_to: nil, reason: :value_not_castable))
+        it "lists the value of the file, with the value it maps to, among the values that do not fit" do
+          expect(result.columns["status"].distinct_values.incompatible).to include(
+            incompatible_value(value: "Active", count: 2, mapping_applied: true, mapped_value: "yes", casted_to: nil, reason: :value_not_castable)
+          )
         end
       end
 
@@ -618,9 +631,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         expect(result.columns["flag"]).to have_attributes(empty: 0, distinct_values: have_attributes(compatible_count: 3, incompatible_count: 0))
       end
 
-      it "lists it as false" do
-        expect(result.columns["flag"].distinct_values.compatible)
-          .to eq([compatible_value(value: "false", count: 2, casted_to: false), compatible_value(value: "Yes", count: 1, casted_to: true)])
+      it "lists the value of the file, with false as the value it maps to" do
+        expect(result.columns["flag"].distinct_values.compatible).to eq(
+          [
+            compatible_value(value: "No", count: 2, mapping_applied: true, mapped_value: false, casted_to: false),
+            compatible_value(value: "Yes", count: 1, casted_to: true)
+          ]
+        )
       end
     end
 
@@ -652,8 +669,15 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
             "position" => 1,
             "empty" => 0,
             "distinct_values" => {
-              "compatible" => [{"value" => "30", "count" => 1, "casted_to" => 30}],
-              "incompatible" => [{"value" => "x", "count" => 1, "casted_to" => nil, "reason" => "value_not_castable"}],
+              "compatible" => [
+                {"value" => "30", "count" => 1, "mapping_applied" => false, "mapped_value" => "30", "casted_to" => 30}
+              ],
+              "incompatible" => [
+                {
+                  "value" => "x", "count" => 1, "mapping_applied" => false, "mapped_value" => "x", "casted_to" => nil,
+                  "reason" => "value_not_castable"
+                }
+              ],
               "compatible_count" => 1,
               "incompatible_count" => 1
             },

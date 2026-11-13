@@ -160,15 +160,15 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
     end
   end
 
-  describe "#cast_text" do
-    # What the adapter answers for a text.
-    def cast_result(column_name, text)
-      model_adapter.cast_text(column_name: column_name, text: text)
+  describe "#cast_value" do
+    # What the adapter answers for a value.
+    def cast_result(column_name, value)
+      model_adapter.cast_value(column_name: column_name, value: value)
     end
 
-    # The cast value of a text the adapter can cast.
-    def cast(column_name, text)
-      cast_result(column_name, text).cast_value
+    # The cast value of a value the adapter can cast.
+    def cast(column_name, value)
+      cast_result(column_name, value).cast_value
     end
 
     it "says it can cast a text and gives the number the model would load, for an integer column" do
@@ -316,6 +316,40 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
 
       it "gives the object that a text describes" do
         expect(cast("extras", '{"beta":true}')).to eq("beta" => true)
+      end
+    end
+
+    context "with a value that is not a text, as a value mapping gives it" do
+      it "gives the number for a number in an integer column" do
+        expect(cast_result("seats", 12)).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 12, json_value: 12))
+      end
+
+      it "says it cannot cast nil" do
+        expect(cast_result("seats", nil)).to eq(Pipeforge::CastResult::NOT_CASTABLE)
+      end
+
+      context "and a boolean column" do
+        let(:model) { AdapterSpecModels::User }
+
+        it "gives false for false" do
+          expect(cast_result("active", false)).to eq(Pipeforge::CastResult.new(castable: true, cast_value: false, json_value: false))
+        end
+      end
+
+      context "and a json column" do
+        let(:model) { AdapterSpecModels::Profile }
+
+        it "gives the Hash as it is" do
+          expect(cast_result("settings", {"theme" => "dark"})).to eq(
+            Pipeforge::CastResult.new(castable: true, cast_value: {"theme" => "dark"}, json_value: {"theme" => "dark"})
+          )
+        end
+
+        it "gives the Array as it is" do
+          expect(cast_result("settings", [{"theme" => "dark"}])).to eq(
+            Pipeforge::CastResult.new(castable: true, cast_value: [{"theme" => "dark"}], json_value: [{"theme" => "dark"}])
+          )
+        end
       end
     end
   end

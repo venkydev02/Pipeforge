@@ -149,7 +149,7 @@ RSpec.describe Pipeforge::Engine do
     end
 
     it "checks each value as the value the model adapter casts it to" do
-      cast_to_one_letter = FakeModelAdapter.new(casts: ->(column_name:, text:) { "x" })
+      cast_to_one_letter = FakeModelAdapter.new(casts: ->(column_name:, value:) { "x" })
       allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(cast_to_one_letter)
       short_string = build_target_column(name: "status", type: "string", max_length: 1)
       allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(build_target_schema(columns: [short_string]))

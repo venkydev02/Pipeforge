@@ -102,7 +102,7 @@ Source analysis and target schema reading are independent and may run concurrent
 ### 3.2 `analyze_column_values`
 * **Input:** the mapped columns, a plain Hash the consumer builds, keyed by target column (each entry names its source column and an optional value mapping). Every required target column needs an entry; a source column may feed several target columns. The type, size and precision of each target column are read from the target table's schema (ADR-18), never sent by the consumer.
 * **Reads:** the mapped source columns only, in one pass, one row at a time, and the schema of the target table (metadata only).
-* **Output:** `ColumnValueAnalyzer::Result`: per column, empty count, type compatibility (`fits` of `total`), distinct values split into compatible and incompatible lists (every value is kept), and the value mapping the facts were measured with.
+* **Output:** `ColumnValueAnalyzer::Result`: per column, empty count, distinct values split into compatible and incompatible lists (every value is kept) with the number of values in each (`compatible_count` and `incompatible_count`), and the value mapping the facts were measured with.
 * **Non-responsibilities:** no writes, no target rows, no changes to the mapping.
 
 ### 3.3 `run`

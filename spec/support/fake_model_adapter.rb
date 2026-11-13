@@ -5,22 +5,22 @@ require "date"
 
 # A model adapter for specs of the core, which has no adapter gem. It follows the same contract as a
 # real one: +build_record+ returns an object that answers +valid?+, +load+, +errors+ and +attributes+,
-# +preload_parents+ takes the records of a chunk, +transaction+ runs a block, and +cast_text+ gives the
-# value for a text.
+# +preload_parents+ takes the records of a chunk, +transaction+ runs a block, and +cast_value+ gives the
+# cast of a value.
 #
 # The errors of a record come from the +errors_of+ lambda, which is given the attributes the record
 # was built from. The +changes_on_validation+ lambda stands for the model's callbacks: it is given the
 # attributes when +valid?+ runs, and what it returns is what +attributes+ answers afterwards. The
 # +load_errors_of+ lambda is given the attributes of a record when it is written: the entries it returns
 # are the database's refusal (the write fails and +errors+ holds them), and an empty list is a write that
-# works. The +casts+ lambda stands for the cast of the model: by default a text is cast to itself, and
+# works. The +casts+ lambda stands for the cast of the model: by default a value is cast to itself, and
 # {.reading} and {.lenient} build adapters that cast by the type of the column. The adapter remembers
 # what it was asked, so a spec can check it: +events+ lists, in order, each +:valid+ and +:load+ of a record
 # (with its attributes) and the +:transaction_begin+ and +:transaction_end+ of a run transaction.
 #
 #   adapter = FakeModelAdapter.new(errors_of: ->(attributes:) { [model_error] if attributes["email"] == "x" })
-#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => Pipeforge::CastResult::NOT_CASTABLE
-#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_text(column_name: "age", text: "abc")   # => a CastResult with the cast value 0
+#   FakeModelAdapter.reading(types: {"age" => "integer"}).cast_value(column_name: "age", value: "abc")   # => Pipeforge::CastResult::NOT_CASTABLE
+#   FakeModelAdapter.lenient(types: {"age" => "integer"}).cast_value(column_name: "age", value: "abc")   # => a CastResult with the cast value 0
 class FakeModelAdapter
   # What ActiveRecord reads as false; it reads every other text as true.
   FALSE_WORDS = %w[0 f false off].freeze
@@ -35,7 +35,9 @@ class FakeModelAdapter
   #
   # @param types [Hash{String => String}] column => type name; a column not listed is cast to its text
   def self.reading(types: {})
-    new(casts: lambda do |column_name:, text:|
+    new(casts: lambda do |column_name:, value:|
+      text = value.to_s
+
       case types.fetch(column_name, "string")
       when "integer" then Integer(text, 10, exception: false)
       when "float" then Float(text, exception: false)
@@ -43,7 +45,7 @@ class FakeModelAdapter
       when "boolean" then strict_boolean(text)
       when "date" then iso_date(text)
       when "uuid" then text if text.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
-      else text
+      else value
       end
     end)
   end
@@ -54,14 +56,16 @@ class FakeModelAdapter
   # @param types [Hash{String => String}] column => type name; a column not listed is cast to its text
   # @param scales [Hash{String => Integer}] decimal column => its scale, to which a decimal is rounded
   def self.lenient(types: {}, scales: {})
-    new(casts: lambda do |column_name:, text:|
+    new(casts: lambda do |column_name:, value:|
+      text = value.to_s
+
       case types.fetch(column_name, "string")
       when "integer" then text.to_i
       when "float" then text.to_f
       when "decimal" then BigDecimal(text.to_r, 20).round(scales.fetch(column_name, 2))
       when "boolean" then !FALSE_WORDS.include?(text.downcase)
       when "date" then lenient_date(text)
-      else text
+      else value
       end
     end)
   end
@@ -128,7 +132,7 @@ class FakeModelAdapter
   attr_reader :events
 
   def initialize(errors_of: ->(attributes:) { [] }, changes_on_validation: ->(attributes:) { attributes },
-    load_errors_of: ->(attributes:) { [] }, casts: ->(column_name:, text:) { text })
+    load_errors_of: ->(attributes:) { [] }, casts: ->(column_name:, value:) { value })
     @errors_of = errors_of
     @changes_on_validation = changes_on_validation
     @load_errors_of = load_errors_of
@@ -162,14 +166,14 @@ class FakeModelAdapter
     result
   end
 
-  # What the adapter would load for a text; the +casts+ lambda decides, and by default it is the text
-  # itself. A lambda that returns nil stands for an adapter that cannot cast the text.
+  # What the adapter would load for a value; the +casts+ lambda decides, and by default it is the value
+  # itself. A lambda that returns nil stands for an adapter that cannot cast the value.
   #
   # @return [Pipeforge::CastResult] {Pipeforge::CastResult::NOT_CASTABLE} when the lambda gives nil
-  def cast_text(column_name:, text:)
-    cast_value = @casts.call(column_name: column_name, text: text)
-    return Pipeforge::CastResult::NOT_CASTABLE if cast_value.nil?
+  def cast_value(column_name:, value:)
+    loaded_value = @casts.call(column_name: column_name, value: value)
+    return Pipeforge::CastResult::NOT_CASTABLE if loaded_value.nil?
 
-    Pipeforge::CastResult.new(castable: true, cast_value: cast_value, json_value: cast_value.as_json)
+    Pipeforge::CastResult.new(castable: true, cast_value: loaded_value, json_value: loaded_value.as_json)
   end
 end

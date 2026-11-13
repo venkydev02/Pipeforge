@@ -57,14 +57,15 @@ module Pipeforge
     # distinct value is kept. It is mutable: {#add_cell} is the only method that changes it, and {#summary}
     # gives the finished {ColumnSummary}.
     #
-    # A value with an entry in the value mapping of the column is measured, and listed, as the value it maps
-    # to: that is what would be loaded. A value that maps to nil or to a blank counts as empty and is not listed.
+    # A value with an entry in the value mapping of the column is measured as the value it maps to: that is what
+    # would be loaded. It is listed under its text from the file, with the value it maps to next to it. A value that
+    # maps to nil or to a blank counts as empty and is not listed.
     class ColumnSummaryBuilder
       # @param target_column [String] the target column the values are measured for
       # @param source_column [String] the source column the values are read from
       # @param position [Integer] the position of the source column in the file, starting at 1
       # @param limits_checker [ColumnLimitsChecker] the checker of the target column
-      # @param model_adapter [#cast_text] the adapter's object for the target table
+      # @param model_adapter [#cast_value] the adapter's object for the target table
       # @param value_mapping [Hash{String => Object}] the consumer's mapping of source values to the values to
       #   load; an empty Hash for no mapping
       def initialize(target_column:, source_column:, position:, limits_checker:, model_adapter:, value_mapping:)
@@ -92,14 +93,14 @@ module Pipeforge
           return
         end
 
-        loaded_value = @value_mapping.fetch(cell, cell)
+        mapped_value = @value_mapping.fetch(cell, cell)
 
-        if Utilities.blank?(value: loaded_value)
+        if Utilities.blank?(value: mapped_value)
           @empty += 1
           return
         end
 
-        record_value(text: loaded_value.to_s)
+        record_value(value: cell, mapped_value: mapped_value)
       end
 
       # @return [ColumnSummary] what the summary_builder holds now
@@ -122,30 +123,39 @@ module Pipeforge
 
       # A value that is already listed is only counted, because the list it is in says whether it fits. Only a
       # new value is cast and checked.
-      def record_value(text:)
-        if @compatible_values.listed?(value: text)
-          @compatible_values.record(value: text)
-        elsif @incompatible_values.listed?(value: text)
-          @incompatible_values.record(value: text)
+      def record_value(value:, mapped_value:)
+        if @compatible_values.listed?(value: value)
+          @compatible_values.record(value: value)
+        elsif @incompatible_values.listed?(value: value)
+          @incompatible_values.record(value: value)
         else
-          record_new_value(text: text)
+          record_new_value(value: value, mapped_value: mapped_value)
         end
       end
 
-      def record_new_value(text:)
-        cast_result = @model_adapter.cast_text(column_name: @target_column, text: text)
+      def record_new_value(value:, mapped_value:)
+        cast_result = @model_adapter.cast_value(column_name: @target_column, value: mapped_value)
+        mapping_applied = @value_mapping.key?(value)
 
         unless cast_result.castable
-          @incompatible_values.record(value: text, casted_to: nil, reason: :value_not_castable)
+          @incompatible_values.record(
+            value: value, mapping_applied: mapping_applied, mapped_value: mapped_value, casted_to: nil,
+            reason: :value_not_castable
+          )
           return
         end
 
         violation = @limits_checker.violation_of(value: cast_result.cast_value)
 
         if violation.nil?
-          @compatible_values.record(value: text, casted_to: cast_result.json_value)
+          @compatible_values.record(
+            value: value, mapping_applied: mapping_applied, mapped_value: mapped_value, casted_to: cast_result.json_value
+          )
         else
-          @incompatible_values.record(value: text, casted_to: cast_result.json_value, reason: violation.code)
+          @incompatible_values.record(
+            value: value, mapping_applied: mapping_applied, mapped_value: mapped_value,
+            casted_to: cast_result.json_value, reason: violation.code
+          )
         end
       end
     end

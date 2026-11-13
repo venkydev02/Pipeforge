@@ -19,7 +19,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
   let(:value_mapping) { {} }
   let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 30, json_value: 30) }
   let(:violation) { nil }
-  let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter, cast_text: cast_result) }
+  let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter, cast_value: cast_result) }
   let(:limits_checker) { instance_double(Pipeforge::ColumnLimitsChecker, violation_of: violation) }
 
   # Records one row for each cell, in order. A nil is an empty cell.
@@ -53,7 +53,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "does not cast anything" do
-        expect(model_adapter).not_to have_received(:cast_text)
+        expect(model_adapter).not_to have_received(:cast_value)
       end
     end
 
@@ -117,8 +117,36 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       before { add_cells("seven") }
 
+      it "lists the text of the file, with the text it is mapped to" do
+        expect(summary).to eq(
+          expected_summary(
+            compatible: [compatible_value(value: "seven", count: 1, mapping_applied: true, mapped_value: "7", casted_to: 7)],
+            compatible_count: 1
+          )
+        )
+      end
+
       it "casts the mapped text and not the cell" do
-        expect(model_adapter).to have_received(:cast_text).with(column_name: target_column, text: "7")
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "7")
+      end
+    end
+
+    context "when two cells are mapped to the same text" do
+      let(:value_mapping) { {"seven" => "7", "VII" => "7"} }
+      let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 7, json_value: 7) }
+
+      before { add_cells("seven", "VII") }
+
+      it "lists each text of the file, with the text they are mapped to" do
+        expect(summary).to eq(
+          expected_summary(
+            compatible: [
+              compatible_value(value: "seven", count: 1, mapping_applied: true, mapped_value: "7", casted_to: 7),
+              compatible_value(value: "VII", count: 1, mapping_applied: true, mapped_value: "7", casted_to: 7)
+            ],
+            compatible_count: 2
+          )
+        )
       end
     end
 
@@ -128,8 +156,34 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       before { add_cells("seven") }
 
-      it "casts the number as a text" do
-        expect(model_adapter).to have_received(:cast_text).with(column_name: target_column, text: "7")
+      it "casts the number as it is" do
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: 7)
+      end
+    end
+
+    context "when a cell is mapped to a Hash" do
+      let(:target_column) { "settings" }
+      let(:source_column) { "Settings" }
+      let(:value_mapping) { {"default" => {"theme" => "dark"}} }
+      let(:cast_result) do
+        Pipeforge::CastResult.new(castable: true, cast_value: {"theme" => "dark"}, json_value: {"theme" => "dark"})
+      end
+
+      before { add_cells("default") }
+
+      it "lists the text of the file, with the Hash as its own mapped value" do
+        expect(summary).to eq(
+          expected_summary(
+            compatible: [
+              compatible_value(value: "default", count: 1, mapping_applied: true, mapped_value: {"theme" => "dark"}, casted_to: {"theme" => "dark"})
+            ],
+            compatible_count: 1
+          )
+        )
+      end
+
+      it "casts the Hash as it is" do
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: {"theme" => "dark"})
       end
     end
 
@@ -141,16 +195,17 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       before { add_cells("no") }
 
-      it "does not count it as empty, and lists the text false cast to false" do
+      it "does not count it as empty, and lists the text of the file with false as its mapped value" do
         expect(summary).to eq(
           expected_summary(
-            compatible: [compatible_value(value: "false", count: 1, casted_to: false)], compatible_count: 1
+            compatible: [compatible_value(value: "no", count: 1, mapping_applied: true, mapped_value: false, casted_to: false)],
+            compatible_count: 1
           )
         )
       end
 
-      it "casts the text false" do
-        expect(model_adapter).to have_received(:cast_text).with(column_name: target_column, text: "false")
+      it "casts false as it is" do
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: false)
       end
     end
 
@@ -159,8 +214,32 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       before { add_cells("30") }
 
+      it "lists it as not mapped, with itself as its mapped value" do
+        expect(summary).to eq(
+          expected_summary(
+            compatible: [compatible_value(value: "30", count: 1, mapping_applied: false, mapped_value: "30", casted_to: 30)],
+            compatible_count: 1
+          )
+        )
+      end
+
       it "casts the cell as it is" do
-        expect(model_adapter).to have_received(:cast_text).with(column_name: target_column, text: "30")
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "30")
+      end
+    end
+
+    context "when a cell is mapped to itself" do
+      let(:value_mapping) { {"30" => "30"} }
+
+      before { add_cells("30") }
+
+      it "lists it as mapped, though the mapped value is the cell itself" do
+        expect(summary).to eq(
+          expected_summary(
+            compatible: [compatible_value(value: "30", count: 1, mapping_applied: true, mapped_value: "30", casted_to: 30)],
+            compatible_count: 1
+          )
+        )
       end
     end
 
@@ -179,7 +258,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text for the target column" do
-        expect(model_adapter).to have_received(:cast_text).with(column_name: target_column, text: "1,000")
+        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "1,000")
       end
 
       it "asks the limits checker about the cast value" do
@@ -288,7 +367,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts and checks the text only the first time" do
-        expect(model_adapter).to have_received(:cast_text).once
+        expect(model_adapter).to have_received(:cast_value).once
         expect(limits_checker).to have_received(:violation_of).once
       end
     end
@@ -313,13 +392,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text only the first time" do
-        expect(model_adapter).to have_received(:cast_text).once
+        expect(model_adapter).to have_received(:cast_value).once
       end
     end
 
     context "when a text that fits and a text that does not fit were added" do
       before do
-        allow(model_adapter).to receive(:cast_text).with(column_name: target_column, text: "abc")
+        allow(model_adapter).to receive(:cast_value).with(column_name: target_column, value: "abc")
           .and_return(Pipeforge::CastResult::NOT_CASTABLE)
         add_cells("30", "abc")
       end
@@ -362,8 +441,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
           position: 1,
           empty: 2,
           distinct_values: {
-            compatible: [{value: "30", count: 1, casted_to: 30}],
-            incompatible: [{value: "abc", count: 1, casted_to: nil, reason: :value_not_castable}],
+            compatible: [{value: "30", count: 1, mapping_applied: false, mapped_value: "30", casted_to: 30}],
+            incompatible: [
+              {
+                value: "abc", count: 1, mapping_applied: false, mapped_value: "abc", casted_to: nil,
+                reason: :value_not_castable
+              }
+            ],
             compatible_count: 1,
             incompatible_count: 1
           },

@@ -61,7 +61,7 @@ module Pipeforge
       # mapped to several target columns is measured once for each of them.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
-      # @param model_adapter [#cast_text] the adapter's object for the target table, which casts a text
+      # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
       #   for a column so that it is checked as the value it would load
       # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, type:, ...,
       #   value_mapping: {value in the file => value to load}}. Only these columns are measured.
