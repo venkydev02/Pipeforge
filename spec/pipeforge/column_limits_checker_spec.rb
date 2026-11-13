@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::ColumnLimitsChecker do
-  subject(:limits) { described_class.new(type_info: type_info) }
+  subject(:limits) { described_class.new(**type_info) }
 
   describe "#violation_of" do
     subject(:violation) { limits.violation_of(value: value) }
@@ -10,7 +10,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
     let(:value) { "x" }
 
     it "gives a Violation with a code and a detail" do
-      limits = described_class.new(type_info: {type: "string", max_length: 1})
+      limits = described_class.new(type: "string", max_length: 1)
 
       expect(limits.violation_of(value: "ab")).to be_a(described_class::Violation).and have_attributes(code: :value_too_long)
     end
@@ -34,7 +34,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
     end
 
     context "with no type" do
-      let(:type_info) { {} }
+      let(:type_info) { {type: nil} }
 
       it "gives nil" do
         expect(violation).to be_nil
@@ -412,7 +412,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
       end
 
       it "does not apply the integer range to an enum column" do
-        limits = described_class.new(type_info: {type: "integer", limit: 1, enum_values: {"big" => 100_000}})
+        limits = described_class.new(type: "integer", limit: 1, enum_values: {"big" => 100_000})
 
         expect(limits.violation_of(value: "100000")).to be_nil
       end

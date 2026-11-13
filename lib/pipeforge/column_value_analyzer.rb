@@ -115,7 +115,15 @@ module Pipeforge
       # each entry of the mapped columns. It changes the entries it is given.
       def add_limits_checkers(mapped_columns:)
         mapped_columns.each_value do |mapped_column|
-          mapped_column[:limits_checker] = ColumnLimitsChecker.new(type_info: mapped_column)
+          mapped_column[:limits_checker] = ColumnLimitsChecker.new(
+            type: mapped_column.fetch(:type),
+            limit: mapped_column[:limit],
+            unsigned: mapped_column[:unsigned],
+            max_length: mapped_column[:max_length],
+            precision: mapped_column[:precision],
+            scale: mapped_column[:scale],
+            enum_values: mapped_column[:enum_values]
+          )
         end
       end
     end

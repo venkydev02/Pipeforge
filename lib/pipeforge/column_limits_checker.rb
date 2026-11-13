@@ -6,7 +6,7 @@ module Pipeforge
   # the adapter cast (an Integer, a Float or a decimal for a number).
   #
   # @example
-  #   limits = ColumnLimitsChecker.new(type_info: {type: "integer", limit: 2})
+  #   limits = ColumnLimitsChecker.new(type: "integer", limit: 2)
   #   limits.violation_of(value: 40_000)  # => #<data Violation code=:value_out_of_range, ...>
   #   limits.violation_of(value: 100)     # => nil
   class ColumnLimitsChecker
@@ -29,18 +29,22 @@ module Pipeforge
     # The size in bytes of an integer column that has no limit.
     DEFAULT_INTEGER_LIMIT = 4
 
-    # @param type_info [Hash] the type and the limits of the target column (a +TargetColumn#to_h+ works):
-    #   +type+, +limit+ (integer: size in bytes, 4 when not given; float: the significand bits, 24 or less
-    #   for single precision and anything else for double), +unsigned+, +max_length+ (string and text),
-    #   +precision+ and +scale+ (decimal) and +enum_values+ (nil, or the label => stored value pairs)
-    def initialize(type_info:)
-      @type = type_info[:type].to_s
-      @enum_values = type_info[:enum_values]
-      @limit = type_info[:limit]
-      @unsigned = type_info[:unsigned]
-      @max_length = type_info[:max_length]
-      @precision = type_info[:precision]
-      @scale = type_info[:scale] || 0
+    # @param type [String, Symbol, nil] the type of the target column; a type with no limit, or nil, has none
+    # @param limit [Integer, nil] integer: the size in bytes, 4 when not given; float: the significand bits, 24 or
+    #   less for single precision and anything else for double
+    # @param unsigned [Boolean, nil] whether an integer column holds no negative number
+    # @param max_length [Integer, nil] the length of a string or text column
+    # @param precision [Integer, nil] the digits of a decimal column
+    # @param scale [Integer, nil] the digits of a decimal column after the point; 0 when not given
+    # @param enum_values [Hash, nil] the label => stored value pairs of an enum column
+    def initialize(type:, limit: nil, unsigned: nil, max_length: nil, precision: nil, scale: nil, enum_values: nil)
+      @type = type.to_s
+      @enum_values = enum_values
+      @limit = limit
+      @unsigned = unsigned
+      @max_length = max_length
+      @precision = precision
+      @scale = scale || 0
     end
 
     # @param value [Object] the value the adapter cast for the column

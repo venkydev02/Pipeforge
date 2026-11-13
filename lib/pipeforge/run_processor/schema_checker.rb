@@ -27,7 +27,15 @@ module Pipeforge
         @limits_by_column = {}
 
         @target_columns.each do |target_column|
-          @limits_by_column[target_column.name] = ColumnLimitsChecker.new(type_info: target_column.to_h)
+          @limits_by_column[target_column.name] = ColumnLimitsChecker.new(
+            type: target_column.type,
+            limit: target_column.limit,
+            unsigned: target_column.unsigned,
+            max_length: target_column.max_length,
+            precision: target_column.precision,
+            scale: target_column.scale,
+            enum_values: target_column.enum_values
+          )
         end
       end
 
