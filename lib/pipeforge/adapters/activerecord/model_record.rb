@@ -9,7 +9,8 @@ module Pipeforge
 
     # The mistakes that the last {#valid?} found, with the shared codes: +value_missing+,
     # +value_too_long+, +value_not_unique+, +parent_missing+, +value_not_allowed+ (an enum label the
-    # model does not know) and, for any other validation, +value_invalid+. After {#load} was refused
+    # model does not know), +value_not_json+ (a text in a json column that is not JSON) and, for any
+    # other validation, +value_invalid+. After {#load} was refused
     # by the database they are its entries instead, with +origin: :database+, the same codes,
     # +value_out_of_range+ and +database_error+; a callback that stopped the save is +value_invalid+ with
     # +origin: :model+.
@@ -22,20 +23,25 @@ module Pipeforge
     # @param record [ActiveRecord::Base] the unsaved record
     # @param unknown_enum_labels [Hash{String => String}] enum column => the label the model does not
     #   know, set aside when the record was built
-    def initialize(record:, unknown_enum_labels:)
+    # @param invalid_json_texts [Hash{String => String}] json column => the text that is not JSON, set aside
+    #   when the record was built
+    def initialize(record:, unknown_enum_labels:, invalid_json_texts:)
       @record = record
       @unknown_enum_labels = unknown_enum_labels
+      @invalid_json_texts = invalid_json_texts
       @errors = []
     end
 
     # Runs the model's validations on the record and keeps what they report in {#errors}. A column
     # whose enum label the model does not know is reported once, as +value_not_allowed+, and not
-    # again by the model's own validations.
+    # again by the model's own validations. A json column whose text is not JSON is reported as
+    # +value_not_json+.
     #
     # @return [Boolean] true when the model finds no mistake
     def valid?
       @errors = []
       add_unknown_enum_label_errors
+      add_invalid_json_text_errors
       add_model_errors unless @record.valid?
 
       @errors.empty?
@@ -68,12 +74,12 @@ module Pipeforge
 
     # The values the record holds now: cast to the types of the columns, and after the model's validation
     # has run, so after its callbacks. They are what would be loaded. An enum label the model does not
-    # know is included as it was given.
+    # know and a text that is not JSON are included as they were given.
     #
     # @return [Hash{String => Object}] column => value
     def attributes
-      # The record cannot hold a label it does not know, so it is added back as it was given.
-      @record.attributes.merge(@unknown_enum_labels)
+      # The record cannot hold these, so they are added back as they were given.
+      @record.attributes.merge(@unknown_enum_labels).merge(@invalid_json_texts)
     end
 
     private
@@ -114,10 +120,24 @@ module Pipeforge
       end
     end
 
+    def add_invalid_json_text_errors
+      @invalid_json_texts.each_key do |column_name|
+        @errors << {
+          origin: :model,
+          code: :value_not_json,
+          message: "#{column_name}: the text is not JSON",
+          target_column: column_name
+        }
+      end
+    end
+
     def add_model_errors
       @record.errors.each do |model_error|
         target_column = target_column_of(model_error: model_error)
-        next if @unknown_enum_labels.key?(target_column)
+
+        # The record has no value for a column that was set aside, so the model's own error for it follows from
+        # the first mistake and is left out.
+        next if @unknown_enum_labels.key?(target_column) || @invalid_json_texts.key?(target_column)
 
         @errors << {
           origin: :model,

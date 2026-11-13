@@ -95,17 +95,15 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     let(:value_mapping) { {"yes" => "Y", "N/A" => nil, "blank" => "  "} }
     let(:mapped_columns) { {"status" => {source_column: "Status", value_mapping: value_mapping}} }
     let(:column_summary) do
-      analyzer_columns = {
-        "status" => mapped_columns["status"].merge(
-          position: 0,
-          limits_checker: Pipeforge::ColumnLimitsChecker.new(type_info: {type: "string"})
-        )
-      }
-
       summary_builder = Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder.new(
-        target_column: "status", mapped_column: analyzer_columns["status"], model_adapter: FakeModelAdapter.new
+        target_column: "status",
+        source_column: "Status",
+        position: 0,
+        limits_checker: Pipeforge::ColumnLimitsChecker.new(type_info: {type: "string"}),
+        model_adapter: FakeModelAdapter.new,
+        value_mapping: value_mapping
       )
-      rows.each { |row| summary_builder.add_row(row: row) }
+      rows.each { |row| summary_builder.add_cell(cell: row["Status"]) }
 
       summary_builder.summary
     end
@@ -116,7 +114,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     end
 
     it "lists the same values to load" do
-      listed_values = column_summary.distinct_values[:compatible].values.map { |entry| entry[:value] }
+      listed_values = column_summary.distinct_values.compatible.map(&:mapped_value)
 
       expect(listed_values).to match_array(loaded_values.compact.uniq)
     end

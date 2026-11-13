@@ -23,7 +23,7 @@ module Pipeforge
   #
   # @example through the engine
   #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
-  #   result.columns["email"].type_compatibility # => {fits: 1170, total: 1188}
+  #   result.columns["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
     #   source_identifier  the file path of the source, or its class name when it has no path
@@ -61,7 +61,7 @@ module Pipeforge
       # mapped to several target columns is measured once for each of them.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
-      # @param model_adapter [#cast_text] the adapter's object for the target table, which casts a text
+      # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
       #   for a column so that it is checked as the value it would load
       # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, type:, ...,
       #   value_mapping: {value in the file => value to load}}. Only these columns are measured.
@@ -79,12 +79,19 @@ module Pipeforge
         summary_builders = {}
         mapped_columns.each do |target_column, mapped_column|
           summary_builders[target_column] = ColumnSummaryBuilder.new(
-            target_column: target_column, mapped_column: mapped_column, model_adapter: model_adapter
+            target_column: target_column,
+            source_column: mapped_column.fetch(:source_column),
+            position: mapped_column.fetch(:position),
+            limits_checker: mapped_column.fetch(:limits_checker),
+            value_mapping: mapped_column.fetch(:value_mapping, {}),
+            model_adapter: model_adapter
           )
         end
 
         row_count = source_reader.each_row do |row|
-          summary_builders.each_value { |summary_builder| summary_builder.add_row(row: row) }
+          summary_builders.each_value do |summary_builder|
+            summary_builder.add_cell(cell: row[summary_builder.source_column])
+          end
         end
 
         column_summaries = {}

@@ -61,6 +61,15 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.attributes["tier"]).to eq("gold")
       end
     end
+
+    context "when a json column holds a text that is not JSON" do
+      let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Profile) }
+      let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
+
+      it "includes the text as it was given, because the record could not hold it" do
+        expect(model_record.attributes["settings"]).to eq("{oops")
+      end
+    end
   end
 
   describe "#valid?" do
@@ -172,6 +181,66 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.errors.map { |error| [error[:target_column], error[:code]] }).to contain_exactly(
           ["tier", :value_not_allowed], ["email", :value_missing]
         )
+      end
+    end
+
+    context "when a json column holds a text that is not JSON" do
+      let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Profile) }
+      let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
+
+      it "is false" do
+        expect(model_record.valid?).to be(false)
+      end
+
+      it "gives value_not_json for that column" do
+        model_record.valid?
+
+        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_not_json, target_column: "settings"))
+      end
+
+      context "and the model also requires the column" do
+        let(:model_adapter) do
+          Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::ProfileWithRequiredSettings)
+        end
+
+        it "gives value_not_json and not the blank value the model sees as a second mistake" do
+          model_record.valid?
+
+          expect(model_record.errors).to contain_exactly(
+            include(origin: :model, code: :value_not_json, target_column: "settings")
+          )
+        end
+      end
+
+      context "and the text is the JSON null" do
+        let(:attributes) { {"name" => "ann", "settings" => "null"} }
+
+        it "is true, with no errors" do
+          expect(model_record.valid?).to be(true)
+          expect(model_record.errors).to eq([])
+        end
+      end
+
+      context "and a second json column holds a text that is not JSON", :postgresql_only do
+        let(:attributes) { {"name" => "ann", "settings" => "{oops", "extras" => "hello"} }
+
+        it "reports both columns" do
+          model_record.valid?
+
+          expect(model_record.errors.map { |error| error[:target_column] }).to contain_exactly("settings", "extras")
+        end
+      end
+
+      context "and another column has a mistake" do
+        let(:attributes) { {"name" => nil, "settings" => "{oops"} }
+
+        it "reports both mistakes" do
+          model_record.valid?
+
+          expect(model_record.errors.map { |error| [error[:target_column], error[:code]] }).to contain_exactly(
+            ["settings", :value_not_json], ["name", :value_missing]
+          )
+        end
       end
     end
 

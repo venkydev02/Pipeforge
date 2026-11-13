@@ -6,6 +6,7 @@
 require_relative "pipeforge/version"
 require_relative "pipeforge/errors"
 require_relative "pipeforge/utilities"
+require_relative "pipeforge/cast_result"
 require_relative "pipeforge/configuration"
 require_relative "pipeforge/engine"
 

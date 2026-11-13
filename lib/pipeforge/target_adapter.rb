@@ -47,14 +47,15 @@ module Pipeforge
       # The adapter's object for one target model. The run asks for it once and uses it for every
       # record: +build_record(attributes:)+ returns the adapter's wrapper of one record (see
       # {RunProcessor::RowCandidate#model_record}), +preload_parents(records:)+ loads the parents a chunk
-      # needs, and +cast_text(column_name:, text:)+ gives the value the adapter would load for a text
-      # in a column, or nil when it cannot read the text. +transaction(rollback_at_end:)+ runs a block
-      # inside one transaction of the target database, rolled back when the block ends if
-      # +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which writes the
-      # record.
+      # needs, and +cast_value(column_name:, value:)+ says whether the adapter can cast a value (a
+      # text, or what a value mapping gives, as it is) in a column and what the model would load, in Ruby and in JSON
+      # types: a +CastResult+ (+castable+, +cast_value+, +json_value+), with the two values nil when the value cannot
+      # be cast. +transaction(rollback_at_end:)+ runs a block inside one transaction of the target database, rolled
+      # back when the block ends if +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which
+      # writes the record.
       #
       # @param target_model [String] the name of the model
-      # @return [#build_record, #preload_parents, #cast_text, #transaction] the model adapter
+      # @return [#build_record, #preload_parents, #cast_value, #transaction] the model adapter
       # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
       # @raise [TargetSchemaError] the model or its table cannot be found
       def model_adapter(target_model:)

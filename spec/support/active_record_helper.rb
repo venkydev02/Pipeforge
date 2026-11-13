@@ -26,6 +26,7 @@ require "active_record"
 #   events      a date and a datetime column, for the formats the model reads
 #   measurements a single precision float (limit 24) next to a double precision one
 #   quantities  an integer with no size next to a bigint (the size each database gives them differs)
+#   profiles    a json column (and a jsonb column on PostgreSQL), for the text a file holds in them
 #   counters    an unsigned integer attribute (the type MySQL gives an unsigned column), next to a signed one
 #   memberships a model with validations: presence, uniqueness, length, numericality, an enum
 #               that must be present, a required parent and a mistake on the record as a whole
@@ -42,7 +43,7 @@ module AdapterSpecDatabase
 
   # The tables created below, so a database that outlives the run (PostgreSQL) starts clean.
   TABLES = %i[
-    quantities playlists accounts memberships counters measurements events shipments tickets receipts invoices
+    profiles quantities playlists accounts memberships counters measurements events shipments tickets receipts invoices
     order_lines orders comments orphans notes vehicles users companies
   ].freeze
 
@@ -134,6 +135,11 @@ ActiveRecord::Schema.define do
   create_table(:quantities) do |t|
     t.integer :plain_count
     t.bigint :big_count
+  end
+  create_table(:profiles) do |t|
+    t.string :name
+    t.json :settings
+    t.jsonb :extras if AdapterSpecDatabase.postgresql?
   end
   create_table(:memberships) do |t|
     t.string :email, limit: 20, null: false
@@ -269,6 +275,17 @@ module AdapterSpecModels
     self.table_name = "playlists"
   end
 
+  class Profile < ActiveRecord::Base
+    self.table_name = "profiles"
+    validates :name, presence: true
+  end
+
+  # A model that also requires its json column.
+  class ProfileWithRequiredSettings < ActiveRecord::Base
+    self.table_name = "profiles"
+    validates :name, :settings, presence: true
+  end
+
   # A model whose table is never created, and a class that is no model of a table.
   class Ghost < ActiveRecord::Base
     self.table_name = "ghosts"
@@ -313,5 +330,6 @@ RSpec.configure do |config|
     AdapterSpecModels::Account.delete_all
     AdapterSpecModels::Membership.delete_all
     AdapterSpecModels::Company.delete_all
+    AdapterSpecModels::Profile.delete_all
   end
 end
