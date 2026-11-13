@@ -50,10 +50,9 @@ module Pipeforge
       # needs, and +cast_value(column_name:, value:)+ says whether the adapter can cast a value (a
       # text, or what a value mapping gives, as it is) in a column and what the model would load, in Ruby and in JSON
       # types: a +CastResult+ (+castable+, +cast_value+, +json_value+), with the two values nil when the value cannot
-      # be cast. +transaction(rollback_at_end:)+
-      # runs a block inside one transaction of the target database, rolled back when the block ends if
-      # +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which writes the
-      # record.
+      # be cast. +transaction(rollback_at_end:)+ runs a block inside one transaction of the target database, rolled
+      # back when the block ends if +rollback_at_end+ is true. What +build_record+ returns also answers +load+, which
+      # writes the record.
       #
       # @param target_model [String] the name of the model
       # @return [#build_record, #preload_parents, #cast_value, #transaction] the model adapter

@@ -140,12 +140,12 @@ module Pipeforge
     # Casts a value that is not the text of a json or jsonb column.
     def cast_with_attribute_type(attribute_type:, value:)
       # The cast is lenient: abc in an integer column is 0.
-      cast_value = attribute_type.cast(value)
+      loaded_value = attribute_type.cast(value)
 
       # ActiveRecord answers nil for a text it cannot read, such as a day that is not in the calendar.
-      return CastResult::NOT_CASTABLE if cast_value.nil?
+      return CastResult::NOT_CASTABLE if loaded_value.nil?
 
-      castable_cast_result(cast_value: cast_value)
+      castable_cast_result(cast_value: loaded_value)
     end
 
     def castable_cast_result(cast_value:)

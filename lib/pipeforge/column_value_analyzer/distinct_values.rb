@@ -24,8 +24,9 @@ module Pipeforge
       # Counts one occurrence of a value, listing it first when it is new.
       #
       # @param value [String]
-      # @param listed_value_fields [Hash] the other fields of the listed value class (+casted_to:+, and +reason:+
-      #   for an {IncompatibleValue}); only the ones given with the first occurrence are kept
+      # @param listed_value_fields [Hash] the other fields of the listed value class (+mapping_applied:+,
+      #   +mapped_value:+, +casted_to:+, and +reason:+ for an {IncompatibleValue}); only the ones given with the
+      #   first occurrence are kept
       # @return [void]
       # @raise [ArgumentError] when a new value is recorded without a field the listed value class needs
       def record(value:, **listed_value_fields)
