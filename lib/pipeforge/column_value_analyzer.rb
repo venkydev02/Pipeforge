@@ -80,9 +80,9 @@ module Pipeforge
         mapped_columns.each do |target_column, mapped_column|
           summary_builders[target_column] = ColumnSummaryBuilder.new(
             target_column: target_column,
-            source_column: mapped_column[:source_column],
-            position: mapped_column[:position],
-            limits_checker: mapped_column[:limits_checker],
+            source_column: mapped_column.fetch(:source_column),
+            position: mapped_column.fetch(:position),
+            limits_checker: mapped_column.fetch(:limits_checker),
             value_mapping: mapped_column.fetch(:value_mapping, {}),
             model_adapter: model_adapter
           )

@@ -134,7 +134,10 @@ module Pipeforge
     def add_model_errors
       @record.errors.each do |model_error|
         target_column = target_column_of(model_error: model_error)
-        next if @unknown_enum_labels.key?(target_column)
+
+        # The record has no value for a column that was set aside, so the model's own error for it follows from
+        # the first mistake and is left out.
+        next if @unknown_enum_labels.key?(target_column) || @invalid_json_texts.key?(target_column)
 
         @errors << {
           origin: :model,

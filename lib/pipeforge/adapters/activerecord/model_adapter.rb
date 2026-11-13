@@ -28,7 +28,7 @@ module Pipeforge
         attribute_type = @model.type_for_attribute(column_name)
 
         # Only a text is decoded; nil and an object from a value mapping are assigned as they are.
-        if json_column?(attribute_type: attribute_type) && value.is_a?(String)
+        if json_text?(attribute_type: attribute_type, value: value)
           json_text_cast = cast_by_attribute_type(attribute_type: attribute_type, value: value)
 
           unless json_text_cast.castable
@@ -121,7 +121,7 @@ module Pipeforge
     # @return [CastResult] the answer of {#cast_value}: {CastResult::NOT_CASTABLE} for a value the type cannot
     #   cast or a text that is not JSON
     def cast_by_attribute_type(attribute_type:, value:)
-      if json_column?(attribute_type: attribute_type) && value.is_a?(String)
+      if json_text?(attribute_type: attribute_type, value: value)
         cast_json_text(text: value)
       else
         cast_with_attribute_type(attribute_type: attribute_type, value: value)
@@ -150,6 +150,11 @@ module Pipeforge
 
     def castable_cast_result(cast_value:)
       CastResult.new(castable: true, cast_value: cast_value, json_value: cast_value.as_json)
+    end
+
+    # Whether a value is the text of a json or jsonb column, which is read as JSON.
+    def json_text?(attribute_type:, value:)
+      json_column?(attribute_type: attribute_type) && value.is_a?(String)
     end
 
     def json_column?(attribute_type:)

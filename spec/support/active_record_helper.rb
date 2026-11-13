@@ -280,6 +280,12 @@ module AdapterSpecModels
     validates :name, presence: true
   end
 
+  # A model that also requires its json column.
+  class ProfileWithRequiredSettings < ActiveRecord::Base
+    self.table_name = "profiles"
+    validates :name, :settings, presence: true
+  end
+
   # A model whose table is never created, and a class that is no model of a table.
   class Ghost < ActiveRecord::Base
     self.table_name = "ghosts"

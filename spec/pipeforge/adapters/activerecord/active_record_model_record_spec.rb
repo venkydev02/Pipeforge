@@ -198,6 +198,20 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_not_json, target_column: "settings"))
       end
 
+      context "and the model also requires the column" do
+        let(:model_adapter) do
+          Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::ProfileWithRequiredSettings)
+        end
+
+        it "gives value_not_json and not the blank value the model sees as a second mistake" do
+          model_record.valid?
+
+          expect(model_record.errors).to contain_exactly(
+            include(origin: :model, code: :value_not_json, target_column: "settings")
+          )
+        end
+      end
+
       context "and the text is the JSON null" do
         let(:attributes) { {"name" => "ann", "settings" => "null"} }
 
