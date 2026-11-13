@@ -23,7 +23,7 @@ module Pipeforge
   #
   # @example through the engine
   #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
-  #   result.columns["email"].type_compatibility # => {fits: 1170, total: 1188}
+  #   result.columns["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
     #   source_identifier  the file path of the source, or its class name when it has no path
@@ -79,12 +79,19 @@ module Pipeforge
         summary_builders = {}
         mapped_columns.each do |target_column, mapped_column|
           summary_builders[target_column] = ColumnSummaryBuilder.new(
-            target_column: target_column, mapped_column: mapped_column, model_adapter: model_adapter
+            target_column: target_column,
+            source_column: mapped_column[:source_column],
+            position: mapped_column[:position],
+            limits_checker: mapped_column[:limits_checker],
+            value_mapping: mapped_column.fetch(:value_mapping, {}),
+            model_adapter: model_adapter
           )
         end
 
         row_count = source_reader.each_row do |row|
-          summary_builders.each_value { |summary_builder| summary_builder.add_row(row: row) }
+          summary_builders.each_value do |summary_builder|
+            summary_builder.add_cell(cell: row[summary_builder.source_column])
+          end
         end
 
         column_summaries = {}

@@ -74,11 +74,11 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     it "measures the values against the limits of the columns in the table" do
-      expect(value_result.columns["age"].type_compatibility).to eq(fits: 1, total: 2)
+      expect(value_result.columns["age"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
     end
 
     it "counts a text that the model reads leniently as fitting, and gives the value the database would receive" do
-      expect(value_result.columns["balance"].type_compatibility).to eq(fits: 2, total: 2)
+      expect(value_result.columns["balance"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
 
       entries = value_result.columns["balance"].distinct_values.compatible
       # A number on SQLite and a text on PostgreSQL, so it is compared as text.
@@ -129,8 +129,8 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       end
 
       it "counts the labels and the stored values of the enum as fitting" do
-        expect(value_result.columns["status"].type_compatibility).to eq(fits: 2, total: 3)
-        expect(value_result.columns["priority"].type_compatibility).to eq(fits: 2, total: 3)
+        expect(value_result.columns["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
+        expect(value_result.columns["priority"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
       end
 
       it "lists a value that is not a label or a stored value as not fitting, with the reason that it is not allowed" do
@@ -146,7 +146,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:mapped_columns) { {"starts_on" => {source_column: "Day"}} }
 
       it "counts the formats that the model reads as fitting, and the days it cannot cast as not" do
-        expect(value_result.columns["starts_on"].type_compatibility).to eq(fits: 3, total: 5)
+        expect(value_result.columns["starts_on"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
       end
 
       it "lists the texts that the model cannot cast, for a value mapping to fix" do
@@ -187,18 +187,18 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       end
 
       it "counts the value as fitting the bigint column" do
-        expect(value_result.columns["big_count"].type_compatibility).to eq(fits: 1, total: 1)
+        expect(value_result.columns["big_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
       end
 
       context "and the database is SQLite" do
         it "counts the value as fitting the integer column, which SQLite holds in 8 bytes", :sqlite_only do
-          expect(value_result.columns["plain_count"].type_compatibility).to eq(fits: 1, total: 1)
+          expect(value_result.columns["plain_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
         end
       end
 
       context "and the database is PostgreSQL" do
         it "counts the value as not fitting the integer column, which holds 4 bytes", :postgresql_only do
-          expect(value_result.columns["plain_count"].type_compatibility).to eq(fits: 0, total: 1)
+          expect(value_result.columns["plain_count"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 1)
         end
       end
     end
@@ -209,7 +209,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:mapped_columns) { {"settings" => {source_column: "Settings"}} }
 
       it "counts a text that describes JSON, and the JSON null, as fitting, and one that does not as not fitting" do
-        expect(value_result.columns["settings"].type_compatibility).to eq(fits: 2, total: 3)
+        expect(value_result.columns["settings"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
       end
 
       it "lists the JSON null as a value that fits" do

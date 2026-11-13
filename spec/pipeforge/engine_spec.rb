@@ -156,7 +156,7 @@ RSpec.describe Pipeforge::Engine do
 
       checked = engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
 
-      expect(checked.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
+      expect(checked.columns["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
     end
 
     it "returns a summary for each mapped column, keyed by target column" do
@@ -219,7 +219,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
       it "measures the values against that type and size" do
-        expect(result.columns["status"].type_compatibility).to eq(fits: 5, total: 7)
+        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 5, incompatible_count: 2)
       end
     end
 
@@ -231,7 +231,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
       it "counts the labels and the stored values as fitting, and nothing else" do
-        expect(result.columns["status"].type_compatibility).to eq(fits: 3, total: 5)
+        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
       end
     end
 
@@ -240,7 +240,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"code" => {source_column: "Code", type: "string"}} }
 
       it "uses the type of the schema instead" do
-        expect(result.columns["code"].type_compatibility).to eq(fits: 0, total: 7)
+        expect(result.columns["code"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 7)
       end
     end
 
@@ -343,7 +343,7 @@ RSpec.describe Pipeforge::Engine do
 
       it "applies the mapping, because the keys are turned into text" do
         # 1 maps to x, which does not fit an integer; 2 maps to 20, which fits.
-        expect(result.columns["count"].type_compatibility).to eq(fits: 1, total: 2)
+        expect(result.columns["count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
       end
 
       it "returns the mapping with its keys as text" do
@@ -377,7 +377,7 @@ RSpec.describe Pipeforge::Engine do
       let(:value_mapping) { {"Active" => "1", "A" => "x"} }
 
       it "measures the values as the values they map to" do
-        expect(result.columns["status"].type_compatibility).to eq(fits: 4, total: 7)
+        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 4, incompatible_count: 3)
       end
 
       it "returns the value mapping with the column" do
@@ -397,7 +397,7 @@ RSpec.describe Pipeforge::Engine do
         it "shows the facts again, now that every value fits" do
           edited_result = engine.analyze_column_values(mapped_columns: edited_mapped_columns)
 
-          expect(edited_result.columns["status"].type_compatibility).to eq(fits: 7, total: 7)
+          expect(edited_result.columns["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
         end
       end
     end

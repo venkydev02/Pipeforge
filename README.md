@@ -88,8 +88,8 @@ mapped_columns = {
 }
 value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
-value_analysis.columns["status"].type_compatibility
-# => {fits: 4, total: 5}
+value_analysis.columns["status"].distinct_values.compatible_count     # => 4
+value_analysis.columns["status"].distinct_values.incompatible_count   # => 1
 too_long = value_analysis.columns["status"].distinct_values.incompatible.first
 too_long.value    # => "this status is far too long to fit"
 too_long.count    # => 1
@@ -170,13 +170,14 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
   "source_column": "Status",
   "position": 6,
   "empty": 0,
-  "type_compatibility": {"fits": 4, "total": 5},
   "distinct_values": {
+    "compatible_count": 4,
     "compatible": [
       {"value": "active", "count": 2, "casted_to": "active"},
       {"value": "inactive", "count": 1, "casted_to": "inactive"},
       {"value": "suspended", "count": 1, "casted_to": "suspended"}
     ],
+    "incompatible_count": 1,
     "incompatible": [
       {
         "value": "this status is far too long to fit",

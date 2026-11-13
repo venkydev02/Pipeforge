@@ -12,6 +12,7 @@ module Pipeforge
       def initialize(listed_value_class:)
         @listed_value_class = listed_value_class
         @listed_values = {}
+        @total_count = 0
       end
 
       # @param value [String]
@@ -33,12 +34,17 @@ module Pipeforge
         if listed_value.nil?
           # They depend only on the value, so the ones given the first time are kept.
           @listed_values[value] = @listed_value_class.new(value: value, count: 1, **listed_value_fields)
+          @total_count += 1
           return
         end
 
         # A listed value cannot change, so the counted copy takes its place.
         @listed_values[value] = listed_value.with(count: listed_value.count + 1)
+        @total_count += 1
       end
+
+      # @return [Integer] how many times values were recorded: the sum of the counts of the listed values
+      attr_reader :total_count
 
       # The listed values, most frequent first. Values with the same count keep the order they
       # first appeared in, which keeps the result the same on every run.

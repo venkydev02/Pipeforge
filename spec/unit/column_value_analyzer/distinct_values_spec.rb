@@ -27,6 +27,27 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::DistinctValues do
     end
   end
 
+  describe "#total_count" do
+    context "when the list is empty" do
+      it "is 0" do
+        expect(distinct_values.total_count).to eq(0)
+      end
+    end
+
+    context "when values are recorded more than once" do
+      before do
+        distinct_values.record(value: "a", colour: "red")
+        distinct_values.record(value: "a", colour: "red")
+        distinct_values.record(value: "a", colour: "red")
+        distinct_values.record(value: "b", colour: "red")
+      end
+
+      it "is how many times values were recorded, not how many different values there are" do
+        expect(distinct_values.total_count).to eq(4)
+      end
+    end
+  end
+
   describe "#record" do
     context "when a value is recorded once with a field" do
       before { distinct_values.record(value: "a", colour: "red") }
