@@ -67,10 +67,9 @@ module Pipeforge
     #   value_mapping: {value in the file => value to load}}, a plain Hash the caller builds (the
     #   header result is not passed in). A source column may be given to several target columns.
     #   Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
-    #   optional (leave the key out for none; +nil+ is an error), its keys are turned into text,
-    #   and a value that maps to nil or a blank is loaded as empty. The entries must not be frozen: the type metadata of each target column is added
-    #   to them (see {#add_type_metadata}), then the position of the source column and a type
-    #   checker, and the keys of their value mapping are replaced by text.
+    #   optional (leave the key out for none; +nil+ is an error), its keys are turned into text, and a
+    #   value that maps to nil or a blank is loaded as empty. The caller's Hash is not changed (see
+    #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [Source::EmptySourceError] the source has no header row
@@ -83,11 +82,8 @@ module Pipeforge
     def analyze_column_values(mapped_columns:)
       check_mapped_columns(mapped_columns: mapped_columns)
 
-      add_type_metadata(mapped_columns: mapped_columns, target_columns: target_columns_by_name)
-      convert_value_mapping_keys(mapped_columns: mapped_columns)
-
       ColumnValueAnalyzer.call(
-        source_reader: @source_reader, mapped_columns: mapped_columns,
+        source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
         model_adapter: model_adapter
       )
     end
@@ -102,7 +98,8 @@ module Pipeforge
     # the target database.
     #
     # @param mode [Symbol] +:dry_run+ or +:run+
-    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}
+    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}; the keys of their value mapping
+    #   are replaced by text in the entries, which must not be frozen
     # @param offset [Integer] rows to skip before the first one processed; the +row_number+ of the last
     #   row of an earlier run continues that run
     # @param chunk_size [Integer] rows read, processed and yielded at a time; the +execution.chunk_size+
@@ -198,23 +195,23 @@ module Pipeforge
       end
     end
 
-    # Adds the type metadata of the target column (its type, limit, unsigned, length, precision, scale and
-    # enum values), taken from the schema, to each entry of the mapped columns. It changes the
-    # entries it is given: a +type+ the caller sent is replaced by the type of the schema.
-    def add_type_metadata(mapped_columns:, target_columns:)
-      mapped_columns.each do |target_column_name, mapped_column|
-        target_column = target_columns.fetch(target_column_name)
+    # Makes the resolved mapped columns the column values stage takes from the consumer's mapped columns, which the
+    # engine has checked: each entry gets the column of the target table it fills.
+    #
+    # @param mapped_columns [Hash{String => Hash}] target column => the entry the caller wrote
+    # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
+    def resolve_mapped_columns(mapped_columns:)
+      target_columns = target_columns_by_name
+      resolved_mapped_columns = {}
 
-        mapped_column.merge!(
-          type: target_column.type,
-          limit: target_column.limit,
-          unsigned: target_column.unsigned,
-          max_length: target_column.max_length,
-          precision: target_column.precision,
-          scale: target_column.scale,
-          enum_values: target_column.enum_values
+      mapped_columns.each do |target_column_name, entry|
+        target_column = target_columns.fetch(target_column_name)
+        resolved_mapped_columns[target_column_name] = ResolvedMappedColumn.from_entry(
+          entry: entry, target_column: target_column
         )
       end
+
+      resolved_mapped_columns
     end
   end
 end

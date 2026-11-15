@@ -88,14 +88,14 @@ mapped_columns = {
 }
 value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
-value_analysis.columns["status"].distinct_values.compatible_count     # => 4
-value_analysis.columns["status"].distinct_values.incompatible_count   # => 1
-too_long = value_analysis.columns["status"].distinct_values.incompatible.first
+value_analysis.column_summaries["status"].distinct_values.compatible_count     # => 4
+value_analysis.column_summaries["status"].distinct_values.incompatible_count   # => 1
+too_long = value_analysis.column_summaries["status"].distinct_values.incompatible.first
 too_long.value    # => "this status is far too long to fit"
 too_long.count    # => 1
 too_long.reason   # => :value_too_long
 
-value_analysis.columns["company_id"].distinct_values.compatible.map { |listed| [listed.value, listed.casted_to] }
+value_analysis.column_summaries["company_id"].distinct_values.compatible.map { |listed| [listed.value, listed.casted_to] }
 # => [["1", 1], ["2", 2], ["Initech", 0], ["4", 4]]
 ```
 
@@ -157,7 +157,7 @@ Pipeforge never prompts and never draws anything; the review between the steps i
   "metadata": {
     "type": "integer",
     "required": true,
-    "enum_values": null,
+    "enum_labels": null,
     "foreign_key": {"association": "company", "parent_table": "companies"}
   }
 }

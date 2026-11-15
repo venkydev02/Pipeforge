@@ -8,8 +8,8 @@
 module TargetSchemaHelper
   def build_target_column(name:, **overrides)
     defaults = {
-      type: "string", sql_type: "varchar", limit: nil, unsigned: false, max_length: nil, precision: nil, scale: nil,
-      default: nil, enum_values: nil, required: false, foreign_key: nil
+      type: "string", sql_type: "varchar", limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil,
+      default: nil, enum_labels: nil, required: false, foreign_key: nil
     }
 
     Pipeforge::TargetColumn.new(name: name, **defaults.merge(overrides))

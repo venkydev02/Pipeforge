@@ -13,9 +13,22 @@ module Pipeforge
       @model = model
     end
 
+    # The labels of the model's enum for a column.
+    #
+    # @param model [Class] the ActiveRecord model of the target table
+    # @param column_name [String] a column of the table
+    # @return [Array<String>, nil] the labels as text; nil when the model declares no enum for the column
+    def self.enum_labels(model:, column_name:)
+      enum_mapping = model.defined_enums[column_name]
+      return nil if enum_mapping.nil?
+
+      # A label is text; one that ActiveRecord keeps as a number is read as its text.
+      enum_mapping.keys.map(&:to_s)
+    end
+
     # Builds the model's unsaved record from the attributes. The text of a json or jsonb column is decoded as
-    # JSON. A text that is not JSON and an enum label the model does not know are set aside for the record to
-    # report.
+    # JSON. A text that is not JSON and a value that is not a label of the column's enum are set aside for the
+    # record to report.
     #
     # @param attributes [Hash{String => Object}] target column => value to load
     # @return [ActiveRecordModelRecord] the unsaved record, wrapped
@@ -39,21 +52,21 @@ module Pipeforge
           value = json_text_cast.cast_value
         end
 
-        enum_mapping = @model.defined_enums[column_name]
+        enum_labels = self.class.enum_labels(model: @model, column_name: column_name)
 
-        if enum_mapping.nil? || value.nil?
+        if enum_labels.nil? || value.nil?
           model_attributes[column_name] = value
           next
         end
 
-        # ActiveRecord raises on an enum label it does not know, so such a label is set aside and reported
-        # by the record as value_not_allowed. A stored value written as text ("1") is cast to the stored type.
-        enum_value = known_enum_value(enum_mapping: enum_mapping, value: value)
+        # ActiveRecord raises on an enum label it does not know, so a value that is not a label (a value the
+        # database stores for one included) is set aside and reported by the record as value_not_allowed.
+        label = value.to_s
 
-        if enum_value.nil?
-          unknown_enum_labels[column_name] = value.to_s
+        if enum_labels.include?(label)
+          model_attributes[column_name] = label
         else
-          model_attributes[column_name] = enum_value
+          unknown_enum_labels[column_name] = label
         end
       end
 
@@ -65,14 +78,22 @@ module Pipeforge
     end
 
     # Reads a value as the column's type would: what the model would load (the cast value, a Ruby object) and
-    # the same data in plain JSON types (the json value). It reads no row and writes nothing.
+    # the same data in plain JSON types (the json value). It reads no row and writes nothing. The value of an
+    # enum column is given back as it is.
     #
     # @param column_name [String] a column of the table
     # @param value [String, Hash, Array, Object] a value from the file (a non-empty text) or from a value
     #   mapping, as it is
     # @return [CastResult] the cast value and the json value of a value the type can cast (both are nil for the
-    #   JSON null), or {CastResult::NOT_CASTABLE} for a value it cannot cast
+    #   JSON null), or {CastResult::NOT_CASTABLE} for a value it cannot cast; for an enum column, the value as
+    #   it is
     def cast_value(column_name:, value:)
+      # The cast of an enum type turns a value the database stores for a label into that label (1 into
+      # "placed") and leaves its text ("1") alone, which would show the same value in two ways.
+      unless self.class.enum_labels(model: @model, column_name: column_name).nil?
+        return castable_cast_result(cast_value: value)
+      end
+
       cast_by_attribute_type(attribute_type: @model.type_for_attribute(column_name), value: value)
     end
 
@@ -159,19 +180,6 @@ module Pipeforge
 
     def json_column?(attribute_type:)
       [:json, :jsonb].include?(attribute_type.type)
-    end
-
-    # The label when the value is a label of the enum, the stored value when it is a stored value
-    # written as text, and nil when it is neither.
-    def known_enum_value(enum_mapping:, value:)
-      text = value.to_s
-      return text if enum_mapping.key?(text)
-
-      enum_mapping.each_value do |stored_value|
-        return stored_value if stored_value.to_s == text
-      end
-
-      nil
     end
   end
 end

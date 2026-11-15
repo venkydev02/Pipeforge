@@ -114,7 +114,7 @@ module Pipeforge
         @errors << {
           origin: :model,
           code: :value_not_allowed,
-          message: "#{column_name}: #{label} is not a label or value of the enum",
+          message: "#{column_name}: #{label} is not a label of the enum",
           target_column: column_name
         }
       end

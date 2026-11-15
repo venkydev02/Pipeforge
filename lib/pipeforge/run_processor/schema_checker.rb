@@ -14,7 +14,7 @@ module Pipeforge
     #       scale+ once rounded to the scale, or a float
     #       that is infinite or larger than the column
     #       holds:                                         +value_out_of_range+
-    #       a value that is not a label or stored value
+    #       a value that is not a label
     #       of an enum column:                             +value_not_allowed+
     # Whether a value fits the type of its column is not checked: a value that does not look like the
     # type (+abc+ in an integer column) is left to the cast of the framework.
@@ -27,7 +27,15 @@ module Pipeforge
         @limits_by_column = {}
 
         @target_columns.each do |target_column|
-          @limits_by_column[target_column.name] = ColumnLimitsChecker.new(type_info: target_column.to_h)
+          @limits_by_column[target_column.name] = ColumnLimitsChecker.new(
+            type: target_column.type,
+            limit: target_column.limit,
+            is_signed: target_column.is_signed,
+            max_length: target_column.max_length,
+            precision: target_column.precision,
+            scale: target_column.scale,
+            enum_labels: target_column.enum_labels
+          )
         end
       end
 

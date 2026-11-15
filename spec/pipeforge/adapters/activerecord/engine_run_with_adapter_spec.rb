@@ -44,13 +44,13 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   end
 
   it "counts the rows that would load and the rows that would not" do
-    expect(run_result).to have_attributes(processed_rows_count: 10, valid_rows_count: 2, failed_rows_count: 8)
+    expect(run_result).to have_attributes(processed_rows_count: 10, valid_rows_count: 1, failed_rows_count: 9)
   end
 
   it "reports exactly the rows with a mistake, by their row number in the file" do
     run_result
 
-    expect(failed_rows.map(&:row_number)).to eq([2, 3, 4, 5, 6, 7, 8, 10])
+    expect(failed_rows.map(&:row_number)).to eq([2, 3, 4, 5, 6, 7, 8, 9, 10])
   end
 
   it "reports a decimal that the cast rounds up to too many digits before the point" do
@@ -103,10 +103,10 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     expect(codes_of_row(8)).to eq([:value_too_long])
   end
 
-  it "accepts a stored enum value written as text" do
+  it "reports a stored enum value written as text, as an enum label that is not one of the model's" do
     run_result
 
-    expect(failed_rows.map(&:row_number)).not_to include(9)
+    expect(codes_of_row(9)).to eq([:value_not_allowed])
   end
 
   it "shows the values as they would have been loaded, keyed by target column" do
