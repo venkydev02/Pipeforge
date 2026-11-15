@@ -3,6 +3,35 @@
 RSpec.describe Pipeforge::ColumnLimitsChecker do
   subject(:limits) { described_class.new(**type_info) }
 
+  describe ".for" do
+    it "reads the size and the sign of an integer column" do
+      limits = described_class.for(target_column: build_target_column(name: "seats", type: "integer", limit: 2, unsigned: true))
+
+      expect(limits.violation_of(value: 60_000)).to be_nil
+      expect(limits.violation_of(value: 70_000)).to have_attributes(code: :value_out_of_range)
+    end
+
+    it "reads the length of a string column" do
+      limits = described_class.for(target_column: build_target_column(name: "code", type: "string", max_length: 3))
+
+      expect(limits.violation_of(value: "abcd")).to have_attributes(code: :value_too_long)
+    end
+
+    it "reads the precision and the scale of a decimal column" do
+      limits = described_class.for(target_column: build_target_column(name: "fee", type: "decimal", precision: 5, scale: 2))
+
+      expect(limits.violation_of(value: BigDecimal("1000.0"))).to have_attributes(code: :value_out_of_range)
+    end
+
+    it "reads the labels of an enum column" do
+      limits = described_class.for(
+        target_column: build_target_column(name: "tier", type: "integer", enum_values: {"free" => 0, "pro" => 1})
+      )
+
+      expect(limits.violation_of(value: "gold")).to have_attributes(code: :value_not_allowed)
+    end
+  end
+
   describe "#violation_of" do
     subject(:violation) { limits.violation_of(value: value) }
 

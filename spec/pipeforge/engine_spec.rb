@@ -350,6 +350,10 @@ RSpec.describe Pipeforge::Engine do
         expect(result.columns["count"].value_mapping).to eq("1" => "x", "2" => "20")
       end
 
+      it "leaves the entries of the caller as they were written" do
+        expect { result }.not_to change { mapped_columns.inspect }
+      end
+
       context "when two keys give the same text" do
         let(:mapped_columns) do
           {"count" => {source_column: "Count", value_mapping: {1 => "x", "1" => "20"}}}

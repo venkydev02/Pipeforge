@@ -29,6 +29,22 @@ module Pipeforge
     # The size in bytes of an integer column that has no limit.
     DEFAULT_INTEGER_LIMIT = 4
 
+    # Builds the checker of a target column from its type and limits.
+    #
+    # @param target_column [TargetColumn]
+    # @return [ColumnLimitsChecker]
+    def self.for(target_column:)
+      new(
+        type: target_column.type,
+        limit: target_column.limit,
+        unsigned: target_column.unsigned,
+        max_length: target_column.max_length,
+        precision: target_column.precision,
+        scale: target_column.scale,
+        enum_values: target_column.enum_values
+      )
+    end
+
     # @param type [String, Symbol, nil] the type of the target column; a type with no limit, or nil, has none
     # @param limit [Integer, nil] integer: the size in bytes, 4 when not given; float: the significand bits, 24 or
     #   less for single precision and anything else for double

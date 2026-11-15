@@ -54,36 +54,31 @@ module Pipeforge
       # value it maps to, which is what would be loaded, and the mapping comes back in the result.
       #
       # The mapped columns must already be checked against the file header and the target schema
-      # ({MappedDataValidator}) and carry the type metadata of their target column and text keys
-      # in their value mapping; the {Engine} does both. The position of each source column and
-      # the {ColumnLimitsChecker} of each target column are added to the entries. A file with no data
-      # rows is not an error: its mapped columns come back with zero counts. A source column
-      # mapped to several target columns is measured once for each of them.
+      # ({MappedDataValidator}); the {Engine} does that. The position of each source column is read from the
+      # header, and a {ColumnLimitsChecker} is built for each target column from its type and limits. A file
+      # with no data rows is not an error: its mapped columns come back with zero counts. A source column mapped
+      # to several target columns is measured once for each of them. Nothing the caller gave is changed.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
       # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
       #   for a column so that it is checked as the value it would load
-      # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, type:, ...,
-      #   value_mapping: {value in the file => value to load}}. Only these columns are measured.
-      #   +value_mapping+ is optional, its keys are text (the values of the file are text), and a
-      #   value that maps to nil or a blank is loaded as empty.
-      #   The type keys are described in {ColumnLimitsChecker}.
+      # @param mapped_columns [Hash{String => MappedColumn}] target column => its source column, value mapping
+      #   and column of the target table, which gives the type and the limits. Only these columns are measured.
       # @return [Result]
       # @raise [Source::EmptySourceError] the file has no header line
       # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
       # @raise [Source::MalformedSourceError] a row cannot be parsed
       def call(source_reader:, mapped_columns:, model_adapter:)
-        add_positions(mapped_columns: mapped_columns, header_names: source_reader.headers)
-        add_limits_checkers(mapped_columns: mapped_columns)
+        header_names = source_reader.headers
 
         summary_builders = {}
-        mapped_columns.each do |target_column, mapped_column|
-          summary_builders[target_column] = ColumnSummaryBuilder.new(
-            target_column: target_column,
-            source_column: mapped_column.fetch(:source_column),
-            position: mapped_column.fetch(:position),
-            limits_checker: mapped_column.fetch(:limits_checker),
-            value_mapping: mapped_column.fetch(:value_mapping, {}),
+        mapped_columns.each do |target_column_name, mapped_column|
+          summary_builders[target_column_name] = ColumnSummaryBuilder.new(
+            target_column: target_column_name,
+            source_column: mapped_column.source_column,
+            position: header_names.index(mapped_column.source_column) + 1,
+            limits_checker: ColumnLimitsChecker.for(target_column: mapped_column.target_column),
+            value_mapping: mapped_column.value_mapping,
             model_adapter: model_adapter
           )
         end
@@ -98,33 +93,6 @@ module Pipeforge
         summary_builders.each { |target_column, summary_builder| column_summaries[target_column] = summary_builder.summary }
 
         Result.new(source_identifier: source_reader.identifier, row_count: row_count, columns: column_summaries)
-      end
-
-      private
-
-      # Adds the position of the source column in the file (starting at 1) to each entry of the
-      # mapped columns, which is where the summaries read it from. It changes the entries it is
-      # given.
-      def add_positions(mapped_columns:, header_names:)
-        mapped_columns.each_value do |mapped_column|
-          mapped_column[:position] = header_names.index(mapped_column[:source_column]) + 1
-        end
-      end
-
-      # Adds the {ColumnLimitsChecker} of the target column, built from the type metadata of the entry, to
-      # each entry of the mapped columns. It changes the entries it is given.
-      def add_limits_checkers(mapped_columns:)
-        mapped_columns.each_value do |mapped_column|
-          mapped_column[:limits_checker] = ColumnLimitsChecker.new(
-            type: mapped_column.fetch(:type),
-            limit: mapped_column[:limit],
-            unsigned: mapped_column[:unsigned],
-            max_length: mapped_column[:max_length],
-            precision: mapped_column[:precision],
-            scale: mapped_column[:scale],
-            enum_values: mapped_column[:enum_values]
-          )
-        end
       end
     end
   end

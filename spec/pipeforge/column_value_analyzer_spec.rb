@@ -12,7 +12,9 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   # example's own result first: the settings stay replaced afterwards.
   def result_with(settings)
     use_settings(settings)
-    described_class.call(source_reader: csv_reader(csv), mapped_columns: mapped_columns, model_adapter: model_adapter)
+    described_class.call(
+      source_reader: csv_reader(csv), mapped_columns: mapped_columns_of(mapped_columns), model_adapter: model_adapter
+    )
   end
 
   # The adapter that casts a text for a column: by default one that reads a text as the type of its
@@ -26,7 +28,9 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
   describe "#call" do
     subject(:result) do
-      described_class.call(source_reader: source_reader, mapped_columns: mapped_columns, model_adapter: model_adapter)
+      described_class.call(
+        source_reader: source_reader, mapped_columns: mapped_columns_of(mapped_columns), model_adapter: model_adapter
+      )
     end
 
     let(:source_reader) { csv_reader(csv) }
@@ -654,7 +658,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     let(:result) do
       described_class.call(
         source_reader: csv_reader("Age\n30\nx\n\n"),
-        mapped_columns: {"age" => maps_to(source_column: "Age", type: "integer")},
+        mapped_columns: mapped_columns_of("age" => maps_to(source_column: "Age", type: "integer")),
         model_adapter: FakeModelAdapter.reading(types: {"age" => "integer"})
       )
     end
