@@ -37,7 +37,7 @@ module Pipeforge
       new(
         type: target_column.type,
         limit: target_column.limit,
-        unsigned: target_column.unsigned,
+        is_signed: target_column.is_signed,
         max_length: target_column.max_length,
         precision: target_column.precision,
         scale: target_column.scale,
@@ -48,16 +48,17 @@ module Pipeforge
     # @param type [String, Symbol, nil] the type of the target column; a type with no limit, or nil, has none
     # @param limit [Integer, nil] integer: the size in bytes, 4 when not given; float: the significand bits, 24 or
     #   less for single precision and anything else for double
-    # @param unsigned [Boolean, nil] whether an integer column holds no negative number
+    # @param is_signed [Boolean, nil] false for an integer column that holds no negative number; true, or nil when
+    #   not given, for one that does
     # @param max_length [Integer, nil] the length of a string or text column
     # @param precision [Integer, nil] the digits of a decimal column
     # @param scale [Integer, nil] the digits of a decimal column after the point; 0 when not given
     # @param enum_labels [Array<String>, nil] the labels of an enum column, which accepts these and nothing else
-    def initialize(type:, limit: nil, unsigned: nil, max_length: nil, precision: nil, scale: nil, enum_labels: nil)
+    def initialize(type:, limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil, enum_labels: nil)
       @type = type.to_s
       @enum_labels = enum_labels
       @limit = limit
-      @unsigned = unsigned
+      @is_signed = is_signed
       @max_length = max_length
       @precision = precision
       # A decimal declared with no scale keeps no digits after the point (DECIMAL(10) is DECIMAL(10, 0)), and the
@@ -106,7 +107,8 @@ module Pipeforge
     # starts at 0 and reaches twice as high.
     def integer_range(bytes:)
       bits = 8 * bytes
-      return [0, 2**bits - 1] if @unsigned
+      # nil (not given) is a signed column; only false means unsigned.
+      return [0, 2**bits - 1] if @is_signed == false
 
       [-(2**(bits - 1)), 2**(bits - 1) - 1]
     end

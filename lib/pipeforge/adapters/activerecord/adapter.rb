@@ -136,7 +136,7 @@ module Pipeforge
 
     # Builds the target column from the model's view of the column: its attribute type and
     # +column_defaults+. For an enum column the labels are in +enum_labels+, and an integer column
-    # is unsigned when its attribute type is ActiveRecord's unsigned integer.
+    # is not signed when its attribute type is ActiveRecord's unsigned integer.
     def build_column(model:, model_column:, foreign_key:)
       attribute_type = model.type_for_attribute(model_column.name)
       type = attribute_type.type.to_s
@@ -147,7 +147,7 @@ module Pipeforge
         type: type,
         sql_type: model_column.sql_type,
         limit: text_type ? nil : size_in_bytes(attribute_type: attribute_type),
-        unsigned: attribute_type.is_a?(ActiveRecord::Type::UnsignedInteger),
+        is_signed: is_signed_of(attribute_type: attribute_type),
         max_length: text_type ? attribute_type.limit : nil,
         precision: attribute_type.precision,
         scale: attribute_type.scale,
@@ -156,6 +156,14 @@ module Pipeforge
         required: required?(model: model, model_column: model_column),
         foreign_key: foreign_key
       )
+    end
+
+    # Whether an integer column holds negative numbers; nil for a column that is not an integer.
+    def is_signed_of(attribute_type:)
+      return false if attribute_type.is_a?(ActiveRecord::Type::UnsignedInteger)
+      return true if attribute_type.type == :integer
+
+      nil
     end
 
     # The limit of the attribute type: the size in bytes of an integer, the significand bits of a float.

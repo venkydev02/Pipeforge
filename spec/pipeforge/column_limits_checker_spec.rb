@@ -5,7 +5,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
 
   describe ".for" do
     it "reads the size and the sign of an integer column" do
-      limits = described_class.for(target_column: build_target_column(name: "seats", type: "integer", limit: 2, unsigned: true))
+      limits = described_class.for(target_column: build_target_column(name: "seats", type: "integer", limit: 2, is_signed: false))
 
       expect(limits.violation_of(value: 60_000)).to be_nil
       expect(limits.violation_of(value: 70_000)).to have_attributes(code: :value_out_of_range)
@@ -161,7 +161,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
     end
 
     context "with an unsigned integer column of 2 bytes" do
-      let(:type_info) { {type: "integer", limit: 2, unsigned: true} }
+      let(:type_info) { {type: "integer", limit: 2, is_signed: false} }
 
       context "when the value is above the signed range but within the unsigned one" do
         let(:value) { 65_535 }

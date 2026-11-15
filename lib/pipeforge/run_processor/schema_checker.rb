@@ -30,7 +30,7 @@ module Pipeforge
           @limits_by_column[target_column.name] = ColumnLimitsChecker.new(
             type: target_column.type,
             limit: target_column.limit,
-            unsigned: target_column.unsigned,
+            is_signed: target_column.is_signed,
             max_length: target_column.max_length,
             precision: target_column.precision,
             scale: target_column.scale,

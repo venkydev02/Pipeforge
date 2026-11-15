@@ -54,22 +54,22 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     it "reports an integer column as signed" do
-      expect(column_named(schema, "age")).to have_attributes(unsigned: false)
+      expect(column_named(schema, "age")).to have_attributes(is_signed: true)
     end
 
-    it "reports a column that is not an integer as not unsigned" do
-      expect(column_named(schema, "email")).to have_attributes(unsigned: false)
+    it "reports a column that is not an integer as having no sign" do
+      expect(column_named(schema, "email")).to have_attributes(is_signed: nil)
     end
 
     context "with an attribute of ActiveRecord's unsigned integer type" do
       let(:target_model) { "AdapterSpecModels::Counter" }
 
-      it "reports that column as unsigned, with its size" do
-        expect(column_named(schema, "hits")).to have_attributes(type: "integer", limit: 2, unsigned: true)
+      it "reports that column as not signed, with its size" do
+        expect(column_named(schema, "hits")).to have_attributes(type: "integer", limit: 2, is_signed: false)
       end
 
       it "reports the other integer column of the table as signed" do
-        expect(column_named(schema, "misses")).to have_attributes(type: "integer", limit: 2, unsigned: false)
+        expect(column_named(schema, "misses")).to have_attributes(type: "integer", limit: 2, is_signed: true)
       end
     end
 

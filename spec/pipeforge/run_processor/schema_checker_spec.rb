@@ -100,7 +100,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
     end
 
     context "with an unsigned integer column of 2 bytes" do
-      let(:target_columns) { [build_target_column(name: "hits", type: "integer", limit: 2, unsigned: true)] }
+      let(:target_columns) { [build_target_column(name: "hits", type: "integer", limit: 2, is_signed: false)] }
 
       it "accepts a value above the signed range" do
         expect(checker.call(attributes: {"hits" => 65_535})).to eq([])

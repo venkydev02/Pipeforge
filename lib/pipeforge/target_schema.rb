@@ -15,7 +15,8 @@ module Pipeforge
   #   type                the type name the column values stage checks against (integer, string, ...)
   #   sql_type            the type as the table writes it
   #   limit, max_length, precision, scale   the size information that goes with the type
-  #   unsigned            true for an integer column that holds no negative numbers; false for every other column
+  #   is_signed           for an integer column, true when it holds negative numbers and false when it does not
+  #                       (an unsigned integer); nil for every other column, which has no sign
   #   default             the value filled in when none is given, as the model sees it (a default
   #                       set in the model counts, and an enum shows its label)
   #   enum_labels         nil, or for an enum column the labels the model accepts (["draft", "placed"]), as
@@ -26,7 +27,7 @@ module Pipeforge
   #                       a default)
   #   foreign_key         a ForeignKey when the column points to a row of another table, else nil
   TargetColumn = Data.define(
-    :name, :type, :sql_type, :limit, :unsigned, :max_length, :precision, :scale, :default, :enum_labels,
+    :name, :type, :sql_type, :limit, :is_signed, :max_length, :precision, :scale, :default, :enum_labels,
     :required, :foreign_key
   )
 
