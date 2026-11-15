@@ -60,6 +60,8 @@ module Pipeforge
       @unsigned = unsigned
       @max_length = max_length
       @precision = precision
+      # A decimal declared with no scale keeps no digits after the point (DECIMAL(10) is DECIMAL(10, 0)), and the
+      # checks below do arithmetic on it.
       @scale = scale || 0
     end
 
