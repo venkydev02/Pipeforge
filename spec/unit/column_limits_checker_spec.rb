@@ -65,6 +65,15 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           end
         end
 
+        # A value mapping can give a Symbol; its text is compared with the labels.
+        context "and the value is :placed" do
+          let(:value) { :placed }
+
+          it "accepts it" do
+            expect(answer).to be_nil
+          end
+        end
+
         context "and the value is \"Draft\"" do
           let(:value) { "Draft" }
 

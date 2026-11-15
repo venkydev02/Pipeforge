@@ -13,12 +13,13 @@ module Pipeforge
     # @param entry [Hash] what the consumer wrote: +{source_column:, value_mapping: (optional)}+; any other key is
     #   not read
     # @param target_column [TargetColumn] the column of the target table that the entry is for
-    # @return [ResolvedMappedColumn] the keys of the value mapping turned into text, because the values of the file are
-    #   text (+1+ and +"1"+ are the same key, and the later one is used); the entry is not changed
+    # @return [ResolvedMappedColumn] with the keys of the value mapping as text and the entry unchanged; of two keys
+    #   that give the same text (+1+ and +"1"+), the later one is used
     # @raise [KeyError] the entry has no +source_column+; {MappedDataValidator} has already refused such an entry
     def self.from_entry(entry:, target_column:)
       new(
         source_column: entry.fetch(:source_column),
+        # The values of the file are text, so a key written as 1 has to match the text "1".
         value_mapping: entry.fetch(:value_mapping, {}).transform_keys(&:to_s),
         target_column: target_column
       )

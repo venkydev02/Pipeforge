@@ -202,10 +202,16 @@ module Pipeforge
     # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
     def resolve_mapped_columns(mapped_columns:)
       target_columns = target_columns_by_name
+      resolved_mapped_columns = {}
 
-      mapped_columns.to_h do |target_column_name, entry|
-        [target_column_name, ResolvedMappedColumn.from_entry(entry: entry, target_column: target_columns.fetch(target_column_name))]
+      mapped_columns.each do |target_column_name, entry|
+        target_column = target_columns.fetch(target_column_name)
+        resolved_mapped_columns[target_column_name] = ResolvedMappedColumn.from_entry(
+          entry: entry, target_column: target_column
+        )
       end
+
+      resolved_mapped_columns
     end
   end
 end

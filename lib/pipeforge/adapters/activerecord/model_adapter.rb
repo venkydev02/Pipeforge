@@ -79,7 +79,7 @@ module Pipeforge
 
     # Reads a value as the column's type would: what the model would load (the cast value, a Ruby object) and
     # the same data in plain JSON types (the json value). It reads no row and writes nothing. The value of an
-    # enum column is not cast: it is given back as it is, for the limits to say whether it is a label.
+    # enum column is given back as it is.
     #
     # @param column_name [String] a column of the table
     # @param value [String, Hash, Array, Object] a value from the file (a non-empty text) or from a value
