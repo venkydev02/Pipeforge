@@ -69,7 +69,7 @@ module Pipeforge
     #   Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
     #   optional (leave the key out for none; +nil+ is an error), its keys are turned into text, and a
     #   value that maps to nil or a blank is loaded as empty. The caller's Hash is not changed (see
-    #   {MappedColumn}); the type and the limits of each target column come from the schema of the table.
+    #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [Source::EmptySourceError] the source has no header row
@@ -83,7 +83,7 @@ module Pipeforge
       check_mapped_columns(mapped_columns: mapped_columns)
 
       ColumnValueAnalyzer.call(
-        source_reader: @source_reader, mapped_columns: mapped_columns_of(entries: mapped_columns),
+        source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
         model_adapter: model_adapter
       )
     end
@@ -195,16 +195,16 @@ module Pipeforge
       end
     end
 
-    # The mapped columns the column values stage takes, made from the entries the caller wrote and the engine has
-    # checked, each with its column of the target table.
+    # Makes the resolved mapped columns the column values stage takes from the consumer's mapped columns, which the
+    # engine has checked: each entry gets the column of the target table it fills.
     #
-    # @param entries [Hash{String => Hash}] target column => the entry the caller wrote
-    # @return [Hash{String => MappedColumn}]
-    def mapped_columns_of(entries:)
+    # @param mapped_columns [Hash{String => Hash}] target column => the entry the caller wrote
+    # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
+    def resolve_mapped_columns(mapped_columns:)
       target_columns = target_columns_by_name
 
-      entries.to_h do |target_column_name, entry|
-        [target_column_name, MappedColumn.from_entry(entry: entry, target_column: target_columns.fetch(target_column_name))]
+      mapped_columns.to_h do |target_column_name, entry|
+        [target_column_name, ResolvedMappedColumn.from_entry(entry: entry, target_column: target_columns.fetch(target_column_name))]
       end
     end
   end

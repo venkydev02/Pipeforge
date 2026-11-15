@@ -13,7 +13,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   def result_with(settings)
     use_settings(settings)
     described_class.call(
-      source_reader: csv_reader(csv), mapped_columns: mapped_columns_of(mapped_columns), model_adapter: model_adapter
+      source_reader: csv_reader(csv), resolved_mapped_columns: resolve_mapped_columns(mapped_columns), model_adapter: model_adapter
     )
   end
 
@@ -29,7 +29,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   describe "#call" do
     subject(:result) do
       described_class.call(
-        source_reader: source_reader, mapped_columns: mapped_columns_of(mapped_columns), model_adapter: model_adapter
+        source_reader: source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns), model_adapter: model_adapter
       )
     end
 
@@ -658,7 +658,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     let(:result) do
       described_class.call(
         source_reader: csv_reader("Age\n30\nx\n\n"),
-        mapped_columns: mapped_columns_of("age" => maps_to(source_column: "Age", type: "integer")),
+        resolved_mapped_columns: resolve_mapped_columns("age" => maps_to(source_column: "Age", type: "integer")),
         model_adapter: FakeModelAdapter.reading(types: {"age" => "integer"})
       )
     end

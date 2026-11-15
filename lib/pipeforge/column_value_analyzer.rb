@@ -62,23 +62,23 @@ module Pipeforge
       # @param source_reader [Source::CsvReader] the reader of the CSV source
       # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
       #   for a column so that it is checked as the value it would load
-      # @param mapped_columns [Hash{String => MappedColumn}] target column => its source column, value mapping
+      # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column => its source column, value mapping
       #   and column of the target table, which gives the type and the limits. Only these columns are measured.
       # @return [Result]
       # @raise [Source::EmptySourceError] the file has no header line
       # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
       # @raise [Source::MalformedSourceError] a row cannot be parsed
-      def call(source_reader:, mapped_columns:, model_adapter:)
+      def call(source_reader:, resolved_mapped_columns:, model_adapter:)
         header_names = source_reader.headers
 
         summary_builders = {}
-        mapped_columns.each do |target_column_name, mapped_column|
+        resolved_mapped_columns.each do |target_column_name, resolved_mapped_column|
           summary_builders[target_column_name] = ColumnSummaryBuilder.new(
             target_column: target_column_name,
-            source_column: mapped_column.source_column,
-            position: header_names.index(mapped_column.source_column) + 1,
-            limits_checker: ColumnLimitsChecker.for(target_column: mapped_column.target_column),
-            value_mapping: mapped_column.value_mapping,
+            source_column: resolved_mapped_column.source_column,
+            position: header_names.index(resolved_mapped_column.source_column) + 1,
+            limits_checker: ColumnLimitsChecker.for(target_column: resolved_mapped_column.target_column),
+            value_mapping: resolved_mapped_column.value_mapping,
             model_adapter: model_adapter
           )
         end
