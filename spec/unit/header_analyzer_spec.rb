@@ -69,7 +69,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   def default_metadata(**overrides)
     {
       type: "string", sql_type: "varchar", limit: nil, unsigned: false, max_length: nil, precision: nil, scale: nil,
-      default: nil, enum_values: nil, required: false, foreign_key: nil
+      default: nil, enum_labels: nil, required: false, foreign_key: nil
     }.merge(overrides)
   end
 

@@ -157,7 +157,7 @@ Pipeforge never prompts and never draws anything; the review between the steps i
   "metadata": {
     "type": "integer",
     "required": true,
-    "enum_values": null,
+    "enum_labels": null,
     "foreign_key": {"association": "company", "parent_table": "companies"}
   }
 }

@@ -35,7 +35,7 @@ module Pipeforge
     #                                in table order
     #
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
-    # max_length, precision, scale, default, enum_values (nil, or label => stored value),
+    # max_length, precision, scale, default, enum_labels (nil, or the labels),
     # required and foreign_key (nil, or {association:, parent_table:}).
     #
     # Everything in it is a plain Hash, Array, String, number, boolean or nil, so +to_h+ gives the

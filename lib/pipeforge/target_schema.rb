@@ -18,15 +18,15 @@ module Pipeforge
   #   unsigned            true for an integer column that holds no negative numbers; false for every other column
   #   default             the value filled in when none is given, as the model sees it (a default
   #                       set in the model counts, and an enum shows its label)
-  #   enum_values         nil, or for an enum column the label => stored value pairs the model
-  #                       accepts ({"draft" => 0, "placed" => 1})
+  #   enum_labels         nil, or for an enum column the labels the model accepts (["draft", "placed"]), as
+  #                       text; the values the database stores for them are not part of the schema
   #   required            whether a row cannot be loaded without a source column for this column.
   #                       The adapter decides, from whether the column refuses an empty value
   #                       and has no default (what the framework fills in by itself counts as
   #                       a default)
   #   foreign_key         a ForeignKey when the column points to a row of another table, else nil
   TargetColumn = Data.define(
-    :name, :type, :sql_type, :limit, :unsigned, :max_length, :precision, :scale, :default, :enum_values,
+    :name, :type, :sql_type, :limit, :unsigned, :max_length, :precision, :scale, :default, :enum_labels,
     :required, :foreign_key
   )
 

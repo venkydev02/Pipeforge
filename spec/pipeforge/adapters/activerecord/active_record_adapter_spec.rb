@@ -148,16 +148,16 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     context "with enum columns and a default set only in the model" do
       let(:target_model) { "AdapterSpecModels::Shipment" }
 
-      it "gives the labels and stored values of an enum stored as a number" do
-        expect(column_named(schema, "status").enum_values).to eq("draft" => 0, "placed" => 1, "shipped" => 2)
+      it "gives the labels of an enum stored as a number" do
+        expect(column_named(schema, "status").enum_labels).to eq(%w[draft placed shipped])
       end
 
-      it "gives the labels and stored values of an enum stored as text" do
-        expect(column_named(schema, "kind").enum_values).to eq("retail" => "retail", "wholesale" => "wholesale")
+      it "gives the labels of an enum stored as text" do
+        expect(column_named(schema, "kind").enum_labels).to eq(%w[retail wholesale])
       end
 
-      it "gives no enum values for a column that is not an enum" do
-        expect(column_named(schema, "note").enum_values).to be_nil
+      it "gives no enum labels for a column that is not an enum" do
+        expect(column_named(schema, "note").enum_labels).to be_nil
       end
 
       it "gives the default as the model sees it, which is the label for an enum" do

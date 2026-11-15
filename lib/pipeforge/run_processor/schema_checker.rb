@@ -14,7 +14,7 @@ module Pipeforge
     #       scale+ once rounded to the scale, or a float
     #       that is infinite or larger than the column
     #       holds:                                         +value_out_of_range+
-    #       a value that is not a label or stored value
+    #       a value that is not a label
     #       of an enum column:                             +value_not_allowed+
     # Whether a value fits the type of its column is not checked: a value that does not look like the
     # type (+abc+ in an integer column) is left to the cast of the framework.
@@ -34,7 +34,7 @@ module Pipeforge
             max_length: target_column.max_length,
             precision: target_column.precision,
             scale: target_column.scale,
-            enum_values: target_column.enum_values
+            enum_labels: target_column.enum_labels
           )
         end
       end

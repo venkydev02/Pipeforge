@@ -41,7 +41,7 @@ module Pipeforge
         max_length: target_column.max_length,
         precision: target_column.precision,
         scale: target_column.scale,
-        enum_values: target_column.enum_values
+        enum_labels: target_column.enum_labels
       )
     end
 
@@ -52,10 +52,10 @@ module Pipeforge
     # @param max_length [Integer, nil] the length of a string or text column
     # @param precision [Integer, nil] the digits of a decimal column
     # @param scale [Integer, nil] the digits of a decimal column after the point; 0 when not given
-    # @param enum_values [Hash, nil] the label => stored value pairs of an enum column
-    def initialize(type:, limit: nil, unsigned: nil, max_length: nil, precision: nil, scale: nil, enum_values: nil)
+    # @param enum_labels [Array<String>, nil] the labels of an enum column, which accepts these and nothing else
+    def initialize(type:, limit: nil, unsigned: nil, max_length: nil, precision: nil, scale: nil, enum_labels: nil)
       @type = type.to_s
-      @enum_values = enum_values
+      @enum_labels = enum_labels
       @limit = limit
       @unsigned = unsigned
       @max_length = max_length
@@ -68,7 +68,7 @@ module Pipeforge
     # @param value [Object] the value the adapter cast for the column
     # @return [Violation, nil] nil when the value is within the limits, or when the type has no limit
     def violation_of(value:)
-      return enum_violation(value: value) unless @enum_values.nil?
+      return enum_violation(value: value) unless @enum_labels.nil?
 
       check = CHECKS[@type]
       return nil if check.nil?
@@ -78,14 +78,11 @@ module Pipeforge
 
     private
 
-    # An enum column accepts its labels and the values stored for them.
+    # An enum column accepts its labels. A value the database stores for a label is not a label.
     def enum_violation(value:)
-      text = value.to_s
-      labels = @enum_values.keys.map(&:to_s)
-      stored_values = @enum_values.values.map(&:to_s)
-      return nil if labels.include?(text) || stored_values.include?(text)
+      return nil if @enum_labels.include?(value.to_s)
 
-      Violation.new(code: :value_not_allowed, detail: "the value is not one of #{labels.join(", ")}")
+      Violation.new(code: :value_not_allowed, detail: "the value is not one of #{@enum_labels.join(", ")}")
     end
 
     # Only the length is limited, and only when the column has a limit; it is counted in characters.

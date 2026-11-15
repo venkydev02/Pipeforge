@@ -135,7 +135,7 @@ module Pipeforge
     end
 
     # Builds the target column from the model's view of the column: its attribute type and
-    # +column_defaults+. For an enum column the labels are in +enum_values+, and an integer column
+    # +column_defaults+. For an enum column the labels are in +enum_labels+, and an integer column
     # is unsigned when its attribute type is ActiveRecord's unsigned integer.
     def build_column(model:, model_column:, foreign_key:)
       attribute_type = model.type_for_attribute(model_column.name)
@@ -152,7 +152,7 @@ module Pipeforge
         precision: attribute_type.precision,
         scale: attribute_type.scale,
         default: model.column_defaults[model_column.name],
-        enum_values: model.defined_enums[model_column.name],
+        enum_labels: ActiveRecordModelAdapter.enum_labels(model: model, column_name: model_column.name),
         required: required?(model: model, model_column: model_column),
         foreign_key: foreign_key
       )

@@ -18,6 +18,20 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
 
+  describe ".enum_labels" do
+    it "gives the labels of an enum stored as a number" do
+      expect(described_class.enum_labels(model: AdapterSpecModels::Shipment, column_name: "status")).to eq(%w[draft placed shipped])
+    end
+
+    it "gives the labels of an enum stored as text, not the values stored for them" do
+      expect(described_class.enum_labels(model: AdapterSpecModels::Shipment, column_name: "kind")).to eq(%w[retail wholesale])
+    end
+
+    it "gives nil for a column that is not an enum" do
+      expect(described_class.enum_labels(model: AdapterSpecModels::Shipment, column_name: "note")).to be_nil
+    end
+  end
+
   describe "#build_record" do
     subject(:model_record) { model_adapter.build_record(attributes: attributes) }
 
@@ -43,19 +57,25 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       end
     end
 
-    context "with the stored value of an enum, written as text" do
+    context "with the stored value of an enum label, written as text" do
       let(:attributes) { {"tier" => "1"} }
 
-      it "casts it to the stored value" do
-        expect(model_record.record.tier).to eq("pro")
+      it "leaves the enum out of the record, for the record to report" do
+        expect(model_record.record.tier).to be_nil
+      end
+
+      it "reports it as value_not_allowed" do
+        model_record.valid?
+
+        expect(model_record.errors).to include(include(code: :value_not_allowed, target_column: "tier"))
       end
     end
 
-    context "with the stored value of an enum, as a number" do
+    context "with the stored value of an enum label, as a number" do
       let(:attributes) { {"tier" => 0} }
 
-      it "sets the enum" do
-        expect(model_record.record.tier).to eq("basic")
+      it "leaves the enum out of the record, for the record to report" do
+        expect(model_record.record.tier).to be_nil
       end
     end
 
@@ -191,8 +211,12 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       expect(cast("tier", "pro")).to eq("pro")
     end
 
-    it "gives a text for a stored enum value written as text, which the checks then compare" do
+    it "gives the value of an enum column as it is, a stored value written as text included" do
       expect(cast("tier", "1")).to eq("1")
+    end
+
+    it "does not turn the stored value of an enum label, as a number, into the label" do
+      expect(cast_result("tier", 1)).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 1, json_value: 1))
     end
 
     it "gives a text as it is for a string column" do

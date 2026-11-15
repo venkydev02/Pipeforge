@@ -128,14 +128,17 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
         {"status" => {source_column: "Status"}, "priority" => {source_column: "Priority"}}
       end
 
-      it "counts the labels and the stored values of the enum as fitting" do
-        expect(value_result.columns["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
+      it "counts the labels of the enum as fitting" do
+        expect(value_result.columns["status"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 2)
         expect(value_result.columns["priority"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
       end
 
-      it "lists a value that is not a label or a stored value as not fitting, with the reason that it is not allowed" do
+      it "lists a value that is not a label, a stored value included, as not fitting, with the reason that it is not allowed" do
         expect(value_result.columns["status"].distinct_values.incompatible).to eq(
-          [incompatible_value(value: "nope", count: 1, casted_to: "nope", reason: :value_not_allowed)]
+          [
+            incompatible_value(value: "1", count: 1, casted_to: "1", reason: :value_not_allowed),
+            incompatible_value(value: "nope", count: 1, casted_to: "nope", reason: :value_not_allowed)
+          ]
         )
       end
     end

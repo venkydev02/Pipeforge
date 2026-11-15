@@ -161,7 +161,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
 
     context "with an enum column" do
       let(:target_columns) do
-        [build_target_column(name: "status", type: "integer", enum_values: {"draft" => 0, "placed" => 1})]
+        [build_target_column(name: "status", type: "integer", enum_labels: %w[draft placed])]
       end
 
       context "when the value is a label" do
@@ -172,7 +172,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         end
       end
 
-      context "when the value is neither a label nor a stored value" do
+      context "when the value is not a label" do
         let(:attributes) { {"status" => "shipped"} }
 
         it "gives value_not_allowed for that column" do

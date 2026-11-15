@@ -22,7 +22,7 @@ RSpec.describe Pipeforge::Engine do
   # its column and cannot read any other text.
   before do
     types = target_columns.to_h do |target_column|
-      [target_column.name, target_column.enum_values.nil? ? target_column.type : "string"]
+      [target_column.name, target_column.enum_labels.nil? ? target_column.type : "string"]
     end
     allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.reading(types: types))
   end
@@ -226,12 +226,12 @@ RSpec.describe Pipeforge::Engine do
     context "with an enum column in the schema" do
       let(:source_io) { csv_io("Status\ndraft\n1\nshipped\n7\nPlaced\n") }
       let(:target_columns) do
-        [build_target_column(name: "status", type: "integer", enum_values: {"draft" => 0, "placed" => 1, "shipped" => 2})]
+        [build_target_column(name: "status", type: "integer", enum_labels: %w[draft placed shipped])]
       end
       let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
-      it "counts the labels and the stored values as fitting, and nothing else" do
-        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
+      it "counts the labels as fitting, and nothing else" do
+        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 3)
       end
     end
 

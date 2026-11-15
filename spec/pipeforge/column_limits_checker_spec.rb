@@ -25,7 +25,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
 
     it "reads the labels of an enum column" do
       limits = described_class.for(
-        target_column: build_target_column(name: "tier", type: "integer", enum_values: {"free" => 0, "pro" => 1})
+        target_column: build_target_column(name: "tier", type: "integer", enum_labels: %w[free pro])
       )
 
       expect(limits.violation_of(value: "gold")).to have_attributes(code: :value_not_allowed)
@@ -406,7 +406,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
     end
 
     context "with an enum column stored as a number" do
-      let(:type_info) { {type: "integer", enum_values: {"draft" => 0, "placed" => 1}} }
+      let(:type_info) { {type: "integer", enum_labels: %w[draft placed]} }
 
       context "when the value is a label" do
         let(:value) { "draft" }
@@ -416,23 +416,23 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
         end
       end
 
-      context "when the value is a stored value written as text" do
+      context "when the value is the stored value of a label, written as text" do
         let(:value) { "1" }
 
-        it "gives nil" do
-          expect(violation).to be_nil
+        it "is value_not_allowed" do
+          expect(violation).to have_attributes(code: :value_not_allowed)
         end
       end
 
-      context "when the value is a stored value that is a number" do
+      context "when the value is the stored value of a label, as a number" do
         let(:value) { 1 }
 
-        it "gives nil" do
-          expect(violation).to be_nil
+        it "is value_not_allowed" do
+          expect(violation).to have_attributes(code: :value_not_allowed)
         end
       end
 
-      context "when the value is neither" do
+      context "when the value is not a label" do
         let(:value) { "shipped" }
 
         it "is value_not_allowed, listing the labels and not quoting the value" do
@@ -441,24 +441,24 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
       end
 
       it "does not apply the integer range to an enum column" do
-        limits = described_class.new(type: "integer", limit: 1, enum_values: {"big" => 100_000})
+        limits = described_class.new(type: "integer", limit: 1, enum_labels: %w[big])
 
-        expect(limits.violation_of(value: "100000")).to be_nil
+        expect(limits.violation_of(value: "big")).to be_nil
       end
     end
 
     context "with an enum column stored as text" do
-      let(:type_info) { {type: "string", enum_values: {"retail" => "r", "wholesale" => "w"}} }
+      let(:type_info) { {type: "string", enum_labels: %w[retail wholesale]} }
 
-      context "when the value is a stored value" do
-        let(:value) { "w" }
+      context "when the value is a label" do
+        let(:value) { "wholesale" }
 
         it "gives nil" do
           expect(violation).to be_nil
         end
       end
 
-      context "when the value is not a label or a stored value" do
+      context "when the value is not a label" do
         let(:value) { "x" }
 
         it "is value_not_allowed" do
@@ -467,8 +467,8 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
       end
     end
 
-    context "with enum_values that are nil" do
-      let(:type_info) { {type: "string", enum_values: nil} }
+    context "with enum_labels that are nil" do
+      let(:type_info) { {type: "string", enum_labels: nil} }
       let(:value) { "anything" }
 
       it "is not an enum column" do
