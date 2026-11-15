@@ -16,33 +16,33 @@ module Pipeforge
   # complete only after the last row, so memory grows with the number of distinct values. The
   # analyzer reads source values only and never touches the target.
   #
-  # The {Engine} is the way in: {Engine#analyze_column_values} checks the mapped columns, adds the type
-  # metadata of the target columns and then calls this service.
+  # The {Engine} is the way in: {Engine#analyze_column_values} checks the mapped columns, makes a
+  # {ResolvedMappedColumn} of each one and then calls this service.
   #
   # @api private
   #
   # @example through the engine
   #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
-  #   result.columns["email"].distinct_values.compatible_count # => 1170
+  #   result.column_summaries["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
     #   source_identifier  the file path of the source, or its class name when it has no path
     #   row_count          data rows read; blank and all-empty rows are not counted
-    #   columns            a ColumnSummary per mapped target column, keyed by the target column
+    #   column_summaries   a ColumnSummary per mapped target column, keyed by the target column
     #                      and in the order of the mapped columns
-    Result = Data.define(:source_identifier, :row_count, :columns) do
+    Result = Data.define(:source_identifier, :row_count, :column_summaries) do
       # @return [Hash] the result as plain JSON types, ready to store or send
       def to_h
-        columns_as_hashes = {}
+        column_summaries_as_hashes = {}
 
-        columns.each do |target_column, column_summary|
-          columns_as_hashes[target_column] = column_summary.to_h
+        column_summaries.each do |target_column, column_summary|
+          column_summaries_as_hashes[target_column] = column_summary.to_h
         end
 
         {
           source_identifier: source_identifier,
           row_count: row_count,
-          columns: columns_as_hashes
+          column_summaries: column_summaries_as_hashes
         }
       end
     end
@@ -92,7 +92,7 @@ module Pipeforge
         column_summaries = {}
         summary_builders.each { |target_column, summary_builder| column_summaries[target_column] = summary_builder.summary }
 
-        Result.new(source_identifier: source_reader.identifier, row_count: row_count, columns: column_summaries)
+        Result.new(source_identifier: source_reader.identifier, row_count: row_count, column_summaries: column_summaries)
       end
     end
   end

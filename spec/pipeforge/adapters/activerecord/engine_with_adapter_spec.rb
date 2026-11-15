@@ -74,13 +74,13 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     it "measures the values against the limits of the columns in the table" do
-      expect(value_result.columns["age"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
+      expect(value_result.column_summaries["age"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
     end
 
     it "counts a text that the model reads leniently as fitting, and gives the value the database would receive" do
-      expect(value_result.columns["balance"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
+      expect(value_result.column_summaries["balance"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
 
-      entries = value_result.columns["balance"].distinct_values.compatible
+      entries = value_result.column_summaries["balance"].distinct_values.compatible
       # A number on SQLite and a text on PostgreSQL, so it is compared as text.
       expect(entries.first).to have_attributes(value: "10.5", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "10.5" })
       expect(entries.last).to have_attributes(value: "abc", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "0.0" })
@@ -90,13 +90,13 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,\"1,000\",\"1,234.50\"\nbob@example.com,2,31,10.50\n" }
 
       it "gives the value the database would receive for each text, the text itself included" do
-        expect(value_result.columns["age"].distinct_values.compatible).to contain_exactly(
+        expect(value_result.column_summaries["age"].distinct_values.compatible).to contain_exactly(
           compatible_value(value: "31", count: 1, casted_to: 31), compatible_value(value: "1,000", count: 1, casted_to: 1)
         )
       end
 
       it "gives the decimal the database would receive, without the zeros the text had" do
-        entries = value_result.columns["balance"].distinct_values.compatible
+        entries = value_result.column_summaries["balance"].distinct_values.compatible
         # A number on SQLite and a text on PostgreSQL, so it is compared as text.
         entries_with_text = entries.map { |entry| entry.with(casted_to: entry.casted_to.to_s) }
 
@@ -111,7 +111,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,\"99999.5\",10\n" }
 
       it "lists it as not fitting, with the integer it was cast to" do
-        expect(value_result.columns["age"].distinct_values.incompatible).to eq(
+        expect(value_result.column_summaries["age"].distinct_values.incompatible).to eq(
           [incompatible_value(value: "99999.5", count: 1, casted_to: 99_999, reason: :value_out_of_range)]
         )
       end
@@ -129,12 +129,12 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       end
 
       it "counts the labels of the enum as fitting" do
-        expect(value_result.columns["status"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 2)
-        expect(value_result.columns["priority"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
+        expect(value_result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 2)
+        expect(value_result.column_summaries["priority"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
       end
 
       it "lists a value that is not a label, a stored value included, as not fitting, with the reason that it is not allowed" do
-        expect(value_result.columns["status"].distinct_values.incompatible).to eq(
+        expect(value_result.column_summaries["status"].distinct_values.incompatible).to eq(
           [
             incompatible_value(value: "1", count: 1, casted_to: "1", reason: :value_not_allowed),
             incompatible_value(value: "nope", count: 1, casted_to: "nope", reason: :value_not_allowed)
@@ -149,17 +149,17 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:mapped_columns) { {"starts_on" => {source_column: "Day"}} }
 
       it "counts the formats that the model reads as fitting, and the days it cannot cast as not" do
-        expect(value_result.columns["starts_on"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
+        expect(value_result.column_summaries["starts_on"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
       end
 
       it "lists the texts that the model cannot cast, for a value mapping to fix" do
-        incompatible = value_result.columns["starts_on"].distinct_values.incompatible.map(&:value)
+        incompatible = value_result.column_summaries["starts_on"].distinct_values.incompatible.map(&:value)
 
         expect(incompatible).to contain_exactly("2024-02-30", "garbage")
       end
 
       it "gives the reason that the model cannot cast them" do
-        reasons = value_result.columns["starts_on"].distinct_values.incompatible.map(&:reason)
+        reasons = value_result.column_summaries["starts_on"].distinct_values.incompatible.map(&:reason)
 
         expect(reasons).to eq(%i[value_not_castable value_not_castable])
       end
@@ -174,7 +174,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
       it "measures a value against the unsigned range of that column and the signed range of the other" do
         compatible_values = lambda do |target_column|
-          value_result.columns[target_column].distinct_values.compatible.map(&:value)
+          value_result.column_summaries[target_column].distinct_values.compatible.map(&:value)
         end
 
         expect(compatible_values.call("hits")).to eq(%w[40000])
@@ -190,18 +190,18 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       end
 
       it "counts the value as fitting the bigint column" do
-        expect(value_result.columns["big_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
+        expect(value_result.column_summaries["big_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
       end
 
       context "and the database is SQLite" do
         it "counts the value as fitting the integer column, which SQLite holds in 8 bytes", :sqlite_only do
-          expect(value_result.columns["plain_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
+          expect(value_result.column_summaries["plain_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
         end
       end
 
       context "and the database is PostgreSQL" do
         it "counts the value as not fitting the integer column, which holds 4 bytes", :postgresql_only do
-          expect(value_result.columns["plain_count"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 1)
+          expect(value_result.column_summaries["plain_count"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 1)
         end
       end
     end
@@ -212,23 +212,23 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       let(:mapped_columns) { {"settings" => {source_column: "Settings"}} }
 
       it "counts a text that describes JSON, and the JSON null, as fitting, and one that does not as not fitting" do
-        expect(value_result.columns["settings"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
+        expect(value_result.column_summaries["settings"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
       end
 
       it "lists the JSON null as a value that fits" do
-        compatible = value_result.columns["settings"].distinct_values.compatible.map(&:value)
+        compatible = value_result.column_summaries["settings"].distinct_values.compatible.map(&:value)
 
         expect(compatible).to include("null")
       end
 
       it "gives the JSON null casted_to nil, because the database receives NULL" do
-        compatible = value_result.columns["settings"].distinct_values.compatible
+        compatible = value_result.column_summaries["settings"].distinct_values.compatible
 
         expect(compatible).to include(compatible_value(value: "null", count: 1, casted_to: nil))
       end
 
       it "counts an empty cell as empty, and not as a value" do
-        expect(value_result.columns["settings"].empty).to eq(1)
+        expect(value_result.column_summaries["settings"].empty).to eq(1)
       end
 
       context "and a value mapping gives a Hash" do
@@ -238,14 +238,14 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
         end
 
         it "lists the text of the file as a value that fits, with the Hash as its mapped value" do
-          expect(value_result.columns["settings"].distinct_values.compatible).to eq(
+          expect(value_result.column_summaries["settings"].distinct_values.compatible).to eq(
             [compatible_value(value: "default", count: 1, mapping_applied: true, mapped_value: {"theme" => "dark"}, casted_to: {"theme" => "dark"})]
           )
         end
       end
 
       it "lists the text that is not JSON, for a value mapping to fix" do
-        incompatible = value_result.columns["settings"].distinct_values.incompatible.map(&:value)
+        incompatible = value_result.column_summaries["settings"].distinct_values.incompatible.map(&:value)
 
         expect(incompatible).to eq(["{oops"])
       end

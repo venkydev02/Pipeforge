@@ -156,15 +156,15 @@ RSpec.describe Pipeforge::Engine do
 
       checked = engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
 
-      expect(checked.columns["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
+      expect(checked.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
     end
 
     it "returns a summary for each mapped column, keyed by target column" do
-      expect(result.columns.keys).to eq(%w[status code note])
+      expect(result.column_summaries.keys).to eq(%w[status code note])
     end
 
     it "gives each summary its source column" do
-      expect(result.columns["code"].source_column).to eq("Code")
+      expect(result.column_summaries["code"].source_column).to eq("Code")
     end
 
     it "returns the same result when it is called again" do
@@ -181,7 +181,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"code" => {source_column: "Code"}} }
 
       it "measures only those columns" do
-        expect(result.columns.keys).to eq(["code"])
+        expect(result.column_summaries.keys).to eq(["code"])
       end
     end
 
@@ -201,8 +201,8 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"status" => {source_column: "Status"}, "code" => {source_column: "Status"}} }
 
       it "measures it once for each target column" do
-        expect(result.columns.keys).to eq(%w[status code])
-        expect(result.columns.values.map(&:source_column)).to eq(%w[Status Status])
+        expect(result.column_summaries.keys).to eq(%w[status code])
+        expect(result.column_summaries.values.map(&:source_column)).to eq(%w[Status Status])
       end
     end
 
@@ -219,7 +219,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
       it "measures the values against that type and size" do
-        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 5, incompatible_count: 2)
+        expect(result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 5, incompatible_count: 2)
       end
     end
 
@@ -231,7 +231,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"status" => {source_column: "Status"}} }
 
       it "counts the labels as fitting, and nothing else" do
-        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 3)
+        expect(result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 3)
       end
     end
 
@@ -240,7 +240,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"code" => {source_column: "Code", type: "string"}} }
 
       it "uses the type of the schema instead" do
-        expect(result.columns["code"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 7)
+        expect(result.column_summaries["code"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 7)
       end
     end
 
@@ -343,11 +343,11 @@ RSpec.describe Pipeforge::Engine do
 
       it "applies the mapping, because the keys are turned into text" do
         # 1 maps to x, which does not fit an integer; 2 maps to 20, which fits.
-        expect(result.columns["count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
+        expect(result.column_summaries["count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
       end
 
       it "returns the mapping with its keys as text" do
-        expect(result.columns["count"].value_mapping).to eq("1" => "x", "2" => "20")
+        expect(result.column_summaries["count"].value_mapping).to eq("1" => "x", "2" => "20")
       end
 
       it "leaves the entries of the caller as they were written" do
@@ -360,7 +360,7 @@ RSpec.describe Pipeforge::Engine do
         end
 
         it "makes them one key, and the later one is used" do
-          expect(result.columns["count"].value_mapping).to eq("1" => "20")
+          expect(result.column_summaries["count"].value_mapping).to eq("1" => "20")
         end
       end
     end
@@ -371,7 +371,7 @@ RSpec.describe Pipeforge::Engine do
       let(:mapped_columns) { {"count" => {source_column: "Count"}} }
 
       it "returns an empty value mapping for it" do
-        expect(result.columns["count"].value_mapping).to eq({})
+        expect(result.column_summaries["count"].value_mapping).to eq({})
       end
     end
 
@@ -381,11 +381,11 @@ RSpec.describe Pipeforge::Engine do
       let(:value_mapping) { {"Active" => "1", "A" => "x"} }
 
       it "measures the values as the values they map to" do
-        expect(result.columns["status"].distinct_values).to have_attributes(compatible_count: 4, incompatible_count: 3)
+        expect(result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 4, incompatible_count: 3)
       end
 
       it "returns the value mapping with the column" do
-        expect(result.columns["status"].value_mapping).to eq(value_mapping)
+        expect(result.column_summaries["status"].value_mapping).to eq(value_mapping)
       end
 
       context "when it is called again with an edited value mapping" do
@@ -401,7 +401,7 @@ RSpec.describe Pipeforge::Engine do
         it "shows the facts again, now that every value fits" do
           edited_result = engine.analyze_column_values(mapped_columns: edited_mapped_columns)
 
-          expect(edited_result.columns["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
+          expect(edited_result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
         end
       end
     end
@@ -463,7 +463,7 @@ RSpec.describe Pipeforge::Engine do
 
         allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.new)
 
-        expect(engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}).columns.keys).to eq(["status"])
+        expect(engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}).column_summaries.keys).to eq(["status"])
       end
     end
   end
