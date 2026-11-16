@@ -435,3 +435,15 @@
   * The core still names no database library or ActiveRecord class: the name is an opaque text to it. A second adapter decides what a model name means for it.
   * The table check stays, on the model's table, so a model whose migration has not run gives a stable code and not ActiveRecord's raw error.
   * `README.md`, `overview.md`, `configuration.md`, `protocols.md`, `target-access.md` and the specs that say `target_table:` are updated in the same change.
+
+### ADR-27: PostgreSQL Is the Only Target Database of the First Release; SQLite Is Not Supported
+* **Status:** Accepted (2026-11-16). **Supersedes** the "PostgreSQL (first), SQLite" line of the MVP scope.
+* **Context:** SQLite treats the declared size and type of a column as a hint and accepts values the schema forbids (`"abcdef"` in a `varchar(3)`, `99999` in a 2-byte integer, the text `abc` in an integer column). The engine reports what the declared schema forbids, so on SQLite it would refuse rows that the database would load, and the promise of a dry run (what the database will do) would not hold.
+* **Decision:**
+  1. **The first release supports PostgreSQL only.** MySQL stays post-MVP.
+  2. **The specs and the continuous integration run on PostgreSQL only**, so every example runs against a database that refuses what the schema forbids. The adapter specs use two databases, `pipeforge_test` and `pipeforge_test_secondary` (for a model kept in another database).
+  3. **The adapter carries no SQLite-specific rule**: the size reported for an integer is the one ActiveRecord reports.
+* **Consequences:**
+  * A contributor needs a local PostgreSQL to run the specs; CI starts one.
+  * The `sqlite3` gem leaves the Gemfile.
+  * The sample console and its sample database are removed; developer tools are added after the first release.
