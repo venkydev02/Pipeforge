@@ -21,13 +21,6 @@ module Pipeforge
     # The column types whose size is a number of characters; for the others it is a number of bytes.
     TEXT_TYPES = %w[string text].freeze
 
-    # The attribute type ActiveRecord gives an integer column of SQLite, compared by name because the
-    # SQLite adapter of ActiveRecord is loaded only when SQLite is used.
-    SQLITE_INTEGER_TYPE = "ActiveRecord::ConnectionAdapters::SQLite3Adapter::SQLite3Integer"
-
-    # The size SQLite gives an integer column whose declared type has no size, such as +bigint+.
-    SQLITE_INTEGER_BYTES = 8
-
     # @param target_model [String] the name of the model to read
     # @return [TargetSchema]
     # @raise [TargetSchemaError] no loaded model has that name (+active_record_model_not_found+), or
@@ -146,7 +139,8 @@ module Pipeforge
         name: model_column.name,
         type: type,
         sql_type: model_column.sql_type,
-        limit: text_type ? nil : size_in_bytes(attribute_type: attribute_type),
+        # For a column that is not text: the size in bytes of an integer, the significand bits of a float.
+        limit: text_type ? nil : attribute_type.limit,
         is_signed: is_signed_of(attribute_type: attribute_type),
         max_length: text_type ? attribute_type.limit : nil,
         precision: attribute_type.precision,
@@ -164,16 +158,6 @@ module Pipeforge
       return true if attribute_type.type == :integer
 
       nil
-    end
-
-    # The limit of the attribute type: the size in bytes of an integer, the significand bits of a float.
-    # A SQLite integer declared with no size holds 8 bytes, which is what its attribute type assumes.
-    def size_in_bytes(attribute_type:)
-      limit = attribute_type.limit
-      return limit unless limit.nil?
-      return limit unless attribute_type.class.ancestors.any? { |ancestor| ancestor.name == SQLITE_INTEGER_TYPE }
-
-      SQLITE_INTEGER_BYTES
     end
 
     # The foreign key columns of the model, by column name, from its +belongs_to+ associations.

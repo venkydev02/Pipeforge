@@ -2,18 +2,16 @@
 
 require "active_record"
 
-# A database with a few tables and models, for the specs of the ActiveRecord adapter: in-memory
-# SQLite by default, or PostgreSQL with DATABASE=postgresql (see AdapterSpecDatabase). The tables
-# and models are created once, when the specs load, and live under the AdapterSpecModels namespace
-# so they do not mix with anything else. The tables have the same names and columns in both
-# databases.
+# A database with a few tables and models, for the specs of the ActiveRecord adapter: PostgreSQL
+# (see AdapterSpecDatabase). The tables and models are created once, when the specs load, and live
+# under the AdapterSpecModels namespace so they do not mix with anything else.
 #
 #   users       a typical table: sizes, a decimal, a foreign key, an ignored column, a generated
 #               column, timestamps
 #   vehicles    single table inheritance (Vehicle, with Car and Truck below it)
 #   notes       two unrelated models on one table (Note and Memo)
 #   orphans     a table that no model uses
-#   readings    a table of a second database, which a model of its own reads (and a model of that
+#   readings    a table of the secondary database, which a model of its own reads (and a model of that
 #               database named like users, a table that database does not have)
 #   comments    a polymorphic association (not described as a foreign key)
 #   order_lines a composite foreign key (not described as a foreign key)
@@ -25,46 +23,31 @@ require "active_record"
 #               table) and a column whose default is set only in the model
 #   events      a date and a datetime column, for the formats the model reads
 #   measurements a single precision float (limit 24) next to a double precision one
-#   quantities  an integer with no size next to a bigint (the size each database gives them differs)
-#   profiles    a json column (and a jsonb column on PostgreSQL), for the text a file holds in them
-#   counters    an unsigned integer attribute (the type MySQL gives an unsigned column), next to a signed one
+#   quantities  an integer with no size (4 bytes) next to a bigint (8 bytes)
+#   profiles    a json column and a jsonb column, for the text a file holds in them
+#   counters    an unsigned integer attribute (the type MySQL gives an unsigned column) on a wider table column, next to a signed one
 #   memberships a model with validations: presence, uniqueness, length, numericality, an enum
 #               that must be present, a required parent and a mistake on the record as a whole
 #   accounts    a model with no validations, on a table that refuses what the model does not check:
 #               a repeated email (unique index), an empty email (NOT NULL) and a company that
 #               does not exist (foreign key); a callback stops the save of one nickname
 module AdapterSpecDatabase
-  # The two databases the adapter supports. SQLite runs in memory. PostgreSQL is the local
-  # database pipeforge_test, reached through the Unix socket as the user who runs the specs.
-  CONNECTIONS = {
-    "sqlite" => {adapter: "sqlite3", database: ":memory:"},
-    "postgresql" => {adapter: "postgresql", database: "pipeforge_test"}
-  }.freeze
+  # The database the specs run against: the local PostgreSQL database pipeforge_test. No host, user
+  # or password is given, so the Unix socket and the user who runs the specs are used (the PG
+  # environment variables, such as PGHOST and PGUSER, apply, as they do in CI).
+  CONNECTION_OPTIONS = {adapter: "postgresql", database: "pipeforge_test"}.freeze
 
-  # The tables created below, so a database that outlives the run (PostgreSQL) starts clean.
+  # A second database, for the models that are kept in another database than ActiveRecord::Base.
+  SECONDARY_CONNECTION_OPTIONS = {adapter: "postgresql", database: "pipeforge_test_secondary"}.freeze
+
+  # The tables created below, so a database that outlives the run starts clean.
   TABLES = %i[
     profiles quantities playlists accounts memberships counters measurements events shipments tickets receipts invoices
     order_lines orders comments orphans notes vehicles users companies
   ].freeze
-
-  # The database the specs run against: "sqlite" (the default) or "postgresql", chosen by the
-  # DATABASE variable.
-  def self.database_name
-    ENV.fetch("DATABASE", "sqlite")
-  end
-
-  def self.postgresql?
-    database_name == "postgresql"
-  end
-
-  def self.connection_options
-    CONNECTIONS.fetch(database_name) do
-      raise ArgumentError, "DATABASE must be #{CONNECTIONS.keys.join(" or ")}, got #{database_name.inspect}"
-    end
-  end
 end
 
-ActiveRecord::Base.establish_connection(AdapterSpecDatabase.connection_options)
+ActiveRecord::Base.establish_connection(AdapterSpecDatabase::CONNECTION_OPTIONS)
 ActiveRecord::Schema.verbose = false
 
 AdapterSpecDatabase::TABLES.each do |table|
@@ -129,7 +112,9 @@ ActiveRecord::Schema.define do
     t.float :weight
   end
   create_table(:counters) do |t|
-    t.integer :hits, limit: 2
+    # Wider than the 2 bytes of the model's unsigned attribute: PostgreSQL has no unsigned integer, so a
+    # 2-byte column would refuse the values above 32767 that the attribute accepts.
+    t.integer :hits
     t.integer :misses, limit: 2
   end
   create_table(:quantities) do |t|
@@ -139,7 +124,7 @@ ActiveRecord::Schema.define do
   create_table(:profiles) do |t|
     t.string :name
     t.json :settings
-    t.jsonb :extras if AdapterSpecDatabase.postgresql?
+    t.jsonb :extras
   end
   create_table(:memberships) do |t|
     t.string :email, limit: 20, null: false
@@ -155,13 +140,10 @@ ActiveRecord::Schema.define do
   end
   add_index :accounts, :email, unique: true
 
-  # Array columns exist only in PostgreSQL.
-  if AdapterSpecDatabase.postgresql?
-    create_table(:playlists) do |t|
-      t.string :title
-      t.column :track_ids, :integer, array: true
-      t.column :tags, :text, array: true
-    end
+  create_table(:playlists) do |t|
+    t.string :title
+    t.column :track_ids, :integer, array: true
+    t.column :tags, :text, array: true
   end
 end
 
@@ -295,37 +277,30 @@ module AdapterSpecModels
     self.abstract_class = true
   end
 
-  # Models that use another database than ActiveRecord::Base: a second in-memory SQLite database,
-  # whatever database the rest of the specs use. Its only table is readings.
-  class OtherDatabaseRecord < ActiveRecord::Base
+  # Models that use another database than ActiveRecord::Base: the secondary database. Its only
+  # table is readings.
+  class SecondaryDatabaseRecord < ActiveRecord::Base
     self.abstract_class = true
-    establish_connection(adapter: "sqlite3", database: ":memory:", pool: 1)
+    establish_connection(AdapterSpecDatabase::SECONDARY_CONNECTION_OPTIONS)
   end
 
-  class Reading < OtherDatabaseRecord
+  class Reading < SecondaryDatabaseRecord
     self.table_name = "readings"
   end
 
-  # Named like a table of the default database, which the other database does not have.
-  class UserInOtherDatabase < OtherDatabaseRecord
+  # Named like a table of the default database, which the secondary database does not have.
+  class UserInSecondaryDatabase < SecondaryDatabaseRecord
     self.table_name = "users"
   end
 end
 
-AdapterSpecModels::OtherDatabaseRecord.with_connection do |connection|
+AdapterSpecModels::SecondaryDatabaseRecord.with_connection do |connection|
+  connection.drop_table(:readings, if_exists: true)
   connection.create_table(:readings) { |t| t.string :label }
 end
 
 # The specs that save rows leave the tables empty for the next example.
 RSpec.configure do |config|
-  # An example tagged :postgresql_only needs a feature that only PostgreSQL has (an array column);
-  # one tagged :sqlite_only needs a SQLite behaviour. Each is skipped on the other database.
-  if AdapterSpecDatabase.postgresql?
-    config.filter_run_excluding sqlite_only: true
-  else
-    config.filter_run_excluding postgresql_only: true
-  end
-
   config.after do
     AdapterSpecModels::Account.delete_all
     AdapterSpecModels::Membership.delete_all

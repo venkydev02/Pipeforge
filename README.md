@@ -42,21 +42,14 @@ Matching uses names only, with no language model. The same names and settings al
 
 ## A migration in four steps
 
-The repository has a small sample database and three sample files, so you can follow along without setting anything up:
-
-```bash
-bundle install
-bundle exec script/console
-```
-
-This creates `tmp/development.sqlite3` with a `users` table (ten rows) and a `companies` table, and opens a console with the models `Sample::User` and `Sample::Company` loaded. Running it again recreates the database, so the data is always the same. The ActiveRecord adapter finds the model you name among the models that are already loaded; it never loads one itself, so load your models first (a Rails application has loaded them already). A name that no loaded model has stops with `active_record_model_not_found`.
+The example below uses a `User` model that belongs to a `Company`, and a CSV file `users.csv` with a header row. Use your own model and file. The ActiveRecord adapter finds the model you name among the models that are already loaded; it never loads one itself, so load your models first (a Rails application has loaded them already). A name that no loaded model has stops with `active_record_model_not_found`.
 
 ### 1. Match the columns
 
 ```ruby
 engine = Pipeforge::Engine.new(
-  source_io: File.open("script/sample_data/users_bad_values.csv"),
-  target_model: "Sample::User"
+  source_io: File.open("users.csv"),
+  target_model: "User"
 )
 header_analysis = engine.analyze_headers
 header_analysis.matches.each { |match| puts "#{match[:target_column]} <- #{match[:source_column]} (#{match[:score]})" }
@@ -123,7 +116,7 @@ end
 totals
 # => #<data Pipeforge::RunProcessor::RunResult processed_rows_count=5, valid_rows_count=3, failed_rows_count=2>
 
-Sample::User.count   # => 10, unchanged
+User.count   # => 10, unchanged
 ```
 
 Change the mode to `:run` and each valid row is written in its own transaction and kept. A row the database refuses becomes a failed row and the run goes on. The totals match the dry run, and `users` ends with 13 rows here.
@@ -142,7 +135,7 @@ Every row goes through three checks, and the report says which one refused it.
 | `model` | your model's validations and callbacks | whatever your validators say; parents are loaded once for each chunk, not once for each row | whatever your validators report |
 | `database` | the database, when it refuses the write | a duplicate in a unique index, a parent row that does not exist | `value_not_unique`, `parent_missing` |
 
-The first layer matters most when the model says nothing. `Sample::User` has no validations at all, and the dry run above still refused the 34-character status, because the table says 20. Without that layer nothing would stop it. On SQLite, the sample database, a 34-character status is saved as it is even though the column says 20; on PostgreSQL the database refuses the row, but only when it is written.
+The first layer matters most when the model says nothing. `User` has no validations at all, and the dry run above still refused the 34-character status, because the table says 20. Without that layer nothing would stop it. PostgreSQL would refuse the row too, but only when it is written.
 
 ## Behind a screen
 
@@ -218,7 +211,7 @@ Each choice buys something and costs something. These are the ones that will mat
 
 | Choice | What you get | What it costs |
 |---|---|---|
-| Match by names only | the same names always give the same scores, and every match can be explained | synonyms and abbreviations are missed: `Mail`, `Fname`, `Surname` and `Addr` all stayed unmatched against `Sample::User`, so a person picks them on the mapping screen |
+| Match by names only | the same names always give the same scores, and every match can be explained | synonyms and abbreviations are missed: `Mail`, `Fname`, `Surname` and `Addr` all stayed unmatched against `User`, so a person picks them on the mapping screen |
 | Follow the model's cast | a dry run reports what a real run does | the cast trap: text that is not a number loads as 0, so you read `casted_to` |
 | Load one row at a time | exact row numbers, and a refused row never takes a batch down with it | slower than batch loading, which is planned and not built |
 | Keep every distinct value | complete lists to build value mappings from | memory grows with the number of distinct values, not with rows; a free-text column with a million different values is the costly case. `run` holds one chunk |
@@ -238,7 +231,7 @@ The gem is `pipeforge-activerecord`, the ActiveRecord adapter. It already contai
 gem "pipeforge-activerecord", github: "venkydev02/Pipeforge"
 ```
 
-Then `require "pipeforge-activerecord"`. The databases the first release targets are SQLite and PostgreSQL. Credentials stay in your application's own database configuration (ActiveRecord's, for this adapter); Pipeforge never asks for them.
+Then `require "pipeforge-activerecord"`. The first release targets PostgreSQL. Credentials stay in your application's own database configuration (ActiveRecord's, for this adapter); Pipeforge never asks for them.
 
 ## Settings
 
@@ -282,9 +275,10 @@ From the repository root:
 | Run the tests | `bundle exec rspec` |
 | Run the linter (StandardRB) | `bundle exec standardrb` |
 | Run the tests with coverage of `lib/` | `bundle exec ruby script/coverage.rb` |
-| Open the sample console | `bundle exec script/console` |
 
-CI runs the linter and the tests on every pull request to `master`.
+The adapter specs need a running PostgreSQL with two empty databases, which you create once: `createdb pipeforge_test` and `createdb pipeforge_test_secondary` (the second one is for the examples of a model kept in another database). The specs reach PostgreSQL through the Unix socket as the user who runs them; the `PG` environment variables (`PGHOST`, `PGUSER`, `PGPASSWORD`) apply when they are set.
+
+CI starts a PostgreSQL, creates the two databases, then runs the linter and the tests on every pull request to `master`.
 
 ## Documentation
 

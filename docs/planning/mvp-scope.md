@@ -13,7 +13,7 @@
 
 ### 1.2 Target
 - Rails applications using ActiveRecord, through the `pipeforge-activerecord` gem, which carries the core (ADR-23)
-- PostgreSQL (first), SQLite
+- PostgreSQL (ADR-27); MySQL after the MVP
 - Target named by its model class (for example `"User"`); the ActiveRecord adapter finds the loaded model with that name and reads the table from it (ADR-26)
 
 ### 1.3 Migration Scope
@@ -65,7 +65,7 @@ Now that row-by-row loading is built (post-load work): review which error codes 
 
 1. A Rails consumer can configure the engine and run a migration from their own code with only options and a source file.
 2. CSV files are analyzed without loading the whole file into memory.
-3. The target model's columns and model metadata are read (PostgreSQL and SQLite).
+3. The target model's columns and model metadata are read (PostgreSQL).
 4. `analyze_headers` returns the best match for each target column (a source column and a score) with the metadata of the target column, using names only.
 5. `analyze_column_values` returns, per mapped column, the empty count, the type compatibility, the distinct values split into compatible and incompatible lists, and the value mapping.
 6. The consumer can edit the mapped columns or a value mapping and call `analyze_column_values` again; the facts reflect the edit.
