@@ -81,7 +81,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       expect(value_result.column_summaries["balance"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
 
       entries = value_result.column_summaries["balance"].distinct_values.compatible
-      # Compared as text.
+      # casted_to is the JSON form of the cast value, and a decimal is a text in JSON, so it is compared as text.
       expect(entries.first).to have_attributes(value: "10.5", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "10.5" })
       expect(entries.last).to have_attributes(value: "abc", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "0.0" })
     end
@@ -97,7 +97,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
       it "gives the decimal the database would receive, without the zeros the text had" do
         entries = value_result.column_summaries["balance"].distinct_values.compatible
-        # Compared as text.
+        # casted_to is the JSON form of the cast value, and a decimal is a text in JSON, so it is compared as text.
         entries_with_text = entries.map { |entry| entry.with(casted_to: entry.casted_to.to_s) }
 
         expect(entries_with_text).to contain_exactly(

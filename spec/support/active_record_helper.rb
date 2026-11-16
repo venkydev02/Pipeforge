@@ -23,7 +23,7 @@ require "active_record"
 #               table) and a column whose default is set only in the model
 #   events      a date and a datetime column, for the formats the model reads
 #   measurements a single precision float (limit 24) next to a double precision one
-#   quantities  an integer with no size next to a bigint (the size each database gives them differs)
+#   quantities  an integer with no size (4 bytes) next to a bigint (8 bytes)
 #   profiles    a json column and a jsonb column, for the text a file holds in them
 #   counters    an unsigned integer attribute (the type MySQL gives an unsigned column) on a wider table column, next to a signed one
 #   memberships a model with validations: presence, uniqueness, length, numericality, an enum

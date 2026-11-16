@@ -130,10 +130,8 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
         expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "character varying")
       end
 
-      context "and the database is PostgreSQL" do
-        it "gives no limit, because the model declares the integer with no size" do
-          expect(column_named(schema, "rank").limit).to be_nil
-        end
+      it "gives no limit, because the model declares the integer with no size" do
+        expect(column_named(schema, "rank").limit).to be_nil
       end
     end
 
