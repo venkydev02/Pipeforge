@@ -10,6 +10,28 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # The adapter specs run against a real PostgreSQL. The PG variables are what the database
+    # driver reads, so the specs need no connection settings of their own.
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pipeforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v7
 
@@ -21,6 +43,10 @@ jobs:
 
       - name: Lint (StandardRB)
         run: bundle exec standardrb
+
+      # The second database that the specs of a model kept in another database use.
+      - name: Create the secondary test database
+        run: createdb pipeforge_test_secondary
 
       - name: Test (RSpec)
         run: bundle exec rspec

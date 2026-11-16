@@ -25,7 +25,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
 
     it "gives the character limit of a string column as max_length" do
       expect(column_named(schema, "email")).to have_attributes(
-        type: "string", sql_type: "varchar(255)", max_length: 255, limit: nil
+        type: "string", sql_type: "character varying(255)", max_length: 255, limit: nil
       )
     end
 
@@ -40,16 +40,8 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
         expect(column_named(schema, "big_count")).to have_attributes(type: "integer", limit: 8)
       end
 
-      context "and the database is SQLite" do
-        it "gives 8 bytes as the limit of the integer column, the size SQLite holds", :sqlite_only do
-          expect(column_named(schema, "plain_count")).to have_attributes(type: "integer", limit: 8)
-        end
-      end
-
-      context "and the database is PostgreSQL" do
-        it "gives 4 bytes as the limit of the integer column, the size of its integer type", :postgresql_only do
-          expect(column_named(schema, "plain_count")).to have_attributes(type: "integer", limit: 4)
-        end
+      it "gives 4 bytes as the limit of the integer column, the size of its integer type" do
+        expect(column_named(schema, "plain_count")).to have_attributes(type: "integer", limit: 4)
       end
     end
 
@@ -109,7 +101,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       expect(column_named(schema, "shout")).to be_nil
     end
 
-    context "when the table has array columns", :postgresql_only do
+    context "when the table has array columns" do
       let(:target_model) { "AdapterSpecModels::Playlist" }
 
       it "lists only the column that is not an array" do
@@ -135,11 +127,11 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
       let(:target_model) { "AdapterSpecModels::Ticket" }
 
       it "gives the type the model declares" do
-        expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "varchar")
+        expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "character varying")
       end
 
       context "and the database is PostgreSQL" do
-        it "gives no limit, because the model declares the integer with no size", :postgresql_only do
+        it "gives no limit, because the model declares the integer with no size" do
           expect(column_named(schema, "rank").limit).to be_nil
         end
       end
@@ -292,7 +284,7 @@ RSpec.describe Pipeforge::ActiveRecordAdapter do
     end
 
     context "when the model uses another database and its table is only in the default database" do
-      let(:target_model) { "AdapterSpecModels::UserInOtherDatabase" }
+      let(:target_model) { "AdapterSpecModels::UserInSecondaryDatabase" }
 
       it "stops with target_table_not_found and the table of the model" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|

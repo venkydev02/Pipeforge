@@ -221,7 +221,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         end
       end
 
-      context "and a second json column holds a text that is not JSON", :postgresql_only do
+      context "and a second json column holds a text that is not JSON" do
         let(:attributes) { {"name" => "ann", "settings" => "{oops", "extras" => "hello"} }
 
         it "reports both columns" do
@@ -298,7 +298,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "keeps the native message" do
         model_record.load
 
-        expect(model_record.errors.first[:message]).to include("UNIQUE constraint failed: accounts.email")
+        expect(model_record.errors.first[:message]).to include("duplicate key value violates unique constraint")
       end
 
       it "leaves the table as it was" do

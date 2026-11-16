@@ -40,7 +40,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     expect(result.model).to eq("AdapterSpecModels::User")
   end
 
-  context "when the table has an array column", :postgresql_only do
+  context "when the table has an array column" do
     let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Playlist") }
     let(:csv) { "Title,Track ids\nmix,\"{1,2}\"\n" }
 
@@ -81,7 +81,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       expect(value_result.column_summaries["balance"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
 
       entries = value_result.column_summaries["balance"].distinct_values.compatible
-      # A number on SQLite and a text on PostgreSQL, so it is compared as text.
+      # Compared as text.
       expect(entries.first).to have_attributes(value: "10.5", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "10.5" })
       expect(entries.last).to have_attributes(value: "abc", count: 1, casted_to: satisfy { |casted_to| casted_to.to_s == "0.0" })
     end
@@ -97,7 +97,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
 
       it "gives the decimal the database would receive, without the zeros the text had" do
         entries = value_result.column_summaries["balance"].distinct_values.compatible
-        # A number on SQLite and a text on PostgreSQL, so it is compared as text.
+        # Compared as text.
         entries_with_text = entries.map { |entry| entry.with(casted_to: entry.casted_to.to_s) }
 
         expect(entries_with_text).to contain_exactly(
@@ -193,16 +193,8 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
         expect(value_result.column_summaries["big_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
       end
 
-      context "and the database is SQLite" do
-        it "counts the value as fitting the integer column, which SQLite holds in 8 bytes", :sqlite_only do
-          expect(value_result.column_summaries["plain_count"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 0)
-        end
-      end
-
-      context "and the database is PostgreSQL" do
-        it "counts the value as not fitting the integer column, which holds 4 bytes", :postgresql_only do
-          expect(value_result.column_summaries["plain_count"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 1)
-        end
+      it "counts the value as not fitting the integer column, which holds 4 bytes" do
+        expect(value_result.column_summaries["plain_count"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 1)
       end
     end
 

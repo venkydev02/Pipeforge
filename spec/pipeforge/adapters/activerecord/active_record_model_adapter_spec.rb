@@ -170,7 +170,7 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       end
     end
 
-    context "with a jsonb column", :postgresql_only do
+    context "with a jsonb column" do
       let(:model) { AdapterSpecModels::Profile }
       let(:attributes) { {"name" => "ann", "extras" => '{"beta":true}'} }
 
@@ -335,7 +335,7 @@ RSpec.describe Pipeforge::ActiveRecordModelAdapter do
       end
     end
 
-    context "with a jsonb column", :postgresql_only do
+    context "with a jsonb column" do
       let(:model) { AdapterSpecModels::Profile }
 
       it "gives the object that a text describes" do
