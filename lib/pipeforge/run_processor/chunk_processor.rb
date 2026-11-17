@@ -26,20 +26,20 @@ module Pipeforge
         # @param transformer [RowTransformer]
         # @param schema_checker [SchemaChecker]
         # @param target_schema [TargetSchema]
-        # @param model_adapter [#build_record, #preload_parents] the adapter's object for the target table; the
+        # @param target [#build_record, #preload_parents] the target of the target model; the
         #   record it builds is written with +load+
         # @return [ChunkResult]
-        def call(rows:, first_row_number:, transformer:, schema_checker:, target_schema:, model_adapter:)
+        def call(rows:, first_row_number:, transformer:, schema_checker:, target_schema:, target:)
           candidates = build_candidates(
             rows: rows, first_row_number: first_row_number, transformer: transformer,
-            target_schema: target_schema, model_adapter: model_adapter
+            target_schema: target_schema, target: target
           )
 
           model_records = []
           candidates.each { |candidate| model_records << candidate.model_record }
           # One query for each association for the whole chunk, so the model's validation does not query the
           # parent of each row.
-          model_adapter.preload_parents(records: model_records)
+          target.preload_parents(records: model_records)
 
           failed_rows = validate_and_load(candidates: candidates, schema_checker: schema_checker)
 
@@ -55,7 +55,7 @@ module Pipeforge
 
         private
 
-        def build_candidates(rows:, first_row_number:, transformer:, target_schema:, model_adapter:)
+        def build_candidates(rows:, first_row_number:, transformer:, target_schema:, target:)
           candidates = []
 
           rows.each_with_index do |row, position|
@@ -67,7 +67,7 @@ module Pipeforge
               record_attributes: record_attributes_without_empty_defaults(
                 mapped_values: mapped_values, target_schema: target_schema
               ),
-              model_adapter: model_adapter
+              target: target
             )
           end
 

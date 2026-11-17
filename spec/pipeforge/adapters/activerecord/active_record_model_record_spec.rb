@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::ActiveRecordModelRecord do
-  subject(:model_record) { model_adapter.build_record(attributes: attributes) }
+  subject(:model_record) { target.build_record(attributes: attributes) }
 
-  let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Membership) }
+  let(:target) { Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::Membership") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:attributes) { {"email" => "ann@example.com", "tier" => "basic", "company_id" => company.id} }
 
@@ -63,7 +63,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     end
 
     context "when a json column holds a text that is not JSON" do
-      let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Profile) }
+      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::Profile") }
       let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
 
       it "includes the text as it was given, because the record could not hold it" do
@@ -185,7 +185,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     end
 
     context "when a json column holds a text that is not JSON" do
-      let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Profile) }
+      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::Profile") }
       let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
 
       it "is false" do
@@ -199,8 +199,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       end
 
       context "and the model also requires the column" do
-        let(:model_adapter) do
-          Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::ProfileWithRequiredSettings)
+        let(:target) do
+          Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::ProfileWithRequiredSettings")
         end
 
         it "gives value_not_json and not the blank value the model sees as a second mistake" do
@@ -258,9 +258,9 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
   end
 
   describe "#load" do
-    subject(:model_record) { model_adapter.build_record(attributes: attributes) }
+    subject(:model_record) { target.build_record(attributes: attributes) }
 
-    let(:model_adapter) { Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Account) }
+    let(:target) { Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::Account") }
     let(:attributes) { {"email" => "ann@example.com", "nickname" => "ann", "company_id" => company.id} }
 
     context "when the table takes the row" do
@@ -276,8 +276,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       end
 
       it "does not run the model's validations again" do
-        validating_adapter = Pipeforge::ActiveRecordModelAdapter.new(model: AdapterSpecModels::Membership)
-        record = validating_adapter.build_record(attributes: {"email" => nil, "tier" => "basic"})
+        validating_target = Pipeforge::ActiveRecordTarget.new(target_model: "AdapterSpecModels::Membership")
+        record = validating_target.build_record(attributes: {"email" => nil, "tier" => "basic"})
 
         expect(record.load).to be(false)
         expect(record.errors.map { |error| error[:code] }).to eq([:value_missing])
@@ -389,8 +389,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     context "inside an open transaction" do
       it "undoes only the refused row, and keeps the rows saved before it" do
         AdapterSpecModels::Account.create!(email: "ann@example.com")
-        refused = model_adapter.build_record(attributes: {"email" => "ann@example.com"})
-        accepted = model_adapter.build_record(attributes: {"email" => "bob@example.com"})
+        refused = target.build_record(attributes: {"email" => "ann@example.com"})
+        accepted = target.build_record(attributes: {"email" => "bob@example.com"})
 
         AdapterSpecModels::Account.transaction do
           accepted.load

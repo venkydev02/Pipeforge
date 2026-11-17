@@ -65,16 +65,16 @@ module Pipeforge
       # @param source_column [String] the source column the values are read from
       # @param position [Integer] the position of the source column in the file, starting at 1
       # @param limits_checker [ColumnLimitsChecker] the checker of the target column
-      # @param model_adapter [#cast_value] the adapter's object for the target table
+      # @param target [#cast_value] the target of the target model
       # @param value_mapping [Hash{String => Object}] the consumer's mapping of source values to the values to
       #   load; an empty Hash for no mapping
-      def initialize(target_column:, source_column:, position:, limits_checker:, model_adapter:, value_mapping:)
+      def initialize(target_column:, source_column:, position:, limits_checker:, target:, value_mapping:)
         @target_column = target_column
         @source_column = source_column
         @position = position
         @limits_checker = limits_checker
         @value_mapping = value_mapping
-        @model_adapter = model_adapter
+        @target = target
         @empty = 0
         @compatible_values = DistinctValues.new(listed_value_class: CompatibleValue)
         @incompatible_values = DistinctValues.new(listed_value_class: IncompatibleValue)
@@ -134,7 +134,7 @@ module Pipeforge
       end
 
       def record_new_value(value:, mapped_value:)
-        cast_result = @model_adapter.cast_value(column_name: @target_column, value: mapped_value)
+        cast_result = @target.cast_value(column_name: @target_column, value: mapped_value)
         mapping_applied = @value_mapping.key?(value)
 
         unless cast_result.castable

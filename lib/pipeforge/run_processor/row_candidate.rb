@@ -25,7 +25,7 @@ module Pipeforge
       # @return [Hash{String => Object}] the attributes the model record was built from
       attr_reader :record_attributes
 
-      # @return [#valid?, #load, #errors, #attributes] the adapter's wrapper of one record, built from the
+      # @return [#valid?, #load, #errors, #attributes] the target's record of one row, built from the
       #   attributes. +load+ writes it and is true when the target took it; +valid?+ runs the model's
       #   checks and is true when it finds no mistake; +errors+ is one
       #   entry {origin:, code:, message:, target_column:} for each mistake the last +valid?+ or +load+ found;
@@ -43,13 +43,13 @@ module Pipeforge
       # @param mapped_values [Hash{String => Object}] the row after the column mapping and the value mapping,
       #   which the failed row shows
       # @param record_attributes [Hash{String => Object}] what the record is built from
-      # @param model_adapter [#build_record] the adapter's object for the target table
-      def initialize(row_number:, mapped_values:, record_attributes:, model_adapter:)
+      # @param target [#build_record] the target of the target model
+      def initialize(row_number:, mapped_values:, record_attributes:, target:)
         @row_number = row_number
         @mapped_values = mapped_values
         @errors = []
         @record_attributes = record_attributes
-        @model_record = model_adapter.build_record(attributes: record_attributes)
+        @model_record = target.build_record(attributes: record_attributes)
       end
 
       # Checks the built record on two levels, the model's and the schema's, and keeps one entry for each

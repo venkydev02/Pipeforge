@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the model adapter are doubles: the analyzer only
+# The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the target are doubles: the analyzer only
 # reads the header for the position of each source column, builds a summary builder for each resolved mapped column,
 # hands each builder the cell of its source column row after row and collects the summaries into a Result.
 # What a summary builder does with a cell belongs to its own spec. An example that documents what the analyzer accepts
@@ -12,12 +12,12 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   describe ".call" do
     subject(:result) do
       described_class.call(
-        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns, model_adapter: model_adapter
+        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns, target: target
       )
     end
 
     let(:source_reader) { instance_double(Pipeforge::Source::CsvReader, identifier: "users.csv") }
-    let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter) }
+    let(:target) { instance_double(Pipeforge::ActiveRecordTarget) }
     let(:header_names) { %w[Mail Age] }
     let(:rows) do
       [
@@ -90,7 +90,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
           expect(summary_builder_class).to have_received(:new).once.with(
             target_column: "age", source_column: "Age", position: 2, limits_checker: age_limits_checker,
-            value_mapping: value_mapping, model_adapter: model_adapter
+            value_mapping: value_mapping, target: target
           )
         end
       end

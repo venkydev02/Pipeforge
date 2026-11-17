@@ -5,7 +5,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     subject(:chunk_result) do
       described_class.call(
         rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
-        target_schema: target_schema, model_adapter: model_adapter
+        target_schema: target_schema, target: target
       )
     end
 
@@ -24,7 +24,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     end
     let(:transformer) { Pipeforge::RunProcessor::RowTransformer.new(mapped_columns: mapped_columns) }
     let(:schema_checker) { Pipeforge::RunProcessor::SchemaChecker.new(target_schema: target_schema) }
-    let(:model_adapter) { FakeModelAdapter.new(errors_of: errors_of) }
+    let(:target) { FakeTarget.new(errors_of: errors_of) }
     let(:errors_of) { ->(attributes:) { [] } }
     let(:rows) do
       [
@@ -63,18 +63,18 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     it "builds the record of each row from its transformed values" do
       chunk_result
 
-      expect(model_adapter.built_attributes.first).to eq("email" => "a@example.com", "status" => "active")
+      expect(target.built_attributes.first).to eq("email" => "a@example.com", "status" => "active")
     end
 
     it "preloads the parents once, for every record of the chunk" do
       chunk_result
 
-      expect(model_adapter.preload_calls.map(&:size)).to eq([3])
+      expect(target.preload_calls.map(&:size)).to eq([3])
     end
 
     it "preloads after every record is built" do
-      allow(model_adapter).to receive(:preload_parents).and_wrap_original do |original, **arguments|
-        expect(model_adapter.built_attributes.size).to eq(3)
+      allow(target).to receive(:preload_parents).and_wrap_original do |original, **arguments|
+        expect(target.built_attributes.size).to eq(3)
         original.call(**arguments)
       end
 
@@ -119,26 +119,26 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       it "leaves an empty value out of the attributes, so the default fills it" do
         chunk_result
 
-        expect(model_adapter.built_attributes.first).to eq("email" => "a@example.com", "note" => nil)
+        expect(target.built_attributes.first).to eq("email" => "a@example.com", "note" => nil)
       end
 
       it "keeps an empty value that has no default, as an explicit empty value" do
         chunk_result
 
-        expect(model_adapter.built_attributes.first).to include("note" => nil)
+        expect(target.built_attributes.first).to include("note" => nil)
       end
 
       it "keeps a value that is given" do
         chunk_result
 
-        expect(model_adapter.built_attributes.last).to include("status" => "closed")
+        expect(target.built_attributes.last).to include("status" => "closed")
       end
 
       it "keeps the empty value in the values of a failed row" do
-        failing = FakeModelAdapter.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column: "email"}] })
+        failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
-          target_schema: target_schema, model_adapter: failing
+          target_schema: target_schema, target: failing
         )
 
         expect(result.failed_rows.first.mapped_values).to include("status" => nil)
@@ -155,7 +155,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       it "adds nothing for it" do
         chunk_result
 
-        expect(model_adapter.built_attributes).to eq([{"email" => "a@example.com"}])
+        expect(target.built_attributes).to eq([{"email" => "a@example.com"}])
       end
     end
 
@@ -179,13 +179,13 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       it "writes each row right after it is validated, before the next row is validated" do
         chunk_result
 
-        expect(model_adapter.events.map(&:first)).to eq(%i[valid load valid load valid load])
+        expect(target.events.map(&:first)).to eq(%i[valid load valid load valid load])
       end
 
       it "writes the rows in file order" do
         chunk_result
 
-        written_emails = model_adapter.events.select { |event| event.first == :load }.map { |event| event.last["email"] }
+        written_emails = target.events.select { |event| event.first == :load }.map { |event| event.last["email"] }
         expect(written_emails).to eq(%w[a@example.com b@example.com c@example.com])
       end
 
@@ -201,7 +201,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         it "does not write that row, and goes on with the next" do
           chunk_result
 
-          expect(model_adapter.events.map(&:first)).to eq(%i[valid load valid valid load])
+          expect(target.events.map(&:first)).to eq(%i[valid load valid valid load])
         end
       end
     end
@@ -213,8 +213,8 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       let(:database_error) do
         {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column: "email"}
       end
-      let(:model_adapter) do
-        FakeModelAdapter.new(
+      let(:target) do
+        FakeTarget.new(
           load_errors_of: ->(attributes:) { (attributes["email"] == "dup@example.com") ? [database_error] : [] }
         )
       end
@@ -232,7 +232,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       it "goes on with the rows after it" do
         chunk_result
 
-        expect(model_adapter.events.count { |event| event.first == :load }).to eq(3)
+        expect(target.events.count { |event| event.first == :load }).to eq(3)
       end
     end
   end

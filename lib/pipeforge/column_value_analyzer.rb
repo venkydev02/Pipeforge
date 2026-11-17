@@ -60,7 +60,7 @@ module Pipeforge
       # to several target columns is measured once for each of them. Nothing the caller gave is changed.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
-      # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
+      # @param target [#cast_value] the target of the target model, which casts a value
       #   for a column so that it is checked as the value it would load
       # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column => its source column, value mapping
       #   and column of the target table, which gives the type and the limits. Only these columns are measured.
@@ -68,7 +68,7 @@ module Pipeforge
       # @raise [Source::EmptySourceError] the file has no header line
       # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
       # @raise [Source::MalformedSourceError] a row cannot be parsed
-      def call(source_reader:, resolved_mapped_columns:, model_adapter:)
+      def call(source_reader:, resolved_mapped_columns:, target:)
         header_names = source_reader.headers
 
         summary_builders = {}
@@ -79,7 +79,7 @@ module Pipeforge
             position: header_names.index(resolved_mapped_column.source_column) + 1,
             limits_checker: ColumnLimitsChecker.for(target_column: resolved_mapped_column.target_column),
             value_mapping: resolved_mapped_column.value_mapping,
-            model_adapter: model_adapter
+            target: target
           )
         end
 

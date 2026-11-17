@@ -30,7 +30,7 @@ module Pipeforge
     # fully and +Company+ less well.
     #
     # The target columns are given by name. They are only the columns that can be given a source
-    # column: the target adapter leaves out the others (the primary key, ignored and generated
+    # column: the target leaves out the others (the primary key, ignored and generated
     # columns).
     #
     # @example

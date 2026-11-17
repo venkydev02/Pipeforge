@@ -100,7 +100,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
         source_column: "Status",
         position: 0,
         limits_checker: Pipeforge::ColumnLimitsChecker.new(type: "string"),
-        model_adapter: FakeModelAdapter.new,
+        target: FakeTarget.new,
         value_mapping: value_mapping
       )
       rows.each { |row| summary_builder.add_cell(cell: row["Status"]) }

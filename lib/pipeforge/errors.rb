@@ -59,7 +59,7 @@ module Pipeforge
   # mistake.
   class InvalidMappedColumnsError < Error; end
 
-  # Raised by a target adapter that cannot read the schema of the target. A table that does
+  # Raised by a target that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table+). A code that belongs
   # to one adapter carries its name, for example +active_record_model_not_found+ (field +model+).
   class TargetSchemaError < Error; end

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Pipeforge
-  # The structure of the target table, as a target adapter reports it. It holds metadata only:
+  # The structure of the target table, as a target reports it. It holds metadata only:
   # no rows, counts or cell values.
   #
   # @example

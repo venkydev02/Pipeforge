@@ -8,15 +8,15 @@ RSpec.describe Pipeforge::Engine, "#run" do
     [build_target_column(name: "email", required: true), build_target_column(name: "level", max_length: 3)]
   end
   let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
-  let(:model_adapter) { FakeModelAdapter.new }
+  let(:target) { FakeTarget.new(schema: schema) }
+  let(:target_class) { double("target class", new: target) }
   let(:mapped_columns) { {"email" => {source_column: "Mail"}, "level" => {source_column: "Level"}} }
   let(:mode) { :dry_run }
   let(:chunk_results) { [] }
 
-  # The core is tested without an adapter gem, so the adapter calls are stubbed.
+  # The core is tested without an adapter gem, so the engine builds a fake target.
   before do
-    allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
-    allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(model_adapter)
+    allow(Pipeforge::Engine).to receive(:target_class).and_return(target_class)
     use_settings(execution: {chunk_size: 2})
   end
 
@@ -42,10 +42,10 @@ RSpec.describe Pipeforge::Engine, "#run" do
     expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.first[:code]] }).to eq([[2, :value_missing]])
   end
 
-  it "asks the adapter for the model adapter of the table it was given" do
+  it "builds the target of the model it was given" do
     run_engine
 
-    expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record")
+    expect(target_class).to have_received(:new).with(target_model: "Record")
   end
 
   it "gives the same result in a dry run and in a run" do
@@ -105,8 +105,8 @@ RSpec.describe Pipeforge::Engine, "#run" do
     it "stops before a row is read or a transaction is opened" do
       expect { run_engine(**arguments) }.to raise_error(ArgumentError)
 
-      expect(model_adapter.built_attributes).to eq([])
-      expect(model_adapter.transaction_calls).to eq([])
+      expect(target.built_attributes).to eq([])
+      expect(target.transaction_calls).to eq([])
     end
   end
 
@@ -236,7 +236,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
     it "applies it to the values of the file, which are text" do
       run_engine
 
-      expect(model_adapter.built_attributes.map { |attributes| attributes["level"] }).to eq(%w[one 2 tre])
+      expect(target.built_attributes.map { |attributes| attributes["level"] }).to eq(%w[one 2 tre])
     end
 
     it "shows the mapped values in a failed row" do
@@ -254,7 +254,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
         expect(error.codes).to eq([:required_column_unmapped])
       end
 
-      expect(model_adapter.built_attributes).to eq([])
+      expect(target.built_attributes).to eq([])
     end
   end
 

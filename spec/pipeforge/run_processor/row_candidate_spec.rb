@@ -3,7 +3,7 @@
 RSpec.describe Pipeforge::RunProcessor::RowCandidate do
   subject(:candidate) do
     described_class.new(
-      row_number: 7, mapped_values: mapped_values, record_attributes: record_attributes, model_adapter: model_adapter
+      row_number: 7, mapped_values: mapped_values, record_attributes: record_attributes, target: target
     )
   end
 
@@ -17,7 +17,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
   let(:target_schema) { build_target_schema(columns: target_columns) }
   let(:mapped_values) { {"email" => "ann@example.com", "status" => "closed", "note" => nil} }
   let(:record_attributes) { mapped_values }
-  let(:model_adapter) { FakeModelAdapter.new(errors_of: errors_of) }
+  let(:target) { FakeTarget.new(errors_of: errors_of) }
   let(:errors_of) { ->(attributes:) { [] } }
   let(:schema_checker) { Pipeforge::RunProcessor::SchemaChecker.new(target_schema: target_schema) }
 
@@ -38,19 +38,19 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
       given_record_attributes = {"email" => "ann@example.com", "note" => nil}
       candidate = described_class.new(
         row_number: 7, mapped_values: mapped_values, record_attributes: given_record_attributes,
-        model_adapter: model_adapter
+        target: target
       )
 
       expect(candidate).to have_attributes(mapped_values: mapped_values, record_attributes: given_record_attributes)
     end
 
-    it "gives the model adapter the record attributes to build the record from" do
+    it "gives the target the record attributes to build the record from" do
       candidate
 
-      expect(model_adapter.built_attributes).to eq([{"email" => "ann@example.com", "status" => "closed", "note" => nil}])
+      expect(target.built_attributes).to eq([{"email" => "ann@example.com", "status" => "closed", "note" => nil}])
     end
 
-    it "keeps the record the model adapter built" do
+    it "keeps the record the target built" do
       expect(candidate.model_record.attributes).to eq(candidate.record_attributes)
     end
   end
@@ -125,7 +125,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
       candidate = described_class.new(
         row_number: 1, mapped_values: mapped_values_with_empty_default,
         record_attributes: {"email" => "ann@example.com", "note" => nil},
-        model_adapter: model_adapter
+        target: target
       )
 
       candidate.valid?(schema_checker: checker)
@@ -139,7 +139,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
 
       context "when the change makes a value fit" do
         let(:mapped_values) { {"code" => "abcd"} }
-        let(:model_adapter) { FakeModelAdapter.new(changes_on_validation: ->(attributes:) { {"code" => "abc"} }) }
+        let(:target) { FakeTarget.new(changes_on_validation: ->(attributes:) { {"code" => "abc"} }) }
 
         it "does not report the value that was there before" do
           candidate.valid?(schema_checker: schema_checker)
@@ -150,7 +150,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
 
       context "when the change makes a value too long" do
         let(:mapped_values) { {"code" => "abc"} }
-        let(:model_adapter) { FakeModelAdapter.new(changes_on_validation: ->(attributes:) { {"code" => "abcd"} }) }
+        let(:target) { FakeTarget.new(changes_on_validation: ->(attributes:) { {"code" => "abcd"} }) }
 
         it "reports the value the model changed it to" do
           candidate.valid?(schema_checker: schema_checker)
@@ -202,12 +202,12 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
       it "writes the record once, with the attributes it holds" do
         candidate.load
 
-        expect(model_adapter.events).to eq([[:load, record_attributes]])
+        expect(target.events).to eq([[:load, record_attributes]])
       end
     end
 
     context "when the database refuses the row" do
-      let(:model_adapter) { FakeModelAdapter.new(load_errors_of: ->(attributes:) { [database_error] }) }
+      let(:target) { FakeTarget.new(load_errors_of: ->(attributes:) { [database_error] }) }
 
       it "is false, with the errors of the database" do
         expect(candidate.load).to be(false)

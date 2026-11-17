@@ -7,7 +7,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       source_column: source_column,
       position: position,
       limits_checker: limits_checker,
-      model_adapter: model_adapter,
+      target: target,
       value_mapping: value_mapping
     )
   end
@@ -19,7 +19,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
   let(:value_mapping) { {} }
   let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 30, json_value: 30) }
   let(:violation) { nil }
-  let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter, cast_value: cast_result) }
+  let(:target) { instance_double(Pipeforge::ActiveRecordTarget, cast_value: cast_result) }
   let(:limits_checker) { instance_double(Pipeforge::ColumnLimitsChecker, violation_of: violation) }
 
   # Records one row for each cell, in order. A nil is an empty cell.
@@ -53,7 +53,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "does not cast anything" do
-        expect(model_adapter).not_to have_received(:cast_value)
+        expect(target).not_to have_received(:cast_value)
       end
     end
 
@@ -127,7 +127,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the mapped text and not the cell" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "7")
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: "7")
       end
     end
 
@@ -157,7 +157,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("seven") }
 
       it "casts the number as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: 7)
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: 7)
       end
     end
 
@@ -183,7 +183,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the Hash as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: {"theme" => "dark"})
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: {"theme" => "dark"})
       end
     end
 
@@ -205,7 +205,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts false as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: false)
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: false)
       end
     end
 
@@ -224,7 +224,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the cell as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "30")
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: "30")
       end
     end
 
@@ -258,7 +258,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text for the target column" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "1,000")
+        expect(target).to have_received(:cast_value).with(column_name: target_column, value: "1,000")
       end
 
       it "asks the limits checker about the cast value" do
@@ -367,7 +367,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts and checks the text only the first time" do
-        expect(model_adapter).to have_received(:cast_value).once
+        expect(target).to have_received(:cast_value).once
         expect(limits_checker).to have_received(:violation_of).once
       end
     end
@@ -392,13 +392,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text only the first time" do
-        expect(model_adapter).to have_received(:cast_value).once
+        expect(target).to have_received(:cast_value).once
       end
     end
 
     context "when a text that fits and a text that does not fit were added" do
       before do
-        allow(model_adapter).to receive(:cast_value).with(column_name: target_column, value: "abc")
+        allow(target).to receive(:cast_value).with(column_name: target_column, value: "abc")
           .and_return(Pipeforge::CastResult::NOT_CASTABLE)
         add_cells("30", "abc")
       end

@@ -13,13 +13,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   def result_with(settings)
     use_settings(settings)
     described_class.call(
-      source_reader: csv_reader(csv), resolved_mapped_columns: resolve_mapped_columns(mapped_columns), model_adapter: model_adapter
+      source_reader: csv_reader(csv), resolved_mapped_columns: resolve_mapped_columns(mapped_columns), target: target
     )
   end
 
-  # The adapter that casts a text for a column: by default one that reads a text as the type of its
+  # The target that casts a text for a column: by default one that reads a text as the type of its
   # column and cannot cast any other text.
-  let(:model_adapter) { FakeModelAdapter.reading(types: mapped_columns.transform_values { |entry| entry[:type] }) }
+  let(:target) { FakeTarget.reading(types: mapped_columns.transform_values { |entry| entry[:type] }) }
 
   # One mapping value: the target column of a source column and the type of that column.
   def maps_to(source_column:, type:, **type_info)
@@ -29,7 +29,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   describe "#call" do
     subject(:result) do
       described_class.call(
-        source_reader: source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns), model_adapter: model_adapter
+        source_reader: source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns), target: target
       )
     end
 
@@ -659,7 +659,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       described_class.call(
         source_reader: csv_reader("Age\n30\nx\n\n"),
         resolved_mapped_columns: resolve_mapped_columns("age" => maps_to(source_column: "Age", type: "integer")),
-        model_adapter: FakeModelAdapter.reading(types: {"age" => "integer"})
+        target: FakeTarget.reading(types: {"age" => "integer"})
       )
     end
 

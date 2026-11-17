@@ -28,22 +28,22 @@ module Pipeforge
       # @param offset [Integer] rows to skip before the first one processed
       # @param chunk_size [Integer] rows read, processed and yielded at a time
       # @param mode [Symbol] +:dry_run+ or +:run+
-      # @param model_adapter [#build_record, #preload_parents, #transaction] the adapter's object for the
-      #   target table (see {TargetAdapter.model_adapter})
+      # @param target [#build_record, #preload_parents, #transaction] the target of the target model
+      #   (see {Engine})
       # @yieldparam chunk_result [ChunkResult] the outcome of one chunk
       # @return [RunResult]
-      def call(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, mode:, model_adapter:, &on_chunk)
+      def call(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, mode:, target:, &on_chunk)
         if mode == :dry_run
-          model_adapter.transaction(rollback_at_end: true) do
+          target.transaction(rollback_at_end: true) do
             read_and_process_chunks(
               source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-              offset: offset, chunk_size: chunk_size, model_adapter: model_adapter, &on_chunk
+              offset: offset, chunk_size: chunk_size, target: target, &on_chunk
             )
           end
         else
           read_and_process_chunks(
             source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-            offset: offset, chunk_size: chunk_size, model_adapter: model_adapter, &on_chunk
+            offset: offset, chunk_size: chunk_size, target: target, &on_chunk
           )
         end
       end
@@ -52,7 +52,7 @@ module Pipeforge
 
       # Reads the source in chunks, gives each to {ChunkProcessor}, yields each result to the block and
       # adds up the counts.
-      def read_and_process_chunks(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, model_adapter:)
+      def read_and_process_chunks(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, target:)
         transformer = RowTransformer.new(mapped_columns: mapped_columns)
         schema_checker = SchemaChecker.new(target_schema: target_schema)
         processed_rows_count = 0
@@ -66,7 +66,7 @@ module Pipeforge
         ) do |rows|
           chunk_result = ChunkProcessor.call(
             rows: rows, first_row_number: first_row_number, transformer: transformer,
-            schema_checker: schema_checker, target_schema: target_schema, model_adapter: model_adapter
+            schema_checker: schema_checker, target_schema: target_schema, target: target
           )
           yield chunk_result if block_given?
 

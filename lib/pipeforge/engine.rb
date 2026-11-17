@@ -5,7 +5,6 @@ require_relative "source/csv_reader"
 require_relative "column_value_analyzer"
 require_relative "header_analyzer"
 require_relative "target_schema"
-require_relative "target_adapter"
 require_relative "mapped_data_validator"
 require_relative "run_processor"
 
@@ -20,9 +19,38 @@ module Pipeforge
   #   value_analysis = engine.analyze_column_values(
   #     mapped_columns: {"email" => {source_column: "Mail", value_mapping: {"N/A" => nil}}}
   #   )
+  #
+  # The engine reaches the target through a target class that an adapter gem installs when it is
+  # loaded ({.install_target}); the engine builds one target from it for its target model. The core
+  # names no database library. A target answers +schema+ (the {TargetSchema} of the model's table),
+  # +cast_value(column_name:, value:)+ (a {CastResult}: whether the model can cast a value and what it
+  # would load, in Ruby and in JSON types), +build_record(attributes:)+ (the target's record of one
+  # row), +preload_parents(records:)+ (loads the parents a chunk needs) and
+  # +transaction(rollback_at_end:)+ (runs a block inside one transaction of the target database,
+  # rolled back when the block ends if +rollback_at_end+ is true). A record answers +valid?+,
+  # +errors+, +attributes+ and +load+ (see {RunProcessor::RowCandidate}).
   class Engine
     # The values +mode+ of {#run} can have.
     RUN_MODES = %i[dry_run run].freeze
+
+    class << self
+      # Gives the engine the target class of an adapter gem. The gem entry calls it once, when the
+      # gem is loaded. Every engine builds its own target from this class, for one target model, so
+      # the class keeps no state of its own. If two adapter gems are loaded, the last one installed
+      # is used.
+      #
+      # @api private
+      # @param target_class [Class] follows the target contract above and is built with
+      #   +new(target_model:)+
+      # @return [void]
+      def install_target(target_class:)
+        @target_class = target_class
+      end
+
+      # @api private
+      # @return [Class, nil] the class given to {.install_target}; nil before it is called
+      attr_reader :target_class
+    end
 
     # @param source_io [IO] the CSV source, for example +File.open("data/users.csv")+. It must
     #   respond to +read+, +rewind+ and +seek+; it is wrapped in a {Source::ReusableIO}, so it
@@ -82,7 +110,7 @@ module Pipeforge
 
       ColumnValueAnalyzer.call(
         source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
-        model_adapter: model_adapter
+        target: target
       )
     end
 
@@ -116,7 +144,7 @@ module Pipeforge
 
       RunProcessor.call(
         source_reader: @source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-        offset: offset, chunk_size: chunk_size, mode: mode, model_adapter: model_adapter, &on_chunk
+        offset: offset, chunk_size: chunk_size, mode: mode, target: target, &on_chunk
       )
     end
 
@@ -162,21 +190,21 @@ module Pipeforge
       ).call(mapped_columns: mapped_columns)
     end
 
-    # The adapter's object for the target table, which casts texts and builds records.
-    def model_adapter
-      if @model_adapter.nil?
-        # Kept only once the adapter has answered, so a failed ask is asked again on the next call.
-        @model_adapter = TargetAdapter.model_adapter(target_model: @target_model)
+    # The target of the target model, which reads its schema, casts texts and builds records.
+    def target
+      if @target.nil?
+        # Kept only once the target is built, so a failed build is tried again on the next call.
+        @target = self.class.target_class.new(target_model: @target_model)
       end
 
-      @model_adapter
+      @target
     end
 
-    # The schema of the target table. The adapter is asked on the first call and the answer is
+    # The schema of the target table. The target is asked on the first call and the answer is
     # kept. A failed read is not kept, so the next call asks again.
     def target_schema
       if @target_schema.nil?
-        @target_schema = TargetAdapter.schema(target_model: @target_model)
+        @target_schema = target.schema
       end
 
       @target_schema

@@ -23,7 +23,7 @@ RSpec.describe Pipeforge::RunProcessor do
       "status" => {source_column: "State", value_mapping: {"ok" => "active"}}
     }
   end
-  let(:model_adapter) { FakeModelAdapter.new }
+  let(:target) { FakeTarget.new }
   let(:offset) { 0 }
   let(:chunk_size) { 2 }
   let(:mode) { :dry_run }
@@ -32,7 +32,7 @@ RSpec.describe Pipeforge::RunProcessor do
   def run_all
     described_class.call(
       source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-      offset: offset, chunk_size: chunk_size, mode: mode, model_adapter: model_adapter
+      offset: offset, chunk_size: chunk_size, mode: mode, target: target
     ) { |chunk_result| chunk_results << chunk_result }
   end
 
@@ -66,7 +66,7 @@ RSpec.describe Pipeforge::RunProcessor do
     it "preloads the parents once for each chunk" do
       run_result
 
-      expect(model_adapter.preload_calls.map(&:size)).to eq([2, 2, 1])
+      expect(target.preload_calls.map(&:size)).to eq([2, 2, 1])
     end
 
     it "builds one transformer and one schema checker for the whole run" do
@@ -83,7 +83,7 @@ RSpec.describe Pipeforge::RunProcessor do
       dry_run_result = run_all
       run_result_in_run_mode = described_class.call(
         source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-        offset: 0, chunk_size: 2, mode: :run, model_adapter: FakeModelAdapter.new
+        offset: 0, chunk_size: 2, mode: :run, target: FakeTarget.new
       )
 
       expect(run_result_in_run_mode).to eq(dry_run_result)
@@ -95,24 +95,24 @@ RSpec.describe Pipeforge::RunProcessor do
       it "opens one transaction for the whole run, to be rolled back at the end" do
         run_result
 
-        expect(model_adapter.transaction_calls).to eq([{rollback_at_end: true}])
+        expect(target.transaction_calls).to eq([{rollback_at_end: true}])
       end
 
       it "writes the rows inside the transaction, and the transaction ends after the last chunk" do
         run_result
 
-        expect(model_adapter.events.first).to eq([:transaction_begin])
-        expect(model_adapter.events.last).to eq([:transaction_end])
-        expect(model_adapter.events.count { |event| event.first == :load }).to eq(3)
+        expect(target.events.first).to eq([:transaction_begin])
+        expect(target.events.last).to eq([:transaction_end])
+        expect(target.events.count { |event| event.first == :load }).to eq(3)
       end
 
       it "calls the block while the transaction is open" do
         described_class.call(
           source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-          offset: 0, chunk_size: 2, mode: mode, model_adapter: model_adapter
-        ) { |_chunk_result| model_adapter.events << [:chunk] }
+          offset: 0, chunk_size: 2, mode: mode, target: target
+        ) { |_chunk_result| target.events << [:chunk] }
 
-        expect(model_adapter.events.last(2)).to eq([[:chunk], [:transaction_end]])
+        expect(target.events.last(2)).to eq([[:chunk], [:transaction_end]])
       end
 
       it "returns the totals of the run" do
@@ -126,19 +126,19 @@ RSpec.describe Pipeforge::RunProcessor do
       it "opens no transaction of its own" do
         run_result
 
-        expect(model_adapter.transaction_calls).to eq([])
+        expect(target.transaction_calls).to eq([])
       end
 
       it "writes every row that passed the validation" do
         run_result
 
-        expect(model_adapter.events.count { |event| event.first == :load }).to eq(3)
+        expect(target.events.count { |event| event.first == :load }).to eq(3)
       end
     end
 
     context "when the database refuses a row" do
-      let(:model_adapter) do
-        FakeModelAdapter.new(
+      let(:target) do
+        FakeTarget.new(
           load_errors_of: lambda do |attributes:|
             if attributes["email"] == "b@example.com"
               [{origin: :database, code: :value_not_unique, message: "taken", target_column: "email"}]
@@ -164,7 +164,7 @@ RSpec.describe Pipeforge::RunProcessor do
       it "still returns the totals" do
         run_result = described_class.call(
           source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-          offset: 0, chunk_size: 2, mode: mode, model_adapter: model_adapter
+          offset: 0, chunk_size: 2, mode: mode, target: target
         )
 
         expect(run_result.processed_rows_count).to eq(5)
@@ -215,7 +215,7 @@ RSpec.describe Pipeforge::RunProcessor do
       it "preloads the parents once for each chunk" do
         run_result
 
-        expect(model_adapter.preload_calls.map(&:size)).to eq([1, 1, 1, 1, 1])
+        expect(target.preload_calls.map(&:size)).to eq([1, 1, 1, 1, 1])
       end
     end
 

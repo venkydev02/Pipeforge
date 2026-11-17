@@ -9,7 +9,7 @@ module Pipeforge
   # It is a service: {.call} is given the header names of the source and the schema of the
   # target, and reads nothing itself. It sees no value of the source and no row of the target,
   # and it keeps nothing between calls. The engine reads the header (and checks it) and asks
-  # the target adapter for the schema.
+  # the target for the schema.
   #
   # @example
   #   result = Pipeforge::HeaderAnalyzer.call(
