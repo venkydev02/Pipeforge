@@ -24,7 +24,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"email" => nil} }
 
         it "gives value_missing for that column" do
-          expect(errors).to contain_exactly(include(code: :value_missing, target_column: "email"))
+          expect(errors).to contain_exactly(include(code: :value_missing, target_column_name: "email"))
         end
 
         it "gives a message that a person can read" do
@@ -66,7 +66,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"code" => "abcd"} }
 
         it "gives value_too_long for that column, with a message that names it" do
-          expect(errors).to contain_exactly(include(origin: :schema, code: :value_too_long, target_column: "code", message: /\Acode: /))
+          expect(errors).to contain_exactly(include(origin: :schema, code: :value_too_long, target_column_name: "code", message: /\Acode: /))
         end
       end
 
@@ -86,7 +86,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"age" => 32_768} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "age"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "age"))
         end
       end
 
@@ -118,7 +118,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"fee" => BigDecimal("1000.00")} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "fee"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "fee"))
         end
       end
 
@@ -146,7 +146,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"ratio" => 3.5e38} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "ratio"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "ratio"))
         end
       end
 
@@ -176,7 +176,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"status" => "shipped"} }
 
         it "gives value_not_allowed for that column" do
-          expect(errors).to contain_exactly(include(code: :value_not_allowed, target_column: "status"))
+          expect(errors).to contain_exactly(include(code: :value_not_allowed, target_column_name: "status"))
         end
       end
     end
@@ -201,7 +201,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       let(:attributes) { {"email" => nil, "code" => "ab", "age" => 200} }
 
       it "gives one entry for each, in column order" do
-        expect(errors.map { |error| [error[:target_column], error[:code]] }).to eq(
+        expect(errors.map { |error| [error[:target_column_name], error[:code]] }).to eq(
           [["email", :value_missing], ["code", :value_too_long], ["age", :value_out_of_range]]
         )
       end

@@ -13,7 +13,7 @@ module Pipeforge
   #     engine.analyze_column_values(mapped_columns: mapped_columns)
   #   rescue Pipeforge::InvalidMappedColumnsError => error
   #     error.codes  # => [:mapped_column_not_in_file, :required_column_unmapped]
-  #     error.errors # => [{code: :mapped_column_not_in_file, message: "...", target_column: "email", source_column: "Mail"}, ...]
+  #     error.errors # => [{code: :mapped_column_not_in_file, message: "...", target_column_name: "email", source_column_name: "Mail"}, ...]
   #   end
   class Error < StandardError
     # @return [Array<Hash>] one entry per mistake: +code+, +message+ and the fields that locate it
@@ -60,8 +60,8 @@ module Pipeforge
   class InvalidMappedColumnsError < Error; end
 
   # Raised by a target that cannot read the schema of the target. A table that does
-  # not exist is the shared code +target_table_not_found+ (field +table+). A code that belongs
-  # to one adapter carries its name, for example +active_record_model_not_found+ (field +model+).
+  # not exist is the shared code +target_table_not_found+ (field +table_name+). A code that belongs
+  # to one adapter carries its name, for example +active_record_model_not_found+ (field +model_name+).
   class TargetSchemaError < Error; end
 
   # The errors about the source file: the file itself, its header and its rows.
@@ -78,7 +78,7 @@ module Pipeforge
 
     # Raised by the header stage when the header row cannot be used: a header cell is blank
     # (+source_header_blank+, with its +position+) or a name appears twice
-    # (+source_header_duplicated+, with the +source_column+). One entry for each mistake.
+    # (+source_header_duplicated+, with the +source_column_name+). One entry for each mistake.
     class InvalidHeaderError < Pipeforge::Error; end
 
     # Raised when a row cannot be used as written: it cannot be parsed (for example a quote that

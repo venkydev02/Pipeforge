@@ -14,14 +14,14 @@ module Pipeforge
   # that are loaded; it never loads any itself. The table is the model's own table.
   #
   # @example
-  #   target = Pipeforge::ActiveRecordTarget.new(target_model: "User")
+  #   target = Pipeforge::ActiveRecordTarget.new(target_model_name: "User")
   #   target.schema.columns.map(&:name)  # => ["email", "company_id"]
   class ActiveRecordTarget
-    # @param target_model [String] the name of a loaded model
+    # @param target_model_name [String] the name of a loaded model
     # @raise [TargetSchemaError] no loaded model has that name (+active_record_model_not_found+), or
     #   the table of the model does not exist (+target_table_not_found+)
-    def initialize(target_model:)
-      @model = find_model(target_model: target_model)
+    def initialize(target_model_name:)
+      @model = find_model(target_model_name: target_model_name)
       reject_missing_table
       @enum_labels = read_enum_labels
     end
@@ -166,16 +166,16 @@ module Pipeforge
     end
 
     # The loaded model with that name. An abstract class is not a model of a table, so it is not found.
-    def find_model(target_model:)
+    def find_model(target_model_name:)
       model = ActiveRecord::Base.descendants.find do |candidate|
-        candidate.name == target_model && !candidate.abstract_class?
+        candidate.name == target_model_name && !candidate.abstract_class?
       end
       return model unless model.nil?
 
       raise TargetSchemaError.single(
         code: :active_record_model_not_found,
-        message: "no loaded model is named #{target_model}; the model must be loaded before the schema is read",
-        model: target_model
+        message: "no loaded model is named #{target_model_name}; the model must be loaded before the schema is read",
+        model_name: target_model_name
       )
     end
 
@@ -189,7 +189,7 @@ module Pipeforge
       raise TargetSchemaError.single(
         code: :target_table_not_found,
         message: "table #{@model.table_name} of #{@model.name} does not exist in the database",
-        table: @model.table_name
+        table_name: @model.table_name
       )
     end
 

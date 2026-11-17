@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine, "#run" do
-  subject(:engine) { described_class.new(source_io: csv_io(csv), target_model: "Record") }
+  subject(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "Record") }
 
   let(:csv) { "Mail,Level\na@example.com,1\n,2\nc@example.com,3\n" }
   let(:target_columns) do
     [build_target_column(name: "email", required: true), build_target_column(name: "level", max_length: 3)]
   end
-  let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
+  let(:schema) { build_target_schema(table_name: "records", model_name: "Record", columns: target_columns) }
   let(:target) { FakeTarget.new(schema: schema) }
   let(:target_class) { double("target class", new: target) }
-  let(:mapped_columns) { {"email" => {source_column: "Mail"}, "level" => {source_column: "Level"}} }
+  let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "level" => {source_column_name: "Level"}} }
   let(:mode) { :dry_run }
   let(:chunk_results) { [] }
 
@@ -45,7 +45,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   it "builds the target of the model it was given" do
     run_engine
 
-    expect(target_class).to have_received(:new).with(target_model: "Record")
+    expect(target_class).to have_received(:new).with(target_model_name: "Record")
   end
 
   it "gives the same result in a dry run and in a run" do
@@ -221,7 +221,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   end
 
   context "when an argument and the mapped columns are both wrong" do
-    let(:mapped_columns) { {"level" => {source_column: "Level"}} }
+    let(:mapped_columns) { {"level" => {source_column_name: "Level"}} }
 
     it "reports the argument first, because it is checked before the mapped columns" do
       expect { run_engine(chunk_size: 0) }.to raise_error(ArgumentError)
@@ -230,7 +230,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
 
   context "with a value mapping whose keys are numbers" do
     let(:mapped_columns) do
-      {"email" => {source_column: "Mail"}, "level" => {source_column: "Level", value_mapping: {1 => "one", 3 => "tre"}}}
+      {"email" => {source_column_name: "Mail"}, "level" => {source_column_name: "Level", value_mapping: {1 => "one", 3 => "tre"}}}
     end
 
     it "applies it to the values of the file, which are text" do
@@ -247,7 +247,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   end
 
   context "when a required column is not mapped" do
-    let(:mapped_columns) { {"level" => {source_column: "Level"}} }
+    let(:mapped_columns) { {"level" => {source_column_name: "Level"}} }
 
     it "stops with required_column_unmapped, before any row is read" do
       expect { run_engine }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
@@ -259,7 +259,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   end
 
   context "when several mapped columns are wrong" do
-    let(:mapped_columns) { {"nope" => {source_column: "Mail"}, "level" => {source_column: "Missing"}} }
+    let(:mapped_columns) { {"nope" => {source_column_name: "Mail"}, "level" => {source_column_name: "Missing"}} }
 
     it "lists every mistake together" do
       expect { run_engine }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|

@@ -5,10 +5,10 @@ RSpec.describe Pipeforge::ResolvedMappedColumn do
     subject(:resolved_mapped_column) { described_class.from_entry(entry: entry, target_column: target_column) }
 
     let(:target_column) { build_target_column(name: "email") }
-    let(:entry) { {source_column: "Mail"} }
+    let(:entry) { {source_column_name: "Mail"} }
 
     it "keeps the source column" do
-      expect(resolved_mapped_column.source_column).to eq("Mail")
+      expect(resolved_mapped_column.source_column_name).to eq("Mail")
     end
 
     it "gives the target column it was given" do
@@ -22,7 +22,7 @@ RSpec.describe Pipeforge::ResolvedMappedColumn do
     end
 
     context "when the entry has a value mapping" do
-      let(:entry) { {source_column: "Mail", value_mapping: {"N/A" => nil, "ann" => "Ann"}} }
+      let(:entry) { {source_column_name: "Mail", value_mapping: {"N/A" => nil, "ann" => "Ann"}} }
 
       it "keeps it" do
         expect(resolved_mapped_column.value_mapping).to eq("N/A" => nil, "ann" => "Ann")
@@ -30,7 +30,7 @@ RSpec.describe Pipeforge::ResolvedMappedColumn do
     end
 
     context "when a key of the value mapping is not text" do
-      let(:entry) { {source_column: "Level", value_mapping: {1 => "one", 3 => "tre"}} }
+      let(:entry) { {source_column_name: "Level", value_mapping: {1 => "one", 3 => "tre"}} }
 
       it "turns the keys into text" do
         expect(resolved_mapped_column.value_mapping).to eq("1" => "one", "3" => "tre")
@@ -44,7 +44,7 @@ RSpec.describe Pipeforge::ResolvedMappedColumn do
     end
 
     context "when two keys give the same text" do
-      let(:entry) { {source_column: "Level", value_mapping: {1 => "x", "1" => "20"}} }
+      let(:entry) { {source_column_name: "Level", value_mapping: {1 => "x", "1" => "20"}} }
 
       it "makes them one key, and the later one is used" do
         expect(resolved_mapped_column.value_mapping).to eq("1" => "20")

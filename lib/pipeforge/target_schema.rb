@@ -5,9 +5,9 @@ module Pipeforge
   # no rows, counts or cell values.
   #
   # @example
-  #   schema = Pipeforge::TargetSchema.new(table_name: "users", model: "User", columns: columns)
+  #   schema = Pipeforge::TargetSchema.new(table_name: "users", model_name: "User", columns: columns)
   #   schema.columns.map(&:name)  # => ["id", "email", "company_id"]
-  TargetSchema = Data.define(:table_name, :model, :columns)
+  TargetSchema = Data.define(:table_name, :model_name, :columns)
 
   # One column of the target table that can be given a source column. A column the engine would
   # never load into (the primary key, an ignored column, a generated column) is not in the
@@ -32,7 +32,7 @@ module Pipeforge
   )
 
   # A column that points to a row of another table.
-  #   association   the name of the association (company)
-  #   parent_table  the table it points to (companies)
-  ForeignKey = Data.define(:association, :parent_table)
+  #   association_name   the name of the association (company)
+  #   parent_table_name  the table it points to (companies)
+  ForeignKey = Data.define(:association_name, :parent_table_name)
 end

@@ -5,7 +5,7 @@ module Pipeforge
     # Applies the consumer's column mapping to one source row. It does the header mapping (which source
     # column feeds each target column) and the value mapping, and nothing else.
     class RowTransformer
-      # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, value_mapping:};
+      # @param mapped_columns [Hash{String => Hash}] target column => {source_column_name:, value_mapping:};
       #   the keys of a value mapping are text, as {Engine#analyze_column_values} makes them
       def initialize(mapped_columns:)
         @mapped_columns = mapped_columns
@@ -19,7 +19,7 @@ module Pipeforge
 
         @mapped_columns.each do |target_column_name, mapped_column|
           value_mapping = mapped_column.fetch(:value_mapping, {})
-          source_value = row[mapped_column[:source_column]]
+          source_value = row[mapped_column[:source_column_name]]
           value = value_mapping.fetch(source_value, source_value)
           value = nil if Utilities.blank?(value: value)
 

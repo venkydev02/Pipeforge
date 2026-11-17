@@ -5,71 +5,71 @@
 RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
   subject(:result) { engine.analyze_headers }
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::User") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::User") }
   let(:csv) { "Email,Company,Age,Balance,Zip\nann@example.com,Acme,31,10.5,10001\n" }
 
   # The match of a target column in the header result.
-  def match_for(target_column:)
-    result.matches.find { |match| match[:target_column] == target_column }
+  def match_for(target_column_name:)
+    result.matches.find { |match| match[:target_column_name] == target_column_name }
   end
 
   it "matches the source columns to the columns of the table, including the foreign key" do
-    expect(result.matches.map { |match| [match[:target_column], match[:source_column]] }).to eq(
+    expect(result.matches.map { |match| [match[:target_column_name], match[:source_column_name]] }).to eq(
       [["email", "Email"], ["age", "Age"], ["balance", "Balance"], ["company_id", "Company"]]
     )
   end
 
   it "lists what is left on both sides" do
-    expect(result.unmatched_source_columns).to eq(%w[Zip])
-    expect(result.unmatched_target_columns.map { |target| target[:target_column] }).to eq(%w[bio active created_at updated_at])
+    expect(result.unmatched_source_column_names).to eq(%w[Zip])
+    expect(result.unmatched_target_columns.map { |target| target[:target_column_name] }).to eq(%w[bio active created_at updated_at])
   end
 
   it "does not offer the primary key, an ignored column or a generated column" do
-    offered = result.matches.map { |match| match[:target_column] } + result.unmatched_target_columns.map { |target| target[:target_column] }
+    offered = result.matches.map { |match| match[:target_column_name] } + result.unmatched_target_columns.map { |target| target[:target_column_name] }
 
     expect(offered).not_to include("id", "legacy_code", "shout")
   end
 
   it "reports the foreign key in the metadata of its column" do
-    expect(match_for(target_column: "company_id")[:metadata][:foreign_key]).to eq(
-      association: "company", parent_table: "companies"
+    expect(match_for(target_column_name: "company_id")[:metadata][:foreign_key]).to eq(
+      association_name: "company", parent_table_name: "companies"
     )
   end
 
   it "reports the model" do
-    expect(result.model).to eq("AdapterSpecModels::User")
+    expect(result.model_name).to eq("AdapterSpecModels::User")
   end
 
   context "when the table has an array column" do
-    let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Playlist") }
+    let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Playlist") }
     let(:csv) { "Title,Track ids\nmix,\"{1,2}\"\n" }
 
     it "refuses a mapping to the array column, as a column that cannot be loaded" do
-      expect { engine.analyze_column_values(mapped_columns: {"track_ids" => {source_column: "Track ids"}}) }
+      expect { engine.analyze_column_values(mapped_columns: {"track_ids" => {source_column_name: "Track ids"}}) }
         .to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
           expect(error.errors.map { |entry| entry[:code] }).to eq([:target_column_not_in_schema])
         end
     end
 
     it "loads the other columns of the table" do
-      totals = engine.run(mode: :dry_run, mapped_columns: {"title" => {source_column: "Title"}}) { |chunk| }
+      totals = engine.run(mode: :dry_run, mapped_columns: {"title" => {source_column_name: "Title"}}) { |chunk| }
 
       expect(totals).to have_attributes(processed_rows_count: 1, valid_rows_count: 1, failed_rows_count: 0)
     end
   end
 
   it "gives the type information of each column in its metadata" do
-    expect(match_for(target_column: "age")[:metadata]).to include(type: "integer", required: false)
+    expect(match_for(target_column_name: "age")[:metadata]).to include(type: "integer", required: false)
   end
 
   describe "#analyze_column_values" do
     subject(:value_result) { engine.analyze_column_values(mapped_columns: mapped_columns) }
 
     let(:csv) { "Email,Company,Age,Balance\nann@example.com,1,31,10.5\nbob@example.com,2,99999,abc\n" }
-    let(:required_columns) { {"email" => {source_column: "Email"}} }
+    let(:required_columns) { {"email" => {source_column_name: "Email"}} }
     let(:mapped_columns) do
       required_columns.merge(
-        "company_id" => {source_column: "Company"}, "age" => {source_column: "Age"}, "balance" => {source_column: "Balance"}
+        "company_id" => {source_column_name: "Company"}, "age" => {source_column_name: "Age"}, "balance" => {source_column_name: "Balance"}
       )
     end
 
@@ -122,10 +122,10 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with an enum column of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Shipment") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Shipment") }
       let(:csv) { "Status,Priority\ndraft,low\n1,high\nnope,9\n" }
       let(:mapped_columns) do
-        {"status" => {source_column: "Status"}, "priority" => {source_column: "Priority"}}
+        {"status" => {source_column_name: "Status"}, "priority" => {source_column_name: "Priority"}}
       end
 
       it "counts the labels of the enum as fitting" do
@@ -144,9 +144,9 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with a date column of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Event") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Event") }
       let(:csv) { "Day\n2024-02-03\n2024-2-3\n\"Feb 3, 2024\"\n2024-02-30\ngarbage\n" }
-      let(:mapped_columns) { {"starts_on" => {source_column: "Day"}} }
+      let(:mapped_columns) { {"starts_on" => {source_column_name: "Day"}} }
 
       it "counts the formats that the model reads as fitting, and the days it cannot cast as not" do
         expect(value_result.column_summaries["starts_on"].distinct_values).to have_attributes(compatible_count: 3, incompatible_count: 2)
@@ -166,15 +166,15 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with an unsigned integer attribute of the model" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Counter") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Counter") }
       let(:csv) { "Hits,Misses\n40000,40000\n-1,-1\n" }
       let(:mapped_columns) do
-        {"hits" => {source_column: "Hits"}, "misses" => {source_column: "Misses"}}
+        {"hits" => {source_column_name: "Hits"}, "misses" => {source_column_name: "Misses"}}
       end
 
       it "measures a value against the unsigned range of that column and the signed range of the other" do
-        compatible_values = lambda do |target_column|
-          value_result.column_summaries[target_column].distinct_values.compatible.map(&:value)
+        compatible_values = lambda do |target_column_name|
+          value_result.column_summaries[target_column_name].distinct_values.compatible.map(&:value)
         end
 
         expect(compatible_values.call("hits")).to eq(%w[40000])
@@ -183,10 +183,10 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with a bigint column and an integer column declared with no size, given 3000000000" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Quantity") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Quantity") }
       let(:csv) { "Plain,Big\n3000000000,3000000000\n" }
       let(:mapped_columns) do
-        {"plain_count" => {source_column: "Plain"}, "big_count" => {source_column: "Big"}}
+        {"plain_count" => {source_column_name: "Plain"}, "big_count" => {source_column_name: "Big"}}
       end
 
       it "counts the value as fitting the bigint column" do
@@ -199,9 +199,9 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with a json column" do
-      let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Profile") }
+      let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Profile") }
       let(:csv) { "Name,Settings\nann,\"{\"\"theme\"\":\"\"dark\"\"}\"\nbob,{oops\ncat,null\ndee,\n" }
-      let(:mapped_columns) { {"settings" => {source_column: "Settings"}} }
+      let(:mapped_columns) { {"settings" => {source_column_name: "Settings"}} }
 
       it "counts a text that describes JSON, and the JSON null, as fitting, and one that does not as not fitting" do
         expect(value_result.column_summaries["settings"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 1)
@@ -226,7 +226,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
       context "and a value mapping gives a Hash" do
         let(:csv) { "Name,Settings\nann,default\n" }
         let(:mapped_columns) do
-          {"settings" => {source_column: "Settings", value_mapping: {"default" => {"theme" => "dark"}}}}
+          {"settings" => {source_column_name: "Settings", value_mapping: {"default" => {"theme" => "dark"}}}}
         end
 
         it "lists the text of the file as a value that fits, with the Hash as its mapped value" do
@@ -244,7 +244,7 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "with a column the engine cannot load into" do
-      let(:mapped_columns) { required_columns.merge("id" => {source_column: "Age"}) }
+      let(:mapped_columns) { required_columns.merge("id" => {source_column_name: "Age"}) }
 
       it "stops with target_column_not_in_schema" do
         expect { value_result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
@@ -254,12 +254,12 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     end
 
     context "when the required columns are not mapped" do
-      let(:mapped_columns) { {"age" => {source_column: "Age"}} }
+      let(:mapped_columns) { {"age" => {source_column_name: "Age"}} }
 
       it "asks for the NOT NULL column without a default, and for nothing else" do
         expect { value_result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
-            [{code: :required_column_unmapped, target_column: "email"}]
+          expect(error.errors.map { |entry| entry.slice(:code, :target_column_name) }).to eq(
+            [{code: :required_column_unmapped, target_column_name: "email"}]
           )
         end
       end

@@ -23,7 +23,7 @@ module Pipeforge
       # called inside that transaction, so it must not write to the target database.
       #
       # @param source_reader [Source::CsvReader] the reader of the source
-      # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, value_mapping:}
+      # @param mapped_columns [Hash{String => Hash}] target column => {source_column_name:, value_mapping:}
       # @param target_schema [TargetSchema]
       # @param offset [Integer] rows to skip before the first one processed
       # @param chunk_size [Integer] rows read, processed and yielded at a time
@@ -85,14 +85,14 @@ module Pipeforge
 
       # The source columns that the mapped columns read, each once.
       def source_columns_of(mapped_columns:)
-        source_columns = []
+        source_column_names = []
 
         mapped_columns.each_value do |mapped_column|
-          source_column = mapped_column[:source_column]
-          source_columns << source_column unless source_columns.include?(source_column)
+          source_column_name = mapped_column[:source_column_name]
+          source_column_names << source_column_name unless source_column_names.include?(source_column_name)
         end
 
-        source_columns
+        source_column_names
       end
     end
   end

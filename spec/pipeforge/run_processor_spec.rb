@@ -19,8 +19,8 @@ RSpec.describe Pipeforge::RunProcessor do
   let(:target_schema) { build_target_schema(columns: target_columns) }
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Mail"},
-      "status" => {source_column: "State", value_mapping: {"ok" => "active"}}
+      "email" => {source_column_name: "Mail"},
+      "status" => {source_column_name: "State", value_mapping: {"ok" => "active"}}
     }
   end
   let(:target) { FakeTarget.new }
@@ -141,7 +141,7 @@ RSpec.describe Pipeforge::RunProcessor do
         FakeTarget.new(
           load_errors_of: lambda do |attributes:|
             if attributes["email"] == "b@example.com"
-              [{origin: :database, code: :value_not_unique, message: "taken", target_column: "email"}]
+              [{origin: :database, code: :value_not_unique, message: "taken", target_column_name: "email"}]
             else
               []
             end
@@ -265,7 +265,7 @@ RSpec.describe Pipeforge::RunProcessor do
       end
       let(:mapped_columns) do
         {
-          "email" => {source_column: "Mail"}, "login" => {source_column: "Mail"}, "status" => {source_column: "State"}
+          "email" => {source_column_name: "Mail"}, "login" => {source_column_name: "Mail"}, "status" => {source_column_name: "State"}
         }
       end
 

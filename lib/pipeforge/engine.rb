@@ -14,10 +14,10 @@ module Pipeforge
   # ({#analyze_column_values}).
   #
   # @example
-  #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_model: "User")
+  #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_model_name: "User")
   #   header_analysis = engine.analyze_headers
   #   value_analysis = engine.analyze_column_values(
-  #     mapped_columns: {"email" => {source_column: "Mail", value_mapping: {"N/A" => nil}}}
+  #     mapped_columns: {"email" => {source_column_name: "Mail", value_mapping: {"N/A" => nil}}}
   #   )
   #
   # The engine reaches the target through a target class that an adapter gem installs when it is
@@ -41,7 +41,7 @@ module Pipeforge
       #
       # @api private
       # @param target_class [Class] follows the target contract above and is built with
-      #   +new(target_model:)+
+      #   +new(target_model_name:)+
       # @return [void]
       def install_target(target_class:)
         @target_class = target_class
@@ -55,13 +55,13 @@ module Pipeforge
     # @param source_io [IO] the CSV source, for example +File.open("data/users.csv")+. It must
     #   respond to +read+, +rewind+ and +seek+; it is wrapped in a {Source::ReusableIO}, so it
     #   can be read again.
-    # @param target_model [String] the name of the model the data will be loaded through,
+    # @param target_model_name [String] the name of the model the data will be loaded through,
     #   for example +"User"+
     #
     # @raise [Source::UnsupportedSourceError] the source is missing a method the engine needs
-    def initialize(source_io:, target_model:)
+    def initialize(source_io:, target_model_name:)
       @source_reader = Source::CsvReader.new(source_io: Source::ReusableIO.new(io: source_io))
-      @target_model = target_model
+      @target_model_name = target_model_name
     end
 
     # Matches the columns of the source to the columns of the target table by name only, and
@@ -89,7 +89,7 @@ module Pipeforge
     # what would be loaded, and the mapping comes back in the result. The rows are read again on
     # every call, so an edited mapping can be measured again.
     #
-    # @param mapped_columns [Hash{String => Hash}] target column => {source_column:,
+    # @param mapped_columns [Hash{String => Hash}] target column => {source_column_name:,
     #   value_mapping: {value in the file => value to load}}, a plain Hash the caller builds (the
     #   header result is not passed in). A source column may be given to several target columns.
     #   Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
@@ -174,10 +174,10 @@ module Pipeforge
 
     # The columns of the target table by name.
     def target_columns_by_name
-      target_columns = {}
-      target_schema.columns.each { |target_column| target_columns[target_column.name] = target_column }
+      columns_by_name = {}
+      target_schema.columns.each { |target_column| columns_by_name[target_column.name] = target_column }
 
-      target_columns
+      columns_by_name
     end
 
     # Stops with every mistake in the mapped columns, or does nothing when there is none.
@@ -186,7 +186,7 @@ module Pipeforge
         source_header_names: @source_reader.headers,
         target_column_names: target_columns_by_name.keys,
         required_target_column_names: target_schema.columns.select(&:required).map(&:name),
-        target_table: target_schema.table_name
+        target_table_name: target_schema.table_name
       ).call(mapped_columns: mapped_columns)
     end
 
@@ -194,7 +194,7 @@ module Pipeforge
     def target
       if @target.nil?
         # Kept only once the target is built, so a failed build is tried again on the next call.
-        @target = self.class.target_class.new(target_model: @target_model)
+        @target = self.class.target_class.new(target_model_name: @target_model_name)
       end
 
       @target
@@ -227,11 +227,11 @@ module Pipeforge
     # @param mapped_columns [Hash{String => Hash}] target column => the entry the caller wrote
     # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
     def resolve_mapped_columns(mapped_columns:)
-      target_columns = target_columns_by_name
+      columns_by_name = target_columns_by_name
       resolved_mapped_columns = {}
 
       mapped_columns.each do |target_column_name, entry|
-        target_column = target_columns.fetch(target_column_name)
+        target_column = columns_by_name.fetch(target_column_name)
         resolved_mapped_columns[target_column_name] = ResolvedMappedColumn.from_entry(
           entry: entry, target_column: target_column
         )

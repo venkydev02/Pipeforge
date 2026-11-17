@@ -447,3 +447,20 @@
   * A contributor needs a local PostgreSQL to run the specs; CI starts one.
   * The `sqlite3` gem leaves the Gemfile.
   * The sample console and its sample database are removed; developer tools are added after the first release.
+
+### ADR-29: A Name Ends in `_name` and an Object Has No Suffix
+* **Status:** Accepted (2026-11-17). **Renames** the fields that earlier ADRs name (ADR-17, ADR-18, ADR-20, ADR-25, ADR-26): those ADRs keep the field names they used when they were written.
+* **Context:** The same word held a text and an object. `ResolvedMappedColumn` had `source_column` (the text `"Mail"`) next to `target_column` (a `TargetColumn`), and `target_column` meant a text in the header result and an object in the schema checker. A reader had to find the line that made the value to know which it was. The gem is not published, so the public fields can change now.
+* **Decision:**
+  1. **A text that names a column, a table, a model or an association ends in `_name`; an object has no suffix.** A list of names ends in `_names`, and a Hash of objects keyed by their names is `<objects>_by_<key>_name`. `type`, `sql_type`, `code`, `message`, `origin`, `label` and `source_identifier` are texts but not names of such a thing, so they keep their names.
+  2. **The public fields follow the rule:**
+     * `Engine.new(source_io:, target_model_name:)`.
+     * The entry of `mapped_columns`: `source_column_name:` (with `value_mapping:`).
+     * The header result: `target_table_name`, `model_name`, `unmatched_source_column_names`, and in each entry of `matches` and `unmatched_target_columns` the fields `target_column_name`, `source_column_name` and `tied_source_column_names` (was `tied_with`).
+     * The entries of an error and of a failed row: `target_column_name`, `source_column_name`, `table_name` and `model_name`.
+     * The foreign key in the metadata of a target column: `{association_name:, parent_table_name:}`.
+     * `TargetSchema` has `model_name`.
+  3. **The names in the code follow the same rule.** `target_column` is always a `TargetColumn` and `target_column_name` always a text.
+* **Consequences:**
+  * A consumer who wrote the old field names changes them once; nothing is stored under the old names, because the engine persists nothing.
+  * `README.md`, `overview.md`, `protocols.md` and the specs are updated in the same change. The earlier ADRs are not edited; they are history.

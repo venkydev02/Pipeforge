@@ -15,7 +15,7 @@ module Pipeforge
     # +value_out_of_range+ and +database_error+; a callback that stopped the save is +value_invalid+ with
     # +origin: :model+.
     #
-    # @return [Array<Hash>] one entry {origin:, code:, message:, target_column:} for each mistake, with
+    # @return [Array<Hash>] one entry {origin:, code:, message:, target_column_name:} for each mistake, with
     #   +origin+ +:model+ or +:database+; empty before
     #   {#valid?} is called and when there is none
     attr_reader :errors
@@ -67,7 +67,7 @@ module Pipeforge
       false
     rescue ActiveRecord::RecordNotSaved => not_saved_error
       # A callback of the model stopped the save.
-      @errors << {origin: :model, code: :value_invalid, message: not_saved_error.message, target_column: nil}
+      @errors << {origin: :model, code: :value_invalid, message: not_saved_error.message, target_column_name: nil}
 
       false
     end
@@ -84,7 +84,7 @@ module Pipeforge
 
     private
 
-    # The entry {origin: :database, code:, message:, target_column:} for one database exception:
+    # The entry {origin: :database, code:, message:, target_column_name:} for one database exception:
     # RecordNotUnique -> value_not_unique, InvalidForeignKey -> parent_missing,
     # NotNullViolation -> value_missing, ValueTooLong -> value_too_long,
     # RangeError -> value_out_of_range, anything else -> database_error (native message kept).
@@ -94,7 +94,7 @@ module Pipeforge
         code: database_code_of(database_error: database_error),
         message: database_error.message,
         # The column is not worked out from the message: the wording differs between databases.
-        target_column: nil
+        target_column_name: nil
       }
     end
 
@@ -115,7 +115,7 @@ module Pipeforge
           origin: :model,
           code: :value_not_allowed,
           message: "#{column_name}: #{label} is not a label of the enum",
-          target_column: column_name
+          target_column_name: column_name
         }
       end
     end
@@ -126,24 +126,24 @@ module Pipeforge
           origin: :model,
           code: :value_not_json,
           message: "#{column_name}: the text is not JSON",
-          target_column: column_name
+          target_column_name: column_name
         }
       end
     end
 
     def add_model_errors
       @record.errors.each do |model_error|
-        target_column = target_column_of(model_error: model_error)
+        target_column_name = target_column_name_of(model_error: model_error)
 
         # The record has no value for a column that was set aside, so the model's own error for it follows from
         # the first mistake and is left out.
-        next if @unknown_enum_labels.key?(target_column) || @invalid_json_texts.key?(target_column)
+        next if @unknown_enum_labels.key?(target_column_name) || @invalid_json_texts.key?(target_column_name)
 
         @errors << {
           origin: :model,
           code: code_of(model_error: model_error),
           message: model_error.full_message,
-          target_column: target_column
+          target_column_name: target_column_name
         }
       end
     end
@@ -168,7 +168,7 @@ module Pipeforge
 
     # The column the error is about: the foreign key column for an error on a +belongs_to+
     # association, nil for an error on the record as a whole.
-    def target_column_of(model_error:)
+    def target_column_name_of(model_error:)
       return nil if model_error.attribute == :base
 
       reflection = parent_association_of(model_error: model_error)

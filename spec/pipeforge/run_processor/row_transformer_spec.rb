@@ -5,8 +5,8 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
 
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Mail"},
-      "name" => {source_column: "Name"}
+      "email" => {source_column_name: "Mail"},
+      "name" => {source_column_name: "Name"}
     }
   end
   let(:row) { {"Mail" => "ann@example.com", "Name" => "Ann", "Zip" => "10001"} }
@@ -24,7 +24,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
 
     context "when two target columns read the same source column" do
       let(:mapped_columns) do
-        {"first_name" => {source_column: "Name"}, "display_name" => {source_column: "Name"}}
+        {"first_name" => {source_column_name: "Name"}, "display_name" => {source_column_name: "Name"}}
       end
 
       it "gives each of them the value" do
@@ -42,7 +42,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
 
     context "with a value mapping" do
       let(:mapped_columns) do
-        {"name" => {source_column: "Name", value_mapping: {"Ann" => "Anna", "N/A" => nil, "Bob" => "   ", "Cy" => false}}}
+        {"name" => {source_column_name: "Name", value_mapping: {"Ann" => "Anna", "N/A" => nil, "Bob" => "   ", "Cy" => false}}}
       end
 
       it "gives the value the mapping maps to" do
@@ -93,11 +93,11 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
       ]
     end
     let(:value_mapping) { {"yes" => "Y", "N/A" => nil, "blank" => "  "} }
-    let(:mapped_columns) { {"status" => {source_column: "Status", value_mapping: value_mapping}} }
+    let(:mapped_columns) { {"status" => {source_column_name: "Status", value_mapping: value_mapping}} }
     let(:column_summary) do
       summary_builder = Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder.new(
-        target_column: "status",
-        source_column: "Status",
+        target_column_name: "status",
+        source_column_name: "Status",
         position: 0,
         limits_checker: Pipeforge::ColumnLimitsChecker.new(type: "string"),
         target: FakeTarget.new,

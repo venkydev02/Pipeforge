@@ -6,7 +6,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Membership") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Membership") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
@@ -28,8 +28,8 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   end
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Email"}, "seats" => {source_column: "Seats"}, "fee" => {source_column: "Fee"},
-      "tier" => {source_column: "Tier"}, "company_id" => {source_column: "Company"}
+      "email" => {source_column_name: "Email"}, "seats" => {source_column_name: "Seats"}, "fee" => {source_column_name: "Fee"},
+      "tier" => {source_column_name: "Tier"}, "company_id" => {source_column_name: "Company"}
     }
   end
 
@@ -93,7 +93,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     run_result
 
     expect(failed_rows.find { |failed_row| failed_row.row_number == 7 }.errors).to contain_exactly(
-      include(origin: :model, code: :parent_missing, target_column: "company_id")
+      include(origin: :model, code: :parent_missing, target_column_name: "company_id")
     )
   end
 
@@ -146,12 +146,12 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Counter") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Counter") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Hits,Misses\n40000,1\n65535,1\n65536,1\n-1,1\n0,40000\n" }
   let(:mapped_columns) do
-    {"hits" => {source_column: "Hits"}, "misses" => {source_column: "Misses"}}
+    {"hits" => {source_column_name: "Hits"}, "misses" => {source_column_name: "Misses"}}
   end
 
   it "accepts a value above the signed range but within the unsigned one" do
@@ -171,7 +171,7 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
   it "keeps the signed range for the other column of the table" do
     run_result
 
-    expect(failed_rows.last.errors.first).to include(target_column: "misses", code: :value_out_of_range)
+    expect(failed_rows.last.errors.first).to include(target_column_name: "misses", code: :value_out_of_range)
   end
 end
 
@@ -181,17 +181,17 @@ RSpec.describe Pipeforge::Engine, "#run with float columns" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Measurement") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Measurement") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Ratio,Weight\n1.5,1.5\n1e50,1e50\n1e39,1e9999\n3.4e38,1.7e308\n" }
   let(:mapped_columns) do
-    {"ratio" => {source_column: "Ratio"}, "weight" => {source_column: "Weight"}}
+    {"ratio" => {source_column_name: "Ratio"}, "weight" => {source_column_name: "Weight"}}
   end
 
   def errors_of_row(row_number)
     failed_rows.find { |failed_row| failed_row.row_number == row_number }.errors.map do |error|
-      [error[:target_column], error[:code]]
+      [error[:target_column_name], error[:code]]
     end
   end
 
@@ -219,7 +219,7 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
     engine.run(mode: mode, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Profile") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Profile") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:failed_codes) { failed_rows.flat_map { |failed_row| failed_row.errors.map { |error| error[:code] } } }
@@ -231,7 +231,7 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
       cat,null
     CSV
   end
-  let(:mapped_columns) { {"name" => {source_column: "Name"}, "settings" => {source_column: "Settings"}} }
+  let(:mapped_columns) { {"name" => {source_column_name: "Name"}, "settings" => {source_column_name: "Settings"}} }
 
   context "when the rows are loaded" do
     let(:mode) { :run }

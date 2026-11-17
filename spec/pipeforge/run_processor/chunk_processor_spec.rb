@@ -18,8 +18,8 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     let(:target_schema) { build_target_schema(columns: target_columns) }
     let(:mapped_columns) do
       {
-        "email" => {source_column: "Mail"},
-        "status" => {source_column: "State", value_mapping: {"ok" => "active"}}
+        "email" => {source_column_name: "Mail"},
+        "status" => {source_column_name: "State", value_mapping: {"ok" => "active"}}
       }
     end
     let(:transformer) { Pipeforge::RunProcessor::RowTransformer.new(mapped_columns: mapped_columns) }
@@ -86,7 +86,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       let(:errors_of) do
         lambda do |attributes:|
           if attributes["email"] == "dup@example.com"
-            [{origin: :model, code: :value_not_unique, message: "taken", target_column: "email"}]
+            [{origin: :model, code: :value_not_unique, message: "taken", target_column_name: "email"}]
           else
             []
           end
@@ -107,7 +107,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         ]
       end
       let(:mapped_columns) do
-        {"email" => {source_column: "Mail"}, "status" => {source_column: "State"}, "note" => {source_column: "Note"}}
+        {"email" => {source_column_name: "Mail"}, "status" => {source_column_name: "State"}, "note" => {source_column_name: "Note"}}
       end
       let(:rows) do
         [
@@ -135,7 +135,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       end
 
       it "keeps the empty value in the values of a failed row" do
-        failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column: "email"}] })
+        failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column_name: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
           target_schema: target_schema, target: failing
@@ -149,7 +149,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       let(:target_columns) do
         [build_target_column(name: "email", required: true), build_target_column(name: "status", default: "open")]
       end
-      let(:mapped_columns) { {"email" => {source_column: "Mail"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail"}} }
       let(:rows) { [{"Mail" => "a@example.com"}] }
 
       it "adds nothing for it" do
@@ -211,7 +211,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         [{"Mail" => "a@example.com", "State" => "ok"}, {"Mail" => "dup@example.com", "State" => "ok"}, {"Mail" => "c@example.com", "State" => "ok"}]
       end
       let(:database_error) do
-        {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column: "email"}
+        {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column_name: "email"}
       end
       let(:target) do
         FakeTarget.new(

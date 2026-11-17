@@ -25,7 +25,7 @@ module Pipeforge
 
     # @return [TargetSchema] the table name, the model name and the columns that can be given a source column
     def call
-      TargetSchema.new(table_name: @model.table_name, model: @model.name, columns: build_columns)
+      TargetSchema.new(table_name: @model.table_name, model_name: @model.name, columns: build_columns)
     end
 
     private
@@ -121,8 +121,8 @@ module Pipeforge
         next unless reflection.foreign_key.is_a?(String)
 
         foreign_keys[reflection.foreign_key] = ForeignKey.new(
-          association: reflection.name.to_s,
-          parent_table: reflection.klass.table_name
+          association_name: reflection.name.to_s,
+          parent_table_name: reflection.klass.table_name
         )
       end
 

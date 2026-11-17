@@ -22,7 +22,7 @@ module Pipeforge
 
     # What the scan found out about one mapped target column. A Result holds it under the name of the
     # target column.
-    #   source_column    String               the source column it is read from
+    #   source_column_name    String               the source column it is read from
     #   position         Integer              the position of the source column in the file, starting at 1
     #   empty            Integer              how many cells are empty
     #   distinct_values  DistinctValueLists   the texts that fit and the texts that do not, with the number of
@@ -31,14 +31,14 @@ module Pipeforge
     #                                         counts and the lists above describe the values after applying it,
     #                                         that is, what would be loaded
     ColumnSummary = Data.define(
-      :source_column, :position, :empty, :distinct_values, :value_mapping
+      :source_column_name, :position, :empty, :distinct_values, :value_mapping
     ) do
       # Writes the summary in plain JSON types, to store it.
       #
       # @return [Hash] plain JSON types, with each list as an array of hashes with the fields of its listed values
       def to_h
         {
-          source_column: source_column,
+          source_column_name: source_column_name,
           position: position,
           empty: empty,
           distinct_values: {
@@ -61,16 +61,16 @@ module Pipeforge
     # would be loaded. It is listed under its text from the file, with the value it maps to next to it. A value that
     # maps to nil or to a blank counts as empty and is not listed.
     class ColumnSummaryBuilder
-      # @param target_column [String] the target column the values are measured for
-      # @param source_column [String] the source column the values are read from
+      # @param target_column_name [String] the target column the values are measured for
+      # @param source_column_name [String] the source column the values are read from
       # @param position [Integer] the position of the source column in the file, starting at 1
       # @param limits_checker [ColumnLimitsChecker] the checker of the target column
       # @param target [#cast_value] the target of the target model
       # @param value_mapping [Hash{String => Object}] the consumer's mapping of source values to the values to
       #   load; an empty Hash for no mapping
-      def initialize(target_column:, source_column:, position:, limits_checker:, target:, value_mapping:)
-        @target_column = target_column
-        @source_column = source_column
+      def initialize(target_column_name:, source_column_name:, position:, limits_checker:, target:, value_mapping:)
+        @target_column_name = target_column_name
+        @source_column_name = source_column_name
         @position = position
         @limits_checker = limits_checker
         @value_mapping = value_mapping
@@ -81,7 +81,7 @@ module Pipeforge
       end
 
       # @return [String] the source column the cells are read from
-      attr_reader :source_column
+      attr_reader :source_column_name
 
       # Records the cell of one row.
       #
@@ -106,7 +106,7 @@ module Pipeforge
       # @return [ColumnSummary] what the summary_builder holds now
       def summary
         ColumnSummary.new(
-          source_column: @source_column,
+          source_column_name: @source_column_name,
           position: @position,
           empty: @empty,
           distinct_values: DistinctValueLists.new(
@@ -134,7 +134,7 @@ module Pipeforge
       end
 
       def record_new_value(value:, mapped_value:)
-        cast_result = @target.cast_value(column_name: @target_column, value: mapped_value)
+        cast_result = @target.cast_value(column_name: @target_column_name, value: mapped_value)
         mapping_applied = @value_mapping.key?(value)
 
         unless cast_result.castable

@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::ActiveRecordTarget do
-  subject(:target) { described_class.new(target_model: target_model) }
+  subject(:target) { described_class.new(target_model_name: target_model_name) }
 
-  let(:target_model) { "AdapterSpecModels::Membership" }
+  let(:target_model_name) { "AdapterSpecModels::Membership" }
   # The model class, for the examples that read or write its rows.
-  let(:model) { target_model.constantize }
+  let(:model) { target_model_name.constantize }
 
   # The column of the schema with that name.
   def column_named(schema, name)
@@ -27,31 +27,31 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
 
   describe "#enum_labels" do
     it "gives the labels of an enum stored as a number" do
-      expect(described_class.new(target_model: "AdapterSpecModels::Shipment").enum_labels(column_name: "status")).to eq(%w[draft placed shipped])
+      expect(described_class.new(target_model_name: "AdapterSpecModels::Shipment").enum_labels(column_name: "status")).to eq(%w[draft placed shipped])
     end
 
     it "gives the labels of an enum stored as text, not the values stored for them" do
-      expect(described_class.new(target_model: "AdapterSpecModels::Shipment").enum_labels(column_name: "kind")).to eq(%w[retail wholesale])
+      expect(described_class.new(target_model_name: "AdapterSpecModels::Shipment").enum_labels(column_name: "kind")).to eq(%w[retail wholesale])
     end
 
     it "gives nil for a column that is not an enum" do
-      expect(described_class.new(target_model: "AdapterSpecModels::Shipment").enum_labels(column_name: "note")).to be_nil
+      expect(described_class.new(target_model_name: "AdapterSpecModels::Shipment").enum_labels(column_name: "note")).to be_nil
     end
   end
 
   describe ".new" do
     it "builds the target of a model that uses another database" do
-      expect(described_class.new(target_model: "AdapterSpecModels::Reading")).to be_a(described_class)
+      expect(described_class.new(target_model_name: "AdapterSpecModels::Reading")).to be_a(described_class)
     end
 
     it "stops with target_table_not_found when the table of the model does not exist" do
-      expect { described_class.new(target_model: "AdapterSpecModels::Ghost") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+      expect { described_class.new(target_model_name: "AdapterSpecModels::Ghost") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
         expect(error.codes).to eq([:target_table_not_found])
       end
     end
 
     it "stops with active_record_model_not_found when no loaded model has the name" do
-      expect { described_class.new(target_model: "AdapterSpecModels::Nowhere") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
+      expect { described_class.new(target_model_name: "AdapterSpecModels::Nowhere") }.to raise_error(Pipeforge::TargetSchemaError) do |error|
         expect(error.codes).to eq([:active_record_model_not_found])
       end
     end
@@ -60,10 +60,10 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
   describe "#schema" do
     subject(:schema) { target.schema }
 
-    let(:target_model) { "AdapterSpecModels::User" }
+    let(:target_model_name) { "AdapterSpecModels::User" }
 
     it "names the table and the model" do
-      expect(schema).to have_attributes(table_name: "users", model: "AdapterSpecModels::User")
+      expect(schema).to have_attributes(table_name: "users", model_name: "AdapterSpecModels::User")
     end
 
     it "lists the columns that can be given a source column, in table order" do
@@ -83,7 +83,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a bigint column and an integer column declared with no size" do
-      let(:target_model) { "AdapterSpecModels::Quantity" }
+      let(:target_model_name) { "AdapterSpecModels::Quantity" }
 
       it "gives 8 bytes as the limit of the bigint column" do
         expect(column_named(schema, "big_count")).to have_attributes(type: "integer", limit: 8)
@@ -103,7 +103,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with an attribute of ActiveRecord's unsigned integer type" do
-      let(:target_model) { "AdapterSpecModels::Counter" }
+      let(:target_model_name) { "AdapterSpecModels::Counter" }
 
       it "reports that column as not signed, with its size" do
         expect(column_named(schema, "hits")).to have_attributes(type: "integer", limit: 2, is_signed: false)
@@ -115,7 +115,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with float columns" do
-      let(:target_model) { "AdapterSpecModels::Measurement" }
+      let(:target_model_name) { "AdapterSpecModels::Measurement" }
 
       it "gives 24 as the limit of a single precision float" do
         expect(column_named(schema, "ratio")).to have_attributes(type: "float", limit: 24)
@@ -151,7 +151,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "when the table has array columns" do
-      let(:target_model) { "AdapterSpecModels::Playlist" }
+      let(:target_model_name) { "AdapterSpecModels::Playlist" }
 
       it "lists only the column that is not an array" do
         expect(schema.columns.map(&:name)).to eq(%w[title])
@@ -164,7 +164,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
 
     it "describes a foreign key with its association and parent table" do
       expect(column_named(schema, "company_id").foreign_key).to eq(
-        Pipeforge::ForeignKey.new(association: "company", parent_table: "companies")
+        Pipeforge::ForeignKey.new(association_name: "company", parent_table_name: "companies")
       )
     end
 
@@ -173,7 +173,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a column the model declares with another type than the table" do
-      let(:target_model) { "AdapterSpecModels::Ticket" }
+      let(:target_model_name) { "AdapterSpecModels::Ticket" }
 
       it "gives the type the model declares" do
         expect(column_named(schema, "rank")).to have_attributes(type: "integer", sql_type: "character varying")
@@ -185,7 +185,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with enum columns and a default set only in the model" do
-      let(:target_model) { "AdapterSpecModels::Shipment" }
+      let(:target_model_name) { "AdapterSpecModels::Shipment" }
 
       it "gives the labels of an enum stored as a number" do
         expect(column_named(schema, "status").enum_labels).to eq(%w[draft placed shipped])
@@ -221,7 +221,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a model that does not record timestamps" do
-      let(:target_model) { "AdapterSpecModels::Receipt" }
+      let(:target_model_name) { "AdapterSpecModels::Receipt" }
 
       it "requires the NOT NULL timestamps, because nothing fills them" do
         expect(schema.columns.select(&:required).map(&:name)).to eq(%w[number created_at updated_at])
@@ -251,7 +251,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       context "with NOT NULL columns, with and without a default" do
-        let(:target_model) { "AdapterSpecModels::Invoice" }
+        let(:target_model_name) { "AdapterSpecModels::Invoice" }
 
         it "does not require the one with a default" do
           expect(column_named(schema, "status").required).to be(false)
@@ -272,7 +272,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a polymorphic association" do
-      let(:target_model) { "AdapterSpecModels::Comment" }
+      let(:target_model_name) { "AdapterSpecModels::Comment" }
 
       it "does not describe its column as a foreign key" do
         expect(column_named(schema, "commentable_id").foreign_key).to be_nil
@@ -280,7 +280,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a composite foreign key" do
-      let(:target_model) { "AdapterSpecModels::OrderLine" }
+      let(:target_model_name) { "AdapterSpecModels::OrderLine" }
 
       it "does not describe its columns as foreign keys" do
         expect(schema.columns.map(&:foreign_key)).to all(be_nil)
@@ -288,7 +288,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a composite primary key" do
-      let(:target_model) { "AdapterSpecModels::Order" }
+      let(:target_model_name) { "AdapterSpecModels::Order" }
 
       it "leaves out every column of the key" do
         expect(schema.columns).to be_empty
@@ -296,66 +296,66 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "when the model is a subclass under single table inheritance" do
-      let(:target_model) { "AdapterSpecModels::Car" }
+      let(:target_model_name) { "AdapterSpecModels::Car" }
 
       it "reads the model named, with the table it shares with its base class" do
-        expect(schema).to have_attributes(table_name: "vehicles", model: "AdapterSpecModels::Car")
+        expect(schema).to have_attributes(table_name: "vehicles", model_name: "AdapterSpecModels::Car")
       end
     end
 
     context "when two unrelated models share one table" do
-      let(:target_model) { "AdapterSpecModels::Note" }
+      let(:target_model_name) { "AdapterSpecModels::Note" }
 
       it "reads the model named, and not the other one" do
-        expect(schema).to have_attributes(table_name: "notes", model: "AdapterSpecModels::Note")
+        expect(schema).to have_attributes(table_name: "notes", model_name: "AdapterSpecModels::Note")
       end
     end
 
     context "when the table of the model does not exist" do
-      let(:target_model) { "AdapterSpecModels::Ghost" }
+      let(:target_model_name) { "AdapterSpecModels::Ghost" }
 
       it "stops with target_table_not_found and the table of the model" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :target_table_not_found, table: "ghosts")
+          expect(error.errors.first).to include(code: :target_table_not_found, table_name: "ghosts")
         end
       end
     end
 
     context "when the model uses another database and its table is there" do
-      let(:target_model) { "AdapterSpecModels::Reading" }
+      let(:target_model_name) { "AdapterSpecModels::Reading" }
 
       it "reads the table in the database of the model" do
-        expect(schema).to have_attributes(table_name: "readings", model: "AdapterSpecModels::Reading")
+        expect(schema).to have_attributes(table_name: "readings", model_name: "AdapterSpecModels::Reading")
         expect(schema.columns.map(&:name)).to eq(%w[label])
       end
     end
 
     context "when the model uses another database and its table is only in the default database" do
-      let(:target_model) { "AdapterSpecModels::UserInSecondaryDatabase" }
+      let(:target_model_name) { "AdapterSpecModels::UserInSecondaryDatabase" }
 
       it "stops with target_table_not_found and the table of the model" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :target_table_not_found, table: "users")
+          expect(error.errors.first).to include(code: :target_table_not_found, table_name: "users")
         end
       end
     end
 
     context "when no loaded model has the name" do
-      let(:target_model) { "AdapterSpecModels::Nowhere" }
+      let(:target_model_name) { "AdapterSpecModels::Nowhere" }
 
       it "stops with active_record_model_not_found and the name" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found, model: "AdapterSpecModels::Nowhere")
+          expect(error.errors.first).to include(code: :active_record_model_not_found, model_name: "AdapterSpecModels::Nowhere")
         end
       end
     end
 
     context "when the model named is an abstract class" do
-      let(:target_model) { "AdapterSpecModels::AbstractRecord" }
+      let(:target_model_name) { "AdapterSpecModels::AbstractRecord" }
 
       it "stops with active_record_model_not_found and the name" do
         expect { schema }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found, model: "AdapterSpecModels::AbstractRecord")
+          expect(error.errors.first).to include(code: :active_record_model_not_found, model_name: "AdapterSpecModels::AbstractRecord")
         end
       end
     end
@@ -366,7 +366,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         statement_names << payload[:name]
       end
 
-      described_class.new(target_model: "AdapterSpecModels::User").schema
+      described_class.new(target_model_name: "AdapterSpecModels::User").schema
       ActiveSupport::Notifications.unsubscribe(subscription)
 
       expect(statement_names.uniq).to eq(["SCHEMA"])
@@ -408,7 +408,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       it "reports it as value_not_allowed" do
         model_record.valid?
 
-        expect(model_record.errors).to include(include(code: :value_not_allowed, target_column: "tier"))
+        expect(model_record.errors).to include(include(code: :value_not_allowed, target_column_name: "tier"))
       end
     end
 
@@ -437,7 +437,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with an enum stored as text" do
-      let(:target_model) { "AdapterSpecModels::Shipment" }
+      let(:target_model_name) { "AdapterSpecModels::Shipment" }
       let(:attributes) { {"kind" => "wholesale"} }
 
       it "sets the label" do
@@ -446,7 +446,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a json column" do
-      let(:target_model) { "AdapterSpecModels::Profile" }
+      let(:target_model_name) { "AdapterSpecModels::Profile" }
       let(:attributes) { {"name" => "ann", "settings" => settings_text} }
       let(:settings_text) { '{"theme":"dark","size":3}' }
 
@@ -512,7 +512,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a jsonb column" do
-      let(:target_model) { "AdapterSpecModels::Profile" }
+      let(:target_model_name) { "AdapterSpecModels::Profile" }
       let(:attributes) { {"name" => "ann", "extras" => '{"beta":true}'} }
 
       it "holds the object the text describes" do
@@ -598,7 +598,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       context "with a boolean column" do
-        let(:target_model) { "AdapterSpecModels::User" }
+        let(:target_model_name) { "AdapterSpecModels::User" }
 
         it "is true for a text that is read as true" do
           expect(cast_result("active", "yes").json_value).to be(true)
@@ -606,7 +606,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       context "with a date column" do
-        let(:target_model) { "AdapterSpecModels::Event" }
+        let(:target_model_name) { "AdapterSpecModels::Event" }
 
         it "is the date written as year, month and day" do
           expect(cast_result("starts_on", "2024-2-3").json_value).to eq("2024-02-03")
@@ -619,7 +619,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a date column" do
-      let(:target_model) { "AdapterSpecModels::Event" }
+      let(:target_model_name) { "AdapterSpecModels::Event" }
 
       it "reads the formats the model reads" do
         expect(cast("starts_on", "2024-2-3")).to eq(Date.new(2024, 2, 3))
@@ -637,7 +637,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a datetime column" do
-      let(:target_model) { "AdapterSpecModels::Event" }
+      let(:target_model_name) { "AdapterSpecModels::Event" }
 
       it "reads a space before the zone offset" do
         expect(cast("starts_at", "2024-02-03 10:00:00 +0530")).to be_a(Time)
@@ -649,7 +649,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a json column" do
-      let(:target_model) { "AdapterSpecModels::Profile" }
+      let(:target_model_name) { "AdapterSpecModels::Profile" }
 
       it "gives the object that a text describes" do
         expect(cast("settings", '{"theme":"dark","size":3}')).to eq("theme" => "dark", "size" => 3)
@@ -677,7 +677,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a jsonb column" do
-      let(:target_model) { "AdapterSpecModels::Profile" }
+      let(:target_model_name) { "AdapterSpecModels::Profile" }
 
       it "gives the object that a text describes" do
         expect(cast("extras", '{"beta":true}')).to eq("beta" => true)
@@ -694,7 +694,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       context "and a boolean column" do
-        let(:target_model) { "AdapterSpecModels::User" }
+        let(:target_model_name) { "AdapterSpecModels::User" }
 
         it "gives false for false" do
           expect(cast_result("active", false)).to eq(Pipeforge::CastResult.new(castable: true, cast_value: false, json_value: false))
@@ -702,7 +702,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       context "and a json column" do
-        let(:target_model) { "AdapterSpecModels::Profile" }
+        let(:target_model_name) { "AdapterSpecModels::Profile" }
 
         it "gives the Hash as it is" do
           expect(cast_result("settings", {"theme" => "dark"})).to eq(
@@ -756,7 +756,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a polymorphic association" do
-      let(:target_model) { "AdapterSpecModels::Comment" }
+      let(:target_model_name) { "AdapterSpecModels::Comment" }
 
       it "leaves it alone" do
         records = [target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => "Post"})]
@@ -766,7 +766,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a composite foreign key" do
-      let(:target_model) { "AdapterSpecModels::OrderLine" }
+      let(:target_model_name) { "AdapterSpecModels::OrderLine" }
 
       it "leaves it alone" do
         records = [target.build_record(attributes: {"shop_id" => 1, "order_number" => 2})]
@@ -776,7 +776,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     end
 
     context "with a model that has no parent" do
-      let(:target_model) { "AdapterSpecModels::Shipment" }
+      let(:target_model_name) { "AdapterSpecModels::Shipment" }
 
       it "does nothing" do
         records = [target.build_record(attributes: {"note" => "x"})]
@@ -787,7 +787,7 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
   end
 
   describe "#transaction" do
-    let(:target_model) { "AdapterSpecModels::Account" }
+    let(:target_model_name) { "AdapterSpecModels::Account" }
 
     def save_account(email:)
       model.create!(email: email)

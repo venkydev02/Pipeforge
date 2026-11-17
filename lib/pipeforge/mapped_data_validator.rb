@@ -15,24 +15,24 @@ module Pipeforge
   # @example
   #   validator = Pipeforge::MappedDataValidator.new(
   #     source_header_names: %w[Mail Age], target_column_names: %w[email age],
-  #     required_target_column_names: %w[email], target_table: "users"
+  #     required_target_column_names: %w[email], target_table_name: "users"
   #   )
-  #   validator.call(mapped_columns: {"email" => {source_column: "Mail"}})  # => nil
+  #   validator.call(mapped_columns: {"email" => {source_column_name: "Mail"}})  # => nil
   class MappedDataValidator
     # @param source_header_names [Array<String>] the column names of the source file, in file order
     # @param target_column_names [Array<String>] the columns of the target table that can be
     #   loaded into (the schema has no others)
     # @param required_target_column_names [Array<String>] the target columns that need a source
     #   column (see {TargetColumn})
-    # @param target_table [String] the target table, named in the messages
-    def initialize(source_header_names:, target_column_names:, required_target_column_names:, target_table:)
+    # @param target_table_name [String] the target table, named in the messages
+    def initialize(source_header_names:, target_column_names:, required_target_column_names:, target_table_name:)
       @source_header_names = source_header_names
       @target_column_names = target_column_names
       @required_target_column_names = required_target_column_names
-      @target_table = target_table
+      @target_table_name = target_table_name
     end
 
-    # @param mapped_columns [Hash{String => Hash}] target column => {source_column:,
+    # @param mapped_columns [Hash{String => Hash}] target column => {source_column_name:,
     #   value_mapping:} (+value_mapping+ is optional: leave the key out for none; when the key is
     #   given the value must be a Hash, +nil+ included)
     # @return [nil] when every mapped column is usable and every required column is mapped
@@ -46,8 +46,8 @@ module Pipeforge
 
       errors = []
 
-      mapped_columns.each do |target_column, mapped_column|
-        errors.concat(entry_errors(target_column: target_column, mapped_column: mapped_column))
+      mapped_columns.each do |target_column_name, mapped_column|
+        errors.concat(entry_errors(target_column_name: target_column_name, mapped_column: mapped_column))
       end
       errors.concat(required_column_errors(mapped_columns: mapped_columns))
 
@@ -64,71 +64,71 @@ module Pipeforge
 
       raise InvalidMappedColumnsError.single(
         code: :mapped_columns_not_name_value_entries,
-        message: "the mapped columns must be a Hash of target column => {source_column:, ...}"
+        message: "the mapped columns must be a Hash of target column => {source_column_name:, ...}"
       )
     end
 
     # The mistakes of one entry. An entry that is not a Hash has nothing else to check.
-    def entry_errors(target_column:, mapped_column:)
+    def entry_errors(target_column_name:, mapped_column:)
       unless mapped_column.is_a?(Hash)
         return [{
           code: :mapped_column_not_name_value_entries,
-          message: "#{target_column} must be given as {source_column:, ...}",
-          target_column: target_column
+          message: "#{target_column_name} must be given as {source_column_name:, ...}",
+          target_column_name: target_column_name
         }]
       end
 
       errors = []
-      errors.concat(target_column_errors(target_column: target_column, mapped_column: mapped_column))
-      errors.concat(source_column_errors(target_column: target_column, mapped_column: mapped_column))
-      errors.concat(value_mapping_errors(target_column: target_column, mapped_column: mapped_column))
+      errors.concat(target_column_errors(target_column_name: target_column_name, mapped_column: mapped_column))
+      errors.concat(source_column_errors(target_column_name: target_column_name, mapped_column: mapped_column))
+      errors.concat(value_mapping_errors(target_column_name: target_column_name, mapped_column: mapped_column))
       errors
     end
 
-    def target_column_errors(target_column:, mapped_column:)
-      return [] if @target_column_names.include?(target_column)
+    def target_column_errors(target_column_name:, mapped_column:)
+      return [] if @target_column_names.include?(target_column_name)
 
       [{
         code: :target_column_not_in_schema,
-        message: "#{target_column} is not a column of #{@target_table} that can be loaded",
-        target_column: target_column,
-        source_column: mapped_column[:source_column],
-        table: @target_table
+        message: "#{target_column_name} is not a column of #{@target_table_name} that can be loaded",
+        target_column_name: target_column_name,
+        source_column_name: mapped_column[:source_column_name],
+        table_name: @target_table_name
       }]
     end
 
-    def source_column_errors(target_column:, mapped_column:)
-      source_column = mapped_column[:source_column]
+    def source_column_errors(target_column_name:, mapped_column:)
+      source_column_name = mapped_column[:source_column_name]
 
-      if source_column.nil?
+      if source_column_name.nil?
         return [{
           code: :column_missing_source_column,
-          message: "#{target_column} has no source_column",
-          target_column: target_column
+          message: "#{target_column_name} has no source_column_name",
+          target_column_name: target_column_name
         }]
       end
 
-      return [] if @source_header_names.include?(source_column)
+      return [] if @source_header_names.include?(source_column_name)
 
       [{
         code: :mapped_column_not_in_file,
-        message: "#{target_column} is mapped to the source column #{source_column}, which is not in the file",
-        target_column: target_column,
-        source_column: source_column
+        message: "#{target_column_name} is mapped to the source column #{source_column_name}, which is not in the file",
+        target_column_name: target_column_name,
+        source_column_name: source_column_name
       }]
     end
 
     # The value mapping is optional: leave the key out for no mapping. When the key is given the
     # value must be a Hash, so +nil+ is a mistake too. Its keys and values are not checked,
     # because a value may be mapped to anything, nil and blank included.
-    def value_mapping_errors(target_column:, mapped_column:)
+    def value_mapping_errors(target_column_name:, mapped_column:)
       return [] unless mapped_column.key?(:value_mapping)
       return [] if mapped_column[:value_mapping].is_a?(Hash)
 
       [{
         code: :value_mapping_not_name_value_entries,
-        message: "the value_mapping of #{target_column} must be a Hash of value in the file => value to load",
-        target_column: target_column
+        message: "the value_mapping of #{target_column_name} must be a Hash of value in the file => value to load",
+        target_column_name: target_column_name
       }]
     end
 
@@ -137,13 +137,13 @@ module Pipeforge
     def required_column_errors(mapped_columns:)
       errors = []
 
-      @required_target_column_names.each do |target_column|
-        next if mapped_columns.key?(target_column)
+      @required_target_column_names.each do |target_column_name|
+        next if mapped_columns.key?(target_column_name)
 
         errors << {
           code: :required_column_unmapped,
-          message: "#{target_column} is required but no source column is mapped to it",
-          target_column: target_column
+          message: "#{target_column_name} is required but no source column is mapped to it",
+          target_column_name: target_column_name
         }
       end
 

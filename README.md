@@ -18,7 +18,7 @@ Usually a developer finds out by reading the schema, reading the model, and runn
 
 Target model: the model class the rows are loaded through, given by name, for example `"User"`. Its table is the target table. What counts as a model is the adapter's decision; for the ActiveRecord adapter it is an ActiveRecord class.
 
-Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{"age" => {source_column: "Age"}}`. The source is the CSV file, and a source column is one of its header names.
+Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{"age" => {source_column_name: "Age"}}`. The source is the CSV file, and a source column is one of its header names.
 
 Distinct values: each different value found in a column, with how many times it appears.
 
@@ -49,16 +49,16 @@ The example below uses a `User` model that belongs to a `Company`, and a CSV fil
 ```ruby
 engine = Pipeforge::Engine.new(
   source_io: File.open("users.csv"),
-  target_model: "User"
+  target_model_name: "User"
 )
 header_analysis = engine.analyze_headers
-header_analysis.matches.each { |match| puts "#{match[:target_column]} <- #{match[:source_column]} (#{match[:score]})" }
+header_analysis.matches.each { |match| puts "#{match[:target_column_name]} <- #{match[:source_column_name]} (#{match[:score]})" }
 # email <- Email (100.0)
 # first_name <- First Name (100.0)
 # ...
 # company_id <- Company (66.67)
 
-header_analysis.unmatched_source_columns   # => []
+header_analysis.unmatched_source_column_names   # => []
 header_analysis.unmatched_target_columns   # created_at and updated_at: the model fills them
 ```
 
@@ -70,14 +70,14 @@ You build `mapped_columns` yourself, from the matches or from your own knowledge
 
 ```ruby
 mapped_columns = {
-  "email" => {source_column: "Email"},
-  "first_name" => {source_column: "First Name"},
-  "last_name" => {source_column: "Last Name"},
-  "company_id" => {source_column: "Company"},
-  "age" => {source_column: "Age"},
-  "balance" => {source_column: "Balance"},
-  "status" => {source_column: "Status"},
-  "active" => {source_column: "Active"}
+  "email" => {source_column_name: "Email"},
+  "first_name" => {source_column_name: "First Name"},
+  "last_name" => {source_column_name: "Last Name"},
+  "company_id" => {source_column_name: "Company"},
+  "age" => {source_column_name: "Age"},
+  "balance" => {source_column_name: "Balance"},
+  "status" => {source_column_name: "Status"},
+  "active" => {source_column_name: "Active"}
 }
 value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
@@ -143,24 +143,24 @@ Pipeforge never prompts and never draws anything; the review between the steps i
 
 ```json
 {
-  "target_column": "company_id",
-  "source_column": "Company",
+  "target_column_name": "company_id",
+  "source_column_name": "Company",
   "score": 66.67,
-  "tied_with": [],
+  "tied_source_column_names": [],
   "metadata": {
     "type": "integer",
     "required": true,
     "enum_labels": null,
-    "foreign_key": {"association": "company", "parent_table": "companies"}
+    "foreign_key": {"association_name": "company", "parent_table_name": "companies"}
   }
 }
 ```
 
-A mapping screen can mark `company_id` as required, show that it points to `companies`, and list the other source columns that scored the same (`tied_with`), without anyone querying the database. This is one column from `analyze_column_values`, which a value-mapping screen is built on:
+A mapping screen can mark `company_id` as required, show that it points to `companies`, and list the other source columns that scored the same (`tied_source_column_names`), without anyone querying the database. This is one column from `analyze_column_values`, which a value-mapping screen is built on:
 
 ```json
 {
-  "source_column": "Status",
+  "source_column_name": "Status",
   "position": 6,
   "empty": 0,
   "distinct_values": {
@@ -197,7 +197,7 @@ And one failed row from a run, with the values after mapping, never the raw line
       "origin": "schema",
       "code": "value_too_long",
       "message": "status: the value has 34 characters, more than the 20 allowed",
-      "target_column": "status"
+      "target_column_name": "status"
     }
   ]
 }

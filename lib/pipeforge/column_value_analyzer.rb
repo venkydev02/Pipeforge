@@ -22,7 +22,7 @@ module Pipeforge
   # @api private
   #
   # @example through the engine
-  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
+  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column_name: "Mail"}})
   #   result.column_summaries["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
@@ -35,8 +35,8 @@ module Pipeforge
       def to_h
         column_summaries_as_hashes = {}
 
-        column_summaries.each do |target_column, column_summary|
-          column_summaries_as_hashes[target_column] = column_summary.to_h
+        column_summaries.each do |target_column_name, column_summary|
+          column_summaries_as_hashes[target_column_name] = column_summary.to_h
         end
 
         {
@@ -74,9 +74,9 @@ module Pipeforge
         summary_builders = {}
         resolved_mapped_columns.each do |target_column_name, resolved_mapped_column|
           summary_builders[target_column_name] = ColumnSummaryBuilder.new(
-            target_column: target_column_name,
-            source_column: resolved_mapped_column.source_column,
-            position: header_names.index(resolved_mapped_column.source_column) + 1,
+            target_column_name: target_column_name,
+            source_column_name: resolved_mapped_column.source_column_name,
+            position: header_names.index(resolved_mapped_column.source_column_name) + 1,
             limits_checker: ColumnLimitsChecker.for(target_column: resolved_mapped_column.target_column),
             value_mapping: resolved_mapped_column.value_mapping,
             target: target
@@ -85,12 +85,12 @@ module Pipeforge
 
         row_count = source_reader.each_row do |row|
           summary_builders.each_value do |summary_builder|
-            summary_builder.add_cell(cell: row[summary_builder.source_column])
+            summary_builder.add_cell(cell: row[summary_builder.source_column_name])
           end
         end
 
         column_summaries = {}
-        summary_builders.each { |target_column, summary_builder| column_summaries[target_column] = summary_builder.summary }
+        summary_builders.each { |target_column_name, summary_builder| column_summaries[target_column_name] = summary_builder.summary }
 
         Result.new(source_identifier: source_reader.identifier, row_count: row_count, column_summaries: column_summaries)
       end

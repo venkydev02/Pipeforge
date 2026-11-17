@@ -24,10 +24,10 @@ module Pipeforge
       # @param target_schema [TargetSchema]
       def initialize(target_schema:)
         @target_columns = target_schema.columns
-        @limits_by_column = {}
+        @limits_by_column_name = {}
 
         @target_columns.each do |target_column|
-          @limits_by_column[target_column.name] = ColumnLimitsChecker.new(
+          @limits_by_column_name[target_column.name] = ColumnLimitsChecker.new(
             type: target_column.type,
             limit: target_column.limit,
             is_signed: target_column.is_signed,
@@ -40,7 +40,7 @@ module Pipeforge
       end
 
       # @param attributes [Hash{String => Object}] target column => value to load
-      # @return [Array<Hash>] one entry {origin: :schema, code:, message:, target_column:} for each mistake;
+      # @return [Array<Hash>] one entry {origin: :schema, code:, message:, target_column_name:} for each mistake;
       #   empty when the record passes
       def call(attributes:)
         errors = []
@@ -53,7 +53,7 @@ module Pipeforge
             next
           end
 
-          violation = @limits_by_column.fetch(target_column.name).violation_of(value: value)
+          violation = @limits_by_column_name.fetch(target_column.name).violation_of(value: value)
           errors << limit_error(target_column: target_column, violation: violation) unless violation.nil?
         end
 
@@ -67,7 +67,7 @@ module Pipeforge
           origin: :schema,
           code: :value_missing,
           message: "#{target_column.name} is required but its value is empty",
-          target_column: target_column.name
+          target_column_name: target_column.name
         }
       end
 
@@ -76,7 +76,7 @@ module Pipeforge
           origin: :schema,
           code: violation.code,
           message: "#{target_column.name}: #{violation.detail}",
-          target_column: target_column.name
+          target_column_name: target_column.name
         }
       end
     end

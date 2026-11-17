@@ -21,8 +21,8 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
   let(:errors_of) { ->(attributes:) { [] } }
   let(:schema_checker) { Pipeforge::RunProcessor::SchemaChecker.new(target_schema: target_schema) }
 
-  def model_error(code:, target_column:, message: "from the model")
-    {origin: :model, code: code, message: message, target_column: target_column}
+  def model_error(code:, target_column_name:, message: "from the model")
+    {origin: :model, code: code, message: message, target_column_name: target_column_name}
   end
 
   describe ".new" do
@@ -64,11 +64,11 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
     end
 
     context "when the model finds a mistake" do
-      let(:errors_of) { ->(attributes:) { [model_error(code: :value_not_unique, target_column: "email")] } }
+      let(:errors_of) { ->(attributes:) { [model_error(code: :value_not_unique, target_column_name: "email")] } }
 
       it "is false, with that error" do
         expect(candidate.valid?(schema_checker: schema_checker)).to be(false)
-        expect(candidate.errors).to eq([model_error(code: :value_not_unique, target_column: "email")])
+        expect(candidate.errors).to eq([model_error(code: :value_not_unique, target_column_name: "email")])
       end
     end
 
@@ -84,19 +84,19 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
     context "when both levels find the same mistake on the same column" do
       let(:mapped_values) { {"email" => nil, "status" => "closed", "note" => nil} }
       let(:errors_of) do
-        ->(attributes:) { [model_error(code: :value_missing, target_column: "email", message: "model's words")] }
+        ->(attributes:) { [model_error(code: :value_missing, target_column_name: "email", message: "model's words")] }
       end
 
       before { candidate.valid?(schema_checker: schema_checker) }
 
       it "keeps one error, the model's" do
-        expect(candidate.errors).to eq([model_error(code: :value_missing, target_column: "email", message: "model's words")])
+        expect(candidate.errors).to eq([model_error(code: :value_missing, target_column_name: "email", message: "model's words")])
       end
     end
 
     context "when both levels find mistakes that differ" do
       let(:mapped_values) { {"email" => nil, "status" => "closed", "note" => nil} }
-      let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column: "email")] } }
+      let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column_name: "email")] } }
 
       before { candidate.valid?(schema_checker: schema_checker) }
 
@@ -110,12 +110,12 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
         [build_target_column(name: "email", required: true), build_target_column(name: "phone", required: true)]
       end
       let(:mapped_values) { {"email" => nil, "phone" => nil} }
-      let(:errors_of) { ->(attributes:) { [model_error(code: :value_missing, target_column: "email")] } }
+      let(:errors_of) { ->(attributes:) { [model_error(code: :value_missing, target_column_name: "email")] } }
 
       before { candidate.valid?(schema_checker: schema_checker) }
 
       it "keeps the schema's error for the other column" do
-        expect(candidate.errors.map { |error| error[:target_column] }).to eq(%w[email phone])
+        expect(candidate.errors.map { |error| error[:target_column_name] }).to eq(%w[email phone])
       end
     end
 
@@ -162,7 +162,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
   end
 
   describe "#failed_row" do
-    let(:errors_of) { ->(attributes:) { [model_error(code: :value_not_unique, target_column: "email")] } }
+    let(:errors_of) { ->(attributes:) { [model_error(code: :value_not_unique, target_column_name: "email")] } }
 
     before { candidate.valid?(schema_checker: schema_checker) }
 
@@ -172,13 +172,13 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
 
     it "has each error with the origin it came from" do
       expect(candidate.failed_row.errors).to eq(
-        [{origin: :model, code: :value_not_unique, message: "from the model", target_column: "email"}]
+        [{origin: :model, code: :value_not_unique, message: "from the model", target_column_name: "email"}]
       )
     end
 
     context "when the schema finds a mistake as well" do
       let(:mapped_values) { {"email" => nil, "status" => "closed", "note" => nil} }
-      let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column: "email")] } }
+      let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column_name: "email")] } }
 
       it "has the model's error with the origin model and the schema's with the origin schema" do
         expect(candidate.failed_row.errors.map { |error| [error[:origin], error[:code]] }).to eq(
@@ -190,7 +190,7 @@ RSpec.describe Pipeforge::RunProcessor::RowCandidate do
 
   describe "#load" do
     let(:database_error) do
-      {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column: "email"}
+      {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column_name: "email"}
     end
 
     context "when the write works" do

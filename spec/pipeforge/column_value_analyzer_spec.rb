@@ -22,8 +22,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   let(:target) { FakeTarget.reading(types: mapped_columns.transform_values { |entry| entry[:type] }) }
 
   # One mapping value: the target column of a source column and the type of that column.
-  def maps_to(source_column:, type:, **type_info)
-    {source_column: source_column, type: type}.merge(type_info)
+  def maps_to(source_column_name:, type:, **type_info)
+    {source_column_name: source_column_name, type: type}.merge(type_info)
   end
 
   describe "#call" do
@@ -48,9 +48,9 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     end
     let(:mapped_columns) do
       {
-        "name" => maps_to(source_column: "Full Name", type: "string"),
-        "age" => maps_to(source_column: "Age", type: "integer"),
-        "notes" => maps_to(source_column: "Notes", type: "text")
+        "name" => maps_to(source_column_name: "Full Name", type: "string"),
+        "age" => maps_to(source_column_name: "Age", type: "integer"),
+        "notes" => maps_to(source_column_name: "Notes", type: "text")
       }
     end
 
@@ -72,9 +72,9 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
       it "gives each summary its source column and the position of that column in the file" do
         expect(result.column_summaries).to include(
-          "name" => have_attributes(source_column: "Full Name", position: 1),
-          "age" => have_attributes(source_column: "Age", position: 2),
-          "notes" => have_attributes(source_column: "Notes", position: 3)
+          "name" => have_attributes(source_column_name: "Full Name", position: 1),
+          "age" => have_attributes(source_column_name: "Age", position: 2),
+          "notes" => have_attributes(source_column_name: "Notes", position: 3)
         )
       end
 
@@ -104,7 +104,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     end
 
     context "when only some of the columns are mapped" do
-      let(:mapped_columns) { {"age" => maps_to(source_column: "Age", type: "integer")} }
+      let(:mapped_columns) { {"age" => maps_to(source_column_name: "Age", type: "integer")} }
 
       it "measures only the mapped columns" do
         expect(result.column_summaries.keys).to eq(["age"])
@@ -118,9 +118,9 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     context "when the mapping lists the columns in another order than the file" do
       let(:mapped_columns) do
         {
-          "notes" => maps_to(source_column: "Notes", type: "text"),
-          "age" => maps_to(source_column: "Age", type: "integer"),
-          "name" => maps_to(source_column: "Full Name", type: "string")
+          "notes" => maps_to(source_column_name: "Notes", type: "text"),
+          "age" => maps_to(source_column_name: "Age", type: "integer"),
+          "name" => maps_to(source_column_name: "Full Name", type: "string")
         }
       end
 
@@ -137,8 +137,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:csv) { "Name\nAnn Lee\nBob\n" }
       let(:mapped_columns) do
         {
-          "first_name" => maps_to(source_column: "Name", type: "string", max_length: 5),
-          "full_name" => maps_to(source_column: "Name", type: "string", max_length: 50)
+          "first_name" => maps_to(source_column_name: "Name", type: "string", max_length: 5),
+          "full_name" => maps_to(source_column_name: "Name", type: "string", max_length: 50)
         }
       end
 
@@ -154,7 +154,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
 
       it "gives both the same source column and position" do
-        expect(result.column_summaries.values).to all(have_attributes(source_column: "Name", position: 1))
+        expect(result.column_summaries.values).to all(have_attributes(source_column_name: "Name", position: 1))
       end
 
       it "counts the rows of the file once" do
@@ -175,7 +175,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     end
 
     context "when the target type limits the length of the text" do
-      let(:mapped_columns) { {"name" => maps_to(source_column: "Full Name", type: "string", max_length: 3)} }
+      let(:mapped_columns) { {"name" => maps_to(source_column_name: "Full Name", type: "string", max_length: 3)} }
 
       it "counts the values within the limit as fitting" do
         expect(result.column_summaries["name"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 2)
@@ -194,7 +194,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when the target type has no fit rule yet" do
       let(:csv) { "Data\n{\"a\": 1}\nnot json\n" }
-      let(:mapped_columns) { {"data" => maps_to(source_column: "Data", type: "jsonb")} }
+      let(:mapped_columns) { {"data" => maps_to(source_column_name: "Data", type: "jsonb")} }
 
       it "counts every value as fitting" do
         expect(result.column_summaries["data"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 0)
@@ -216,11 +216,11 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
       let(:mapped_columns) do
         {
-          "id" => maps_to(source_column: "Id", type: "integer"),
-          "price" => maps_to(source_column: "Price", type: "decimal"),
-          "active" => maps_to(source_column: "Active", type: "boolean"),
-          "joined" => maps_to(source_column: "Joined", type: "date"),
-          "ref" => maps_to(source_column: "Ref", type: "uuid")
+          "id" => maps_to(source_column_name: "Id", type: "integer"),
+          "price" => maps_to(source_column_name: "Price", type: "decimal"),
+          "active" => maps_to(source_column_name: "Active", type: "boolean"),
+          "joined" => maps_to(source_column_name: "Joined", type: "date"),
+          "ref" => maps_to(source_column_name: "Ref", type: "uuid")
         }
       end
 
@@ -257,7 +257,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when the file has a header and no data rows" do
       let(:csv) { "A,B\n" }
-      let(:mapped_columns) { {"b" => maps_to(source_column: "B", type: "integer"), "a" => maps_to(source_column: "A", type: "string")} }
+      let(:mapped_columns) { {"b" => maps_to(source_column_name: "B", type: "integer"), "a" => maps_to(source_column_name: "A", type: "string")} }
 
       it "counts no rows" do
         expect(result.row_count).to eq(0)
@@ -281,7 +281,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when every row of the file is empty" do
       let(:csv) { "A,B\n,\n  ,  \n\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "string")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "string")} }
 
       it "counts no rows and shows zero counts" do
         expect(result.row_count).to eq(0)
@@ -291,7 +291,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when a row in the middle of the file is empty" do
       let(:csv) { "A,B\n1,2\n,\n3,4\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "integer")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "does not count the empty row" do
         expect(result.row_count).to eq(2)
@@ -300,7 +300,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when a row has more cells than the header" do
       let(:csv) { "A,B,C\n1,2,3,4\n5,6,7\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "integer"), "c" => maps_to(source_column: "C", type: "integer")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer"), "c" => maps_to(source_column_name: "C", type: "integer")} }
 
       it "stops with source_row_too_long, with the line of the row" do
         expect { result }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
@@ -311,7 +311,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when the header has a blank cell" do
       let(:csv) { "A,,C\n1,2,3\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "integer")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_header_blank, even though the blank cell is not mapped" do
         expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
@@ -322,7 +322,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when a name appears twice in the header" do
       let(:csv) { "A,A\n1,2\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "integer")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_header_duplicated" do
         expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
@@ -333,7 +333,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when the file is empty" do
       let(:csv) { "" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "integer")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_empty" do
         expect { result }.to raise_error(Pipeforge::Source::EmptySourceError) do |error|
@@ -345,7 +345,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     context "when a row cannot be parsed" do
       # The quote opened on line 3 is never closed, so it swallows lines 4 to 6.
       let(:csv) { "Name,Note\nAlice,30\nBob,\"two lines\nof text\nCara,25\nDan,40\n" }
-      let(:mapped_columns) { {"name" => maps_to(source_column: "Name", type: "string")} }
+      let(:mapped_columns) { {"name" => maps_to(source_column_name: "Name", type: "string")} }
 
       it "stops with our own error, naming the line where the row starts" do
         expect { result }.to raise_error(Pipeforge::Source::MalformedSourceError, /malformed CSV at line 3: .*quote/i) do |error|
@@ -356,7 +356,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with padded values and headers" do
       let(:csv) { " Id , Name \n 42 ,Alice\n\t7\t,  \n" }
-      let(:mapped_columns) { {"id" => maps_to(source_column: "Id", type: "integer"), "name" => maps_to(source_column: "Name", type: "string")} }
+      let(:mapped_columns) { {"id" => maps_to(source_column_name: "Id", type: "integer"), "name" => maps_to(source_column_name: "Name", type: "string")} }
 
       it "trims the headers, so the mapping uses the trimmed names" do
         expect(result.column_summaries.keys).to eq(%w[id name])
@@ -373,7 +373,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when a row has fewer fields than the header" do
       let(:csv) { "A,B,C\n1,2\n3,4,5\n" }
-      let(:mapped_columns) { {"c" => maps_to(source_column: "C", type: "integer")} }
+      let(:mapped_columns) { {"c" => maps_to(source_column_name: "C", type: "integer")} }
 
       it "counts the missing value as empty" do
         expect(result.column_summaries["c"]).to have_attributes(empty: 1, distinct_values: have_attributes(compatible_count: 1, incompatible_count: 0))
@@ -382,7 +382,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with quoted values" do
       let(:csv) { "A,B\n\"x, y\",\"say \"\"hi\"\"\"\n" }
-      let(:mapped_columns) { {"a" => maps_to(source_column: "A", type: "string"), "b" => maps_to(source_column: "B", type: "string")} }
+      let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "string"), "b" => maps_to(source_column_name: "B", type: "string")} }
 
       it "keeps a comma inside quotes as part of the value" do
         expect(result.column_summaries["a"].distinct_values.compatible).to eq([compatible_value(value: "x, y", count: 1, casted_to: "x, y")])
@@ -395,7 +395,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with values that differ only in case" do
       let(:csv) { "S\nActive\nactive\nACTIVE\n" }
-      let(:mapped_columns) { {"s" => maps_to(source_column: "S", type: "string")} }
+      let(:mapped_columns) { {"s" => maps_to(source_column_name: "S", type: "string")} }
 
       it "keeps them as different values" do
         expect(result.column_summaries["s"].distinct_values.compatible.map(&:value))
@@ -405,7 +405,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with text that is not ASCII" do
       let(:csv) { "S\nÉcole\n日本語日本語\n" }
-      let(:mapped_columns) { {"s" => maps_to(source_column: "S", type: "string", max_length: 5)} }
+      let(:mapped_columns) { {"s" => maps_to(source_column_name: "S", type: "string", max_length: 5)} }
 
       it "measures the length in characters, not bytes" do
         expect(result.column_summaries["s"].distinct_values).to have_attributes(compatible_count: 1, incompatible_count: 1)
@@ -451,18 +451,18 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
            Active ,g7
         CSV
       end
-      let(:mapped_columns) { {"status" => maps_to(source_column: "Status", type: "string"), "code" => maps_to(source_column: "Code", type: "string")} }
+      let(:mapped_columns) { {"status" => maps_to(source_column_name: "Status", type: "string"), "code" => maps_to(source_column_name: "Code", type: "string")} }
 
-      def listed(target_column:, list: :compatible)
-        result.column_summaries[target_column].distinct_values.public_send(list)
+      def listed(target_column_name:, list: :compatible)
+        result.column_summaries[target_column_name].distinct_values.public_send(list)
       end
 
       it "lists every different value, in the order the values first appeared" do
-        expect(listed(target_column: "code").map(&:value)).to eq(%w[a1 b2 c3 d4 e5 f6 g7])
+        expect(listed(target_column_name: "code").map(&:value)).to eq(%w[a1 b2 c3 d4 e5 f6 g7])
       end
 
       it "counts how often each value appeared" do
-        expect(listed(target_column: "status")).to eq(
+        expect(listed(target_column_name: "status")).to eq(
           [
             compatible_value(value: "Active", count: 4, casted_to: "Active"),
             compatible_value(value: "INACTIVE", count: 2, casted_to: "INACTIVE"),
@@ -478,7 +478,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with more different values than the lists once held" do
       let(:csv) { "N\n" + Array.new(1200) { |number| number.to_s }.join("\n") + "\n" + %w[x y].join("\n") + "\n" }
-      let(:mapped_columns) { {"n" => maps_to(source_column: "N", type: "integer")} }
+      let(:mapped_columns) { {"n" => maps_to(source_column_name: "N", type: "integer")} }
 
       it "lists every value that fits" do
         expect(result.column_summaries["n"].distinct_values.compatible.size).to eq(1200)
@@ -495,7 +495,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with a value that appears for the first time in the last row" do
       let(:csv) { "N\n1\n1\n1\n2\n" }
-      let(:mapped_columns) { {"n" => maps_to(source_column: "N", type: "integer")} }
+      let(:mapped_columns) { {"n" => maps_to(source_column_name: "N", type: "integer")} }
 
       it "lists it, because no value is left out" do
         expect(result.column_summaries["n"].distinct_values.compatible).to eq(
@@ -506,7 +506,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "with a value mapping on a column" do
       let(:csv) { "Status\nActive\nInactive\nActive\nn/a\nbroken\n" }
-      let(:mapped_columns) { {"status" => maps_to(source_column: "Status", type: "integer", value_mapping: value_mapping)} }
+      let(:mapped_columns) { {"status" => maps_to(source_column_name: "Status", type: "integer", value_mapping: value_mapping)} }
       let(:value_mapping) { {"Active" => "1", "Inactive" => "0", "n/a" => nil} }
 
       it "measures a mapped value as the value it maps to" do
@@ -612,8 +612,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         let(:csv) { "Status,Age\nActive,30\nx,y\n" }
         let(:mapped_columns) do
           {
-            "status" => maps_to(source_column: "Status", type: "integer", value_mapping: {"Active" => "1"}),
-            "age" => maps_to(source_column: "Age", type: "integer")
+            "status" => maps_to(source_column_name: "Status", type: "integer", value_mapping: {"Active" => "1"}),
+            "age" => maps_to(source_column_name: "Age", type: "integer")
           }
         end
 
@@ -629,7 +629,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     context "when a value maps to false" do
       let(:csv) { "Flag\nNo\nNo\nYes\n" }
-      let(:mapped_columns) { {"flag" => maps_to(source_column: "Flag", type: "boolean", value_mapping: {"No" => false})} }
+      let(:mapped_columns) { {"flag" => maps_to(source_column_name: "Flag", type: "boolean", value_mapping: {"No" => false})} }
 
       it "loads false as a value, not as empty" do
         expect(result.column_summaries["flag"]).to have_attributes(empty: 0, distinct_values: have_attributes(compatible_count: 3, incompatible_count: 0))
@@ -658,7 +658,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     let(:result) do
       described_class.call(
         source_reader: csv_reader("Age\n30\nx\n\n"),
-        resolved_mapped_columns: resolve_mapped_columns("age" => maps_to(source_column: "Age", type: "integer")),
+        resolved_mapped_columns: resolve_mapped_columns("age" => maps_to(source_column_name: "Age", type: "integer")),
         target: FakeTarget.reading(types: {"age" => "integer"})
       )
     end
@@ -669,7 +669,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         "row_count" => 2,
         "column_summaries" => {
           "age" => {
-            "source_column" => "Age",
+            "source_column_name" => "Age",
             "position" => 1,
             "empty" => 0,
             "distinct_values" => {
