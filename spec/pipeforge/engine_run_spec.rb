@@ -15,7 +15,6 @@ RSpec.describe Pipeforge::Engine, "#run" do
 
   # The core is tested without an adapter gem, so the adapter calls are stubbed.
   before do
-    allow(Pipeforge::TargetAdapter).to receive(:ensure_installed)
     allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
     allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(model_adapter)
     use_settings(execution: {chunk_size: 2})

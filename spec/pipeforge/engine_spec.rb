@@ -17,9 +17,8 @@ RSpec.describe Pipeforge::Engine do
   end
   let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
 
-  # The core is tested without an adapter gem, so the check that one is installed is stubbed.
-  # and so is the model adapter that casts the texts of the column values stage: it reads a text as the type of
-  # its column and cannot read any other text.
+  # The core is tested without an adapter gem, so the model adapter that casts the texts of the column values
+  # stage is stubbed: it reads a text as the type of its column and cannot read any other text.
   before do
     types = target_columns.to_h do |target_column|
       [target_column.name, target_column.enum_labels.nil? ? target_column.type : "string"]
@@ -27,23 +26,9 @@ RSpec.describe Pipeforge::Engine do
     allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.reading(types: types))
   end
 
-  before { allow(Pipeforge::TargetAdapter).to receive(:ensure_installed) }
-
   before { use_settings(settings) }
 
   describe ".new" do
-    context "when no target adapter is installed" do
-      around { |example| without_installed_adapter { example.run } }
-
-      before { allow(Pipeforge::TargetAdapter).to receive(:ensure_installed).and_call_original }
-
-      it "stops with target_adapter_not_installed" do
-        expect { engine }.to raise_error(Pipeforge::TargetAdapterError) do |error|
-          expect(error.codes).to eq([:target_adapter_not_installed])
-        end
-      end
-    end
-
     context "when the source is missing a method" do
       let(:source_io) { Object.new }
 

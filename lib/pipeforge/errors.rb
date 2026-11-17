@@ -59,10 +59,6 @@ module Pipeforge
   # mistake.
   class InvalidMappedColumnsError < Error; end
 
-  # Raised when the engine needs a target adapter and none is installed
-  # (+target_adapter_not_installed+).
-  class TargetAdapterError < Error; end
-
   # Raised by a target adapter that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table+). A code that belongs
   # to one adapter carries its name, for example +active_record_model_not_found+ (field +model+).

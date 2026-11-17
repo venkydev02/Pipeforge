@@ -30,10 +30,8 @@ module Pipeforge
     # @param target_model [String] the name of the model the data will be loaded through,
     #   for example +"User"+
     #
-    # @raise [TargetAdapterError] no adapter gem is loaded (+target_adapter_not_installed+)
     # @raise [Source::UnsupportedSourceError] the source is missing a method the engine needs
     def initialize(source_io:, target_model:)
-      TargetAdapter.ensure_installed
       @source_reader = Source::CsvReader.new(source_io: Source::ReusableIO.new(io: source_io))
       @target_model = target_model
     end

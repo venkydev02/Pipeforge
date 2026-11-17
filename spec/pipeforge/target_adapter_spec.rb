@@ -7,28 +7,6 @@ RSpec.describe Pipeforge::TargetAdapter do
   # The adapter is kept by the module itself, so each example runs with none installed and the real one is put back.
   around { |example| without_installed_adapter { example.run } }
 
-  describe ".ensure_installed" do
-    it "does nothing when an adapter is installed" do
-      described_class.install(adapter: adapter)
-
-      expect { described_class.ensure_installed }.not_to raise_error
-    end
-
-    it "stops with target_adapter_not_installed when no adapter is installed" do
-      expect { described_class.ensure_installed }.to raise_error(Pipeforge::TargetAdapterError) do |error|
-        expect(error.codes).to eq([:target_adapter_not_installed])
-      end
-    end
-  end
-
-  describe ".model_adapter" do
-    it "stops with target_adapter_not_installed when no adapter is installed" do
-      expect { described_class.model_adapter(target_model: "Record") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
-        expect(error.codes).to eq([:target_adapter_not_installed])
-      end
-    end
-  end
-
   describe ".schema" do
     context "when an adapter is installed" do
       before { described_class.install(adapter: adapter) }
@@ -41,14 +19,6 @@ RSpec.describe Pipeforge::TargetAdapter do
         described_class.schema(target_model: "Record")
 
         expect(adapter).to have_received(:schema).with(target_model: "Record")
-      end
-    end
-
-    context "when no adapter is installed" do
-      it "stops with target_adapter_not_installed" do
-        expect { described_class.schema(target_model: "Record") }.to raise_error(Pipeforge::TargetAdapterError) do |error|
-          expect(error.codes).to eq([:target_adapter_not_installed])
-        end
       end
     end
 

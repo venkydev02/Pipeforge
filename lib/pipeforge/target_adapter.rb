@@ -21,26 +21,12 @@ module Pipeforge
         @adapter = adapter
       end
 
-      # Checks that an adapter is installed. The engine calls it when it is created.
-      #
-      # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
-      def ensure_installed
-        return unless @adapter.nil?
-
-        raise TargetAdapterError.single(
-          code: :target_adapter_not_installed,
-          message: "no target adapter is installed; add an adapter gem such as pipeforge-activerecord"
-        )
-      end
-
       # The structure of the target table of a model.
       #
       # @param target_model [String] the name of the model
       # @return [TargetSchema]
-      # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
       # @raise [TargetSchemaError] the model or its table cannot be found
       def schema(target_model:)
-        ensure_installed
         @adapter.schema(target_model: target_model)
       end
 
@@ -56,10 +42,8 @@ module Pipeforge
       #
       # @param target_model [String] the name of the model
       # @return [#build_record, #preload_parents, #cast_value, #transaction] the model adapter
-      # @raise [TargetAdapterError] no adapter is installed (+target_adapter_not_installed+)
       # @raise [TargetSchemaError] the model or its table cannot be found
       def model_adapter(target_model:)
-        ensure_installed
         @adapter.model_adapter(target_model: target_model)
       end
     end
