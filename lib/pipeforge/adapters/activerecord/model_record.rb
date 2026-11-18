@@ -2,7 +2,7 @@
 
 module Pipeforge
   # One unsaved ActiveRecord record, wrapped for the run. It answers what the core asks of a model
-  # record (see {RunProcessor::RowCandidate#model_record}): the errors of the model's own validations, and the write.
+  # record (see {RunProcessor::ChunkProcessor}): the errors of the model's own validations, and the write.
   class ActiveRecordModelRecord
     # @return [ActiveRecord::Base] the unsaved record
     attr_reader :record
@@ -80,6 +80,14 @@ module Pipeforge
     def attributes
       # The record cannot hold these, so they are added back as they were given.
       @record.attributes.merge(@unknown_enum_labels).merge(@invalid_json_texts)
+    end
+
+    # The values of {#attributes} as plain JSON types, which is what a failed row shows: a date is its ISO
+    # text, a decimal a text, and a value the record could not hold the text it was given.
+    #
+    # @return [Hash{String => Object}] column => value
+    def json_attributes
+      attributes.as_json
     end
 
     private

@@ -464,3 +464,15 @@
 * **Consequences:**
   * A consumer who wrote the old field names changes them once; nothing is stored under the old names, because the engine persists nothing.
   * `README.md`, `overview.md`, `protocols.md` and the specs are updated in the same change. The earlier ADRs are not edited; they are history.
+
+### ADR-30: A Failed Row Shows the Attributes of Its Model Record, as JSON Values
+* **Status:** Accepted (2026-11-17). **Supersedes** the `mapped_values` of the failed row in ADR-17 and its amendments (the row after the column mapping and the value mapping, as text), and ends `RowCandidate`.
+* **Context:** A consumer who reads a failed row wants to know why it failed. The errors are found on what the model record holds: the core checks the schema on the record's attributes, after the model's callbacks, and the model's own errors are about the same values. The text of the file after the mapping could differ from those values (a default filled an empty cell, a callback stripped a value, an integer was cast), so a failed row could disagree with its own errors. `RowCandidate` also repeated `valid?`, `errors` and `load` of the model record, which it wrapped, and kept a list of errors that it replaced twice.
+* **Decision:**
+  1. **`FailedRow(row_number:, attributes:, errors:)`.** `attributes` is what the model record held when the row failed, as plain JSON types, for the columns of the target schema in table order. It is never the raw source row.
+  2. **The model record answers `json_attributes`** next to `attributes`: the same values as plain JSON types. The core checks the schema on `attributes` (the real Ruby values) and shows `json_attributes`.
+  3. **`ChunkProcessor` works on the model record directly.** It builds the record of each row, validates it on the two levels (the record's checks and the core's `SchemaChecker`, each mistake reported once, the model's entry kept), loads it, or builds the `FailedRow`. `RowCandidate` is removed. The schema checks stay in the core.
+* **Consequences:**
+  * A consumer who read `mapped_values` reads `attributes`, with cast values: `4` and not `"4"`, a decimal as a text, a default shown where the cell was empty.
+  * The record contract is `valid?`, `errors`, `attributes`, `json_attributes` and `load`; an adapter answers `json_attributes` too.
+  * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.

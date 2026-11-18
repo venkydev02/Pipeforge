@@ -109,11 +109,11 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     expect(codes_of_row(9)).to eq([:value_not_allowed])
   end
 
-  it "shows the values as they would have been loaded, keyed by target column" do
+  it "shows the values as they would have been loaded, as JSON values, for the columns of the schema" do
     run_result
 
-    expect(failed_rows.first.mapped_values).to eq(
-      "email" => nil, "seats" => "10", "fee" => "10.50", "tier" => "basic", "company_id" => company.id.to_s
+    expect(failed_rows.first.attributes).to eq(
+      "email" => nil, "seats" => 10, "fee" => "10.5", "tier" => "basic", "company_id" => company.id
     )
   end
 

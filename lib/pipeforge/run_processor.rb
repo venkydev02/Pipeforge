@@ -2,7 +2,6 @@
 
 require_relative "run_processor/row_transformer"
 require_relative "run_processor/schema_checker"
-require_relative "run_processor/row_candidate"
 require_relative "run_processor/chunk_processor"
 
 module Pipeforge

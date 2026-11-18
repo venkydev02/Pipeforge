@@ -60,7 +60,7 @@ RSpec.describe Pipeforge::RunProcessor do
     it "shows the transformed values in a failed row" do
       run_result
 
-      expect(chunk_results.last.failed_rows.first.mapped_values).to eq("email" => "e@example.com", "status" => "far too long")
+      expect(chunk_results.last.failed_rows.first.attributes).to eq("email" => "e@example.com", "status" => "far too long")
     end
 
     it "preloads the parents once for each chunk" do

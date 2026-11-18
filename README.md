@@ -26,7 +26,7 @@ Value mapping: an optional part of one entry that rewrites values from the file 
 
 Dry run: the same checks and writes as a real run, inside one transaction that is rolled back at the end.
 
-Failed row: a row that did not load, with its row number, the values after mapping, and each mistake with a stable `code`.
+Failed row: a row that did not load, with its row number, the attributes its record held as plain JSON values, and each mistake with a stable `code`.
 
 ## What it answers
 
@@ -186,12 +186,12 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
 }
 ```
 
-And one failed row from a run, with the values after mapping, never the raw line:
+And one failed row from a run, with the attributes the record held (the columns of the table, cast to their types, as JSON values), never the raw line:
 
 ```json
 {
   "row_number": 4,
-  "mapped_values": {"email": "noah.fox@example.com", "company_id": "4", "status": "this status is far too long to fit"},
+  "attributes": {"email": "noah.fox@example.com", "company_id": 4, "status": "this status is far too long to fit"},
   "errors": [
     {
       "origin": "schema",

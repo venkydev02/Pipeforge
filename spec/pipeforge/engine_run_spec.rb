@@ -239,10 +239,10 @@ RSpec.describe Pipeforge::Engine, "#run" do
       expect(target.built_attributes.map { |attributes| attributes["level"] }).to eq(%w[one 2 tre])
     end
 
-    it "shows the mapped values in a failed row" do
+    it "shows the attributes of the record in a failed row, without the empty value" do
       run_engine
 
-      expect(chunk_results.flat_map(&:failed_rows).first.mapped_values).to eq("email" => nil, "level" => "2")
+      expect(chunk_results.flat_map(&:failed_rows).first.attributes).to eq("level" => "2")
     end
   end
 

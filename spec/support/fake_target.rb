@@ -103,6 +103,11 @@ class FakeTarget
       @events = events
     end
 
+    # The attributes are already plain values.
+    def json_attributes
+      attributes
+    end
+
     def valid?
       @events << [:valid, @attributes]
       @attributes = @changes_on_validation.call(attributes: @attributes)

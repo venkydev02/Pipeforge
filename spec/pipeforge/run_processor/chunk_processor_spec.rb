@@ -50,8 +50,8 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       expect(chunk_result.failed_rows.map(&:row_number)).to eq([6, 7])
     end
 
-    it "gives each failed row the transformed values, after the value mapping" do
-      expect(chunk_result.failed_rows.first.mapped_values).to eq("email" => nil, "status" => "active")
+    it "gives each failed row the attributes its record held, after the value mapping" do
+      expect(chunk_result.failed_rows.first.attributes).to eq("status" => "active")
     end
 
     it "gives each failed row its errors with the origin" do
@@ -98,6 +98,70 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       end
     end
 
+    describe "the two levels of checks" do
+      let(:target_columns) do
+        [build_target_column(name: "email", required: true), build_target_column(name: "phone", required: true)]
+      end
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "phone" => {source_column_name: "Phone"}} }
+      let(:rows) { [{"Mail" => nil, "Phone" => nil}] }
+      let(:errors_of_failed_row) { chunk_result.failed_rows.first.errors }
+
+      def model_error(code:, target_column_name:, message: "from the model")
+        {origin: :model, code: code, message: message, target_column_name: target_column_name}
+      end
+
+      context "when the model finds the same mistake as the schema on one column" do
+        let(:errors_of) do
+          ->(attributes:) { [model_error(code: :value_missing, target_column_name: "email", message: "model's words")] }
+        end
+
+        it "keeps that mistake once, the model's, and the schema's mistake of the other column" do
+          expect(errors_of_failed_row.map { |error| [error[:target_column_name], error[:origin]] }).to eq(
+            [["email", :model], ["phone", :schema]]
+          )
+        end
+
+        it "keeps the words of the model" do
+          expect(errors_of_failed_row.first[:message]).to eq("model's words")
+        end
+      end
+
+      context "when the model finds a mistake the schema does not" do
+        let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column_name: "email")] } }
+
+        it "keeps the model's mistake first, then the schema's" do
+          expect(errors_of_failed_row.map { |error| [error[:code], error[:target_column_name]] }).to eq(
+            [[:value_invalid, "email"], [:value_missing, "email"], [:value_missing, "phone"]]
+          )
+        end
+      end
+
+      context "when the model's callbacks change a value during its validation" do
+        let(:target_columns) { [build_target_column(name: "code", max_length: 3)] }
+        let(:mapped_columns) { {"code" => {source_column_name: "Code"}} }
+        let(:rows) { [{"Code" => "abc"}, {"Code" => "xyz"}] }
+
+        context "when the change makes a value fit" do
+          let(:rows) { [{"Code" => "abcd"}] }
+          let(:target) { FakeTarget.new(changes_on_validation: ->(attributes:) { {"code" => "abc"} }) }
+
+          it "does not report the value that was there before" do
+            expect(chunk_result.failed_rows).to eq([])
+          end
+        end
+
+        context "when the change makes a value too long" do
+          let(:target) { FakeTarget.new(changes_on_validation: ->(attributes:) { {"code" => "abcd"} }) }
+
+          it "reports the value the model changed it to, and shows it in the failed row" do
+            expect(chunk_result.failed_rows.first).to have_attributes(
+              attributes: {"code" => "abcd"}, errors: [a_hash_including(code: :value_too_long, origin: :schema)]
+            )
+          end
+        end
+      end
+    end
+
     context "with a column that has a default" do
       let(:target_columns) do
         [
@@ -119,13 +183,13 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       it "leaves an empty value out of the attributes, so the default fills it" do
         chunk_result
 
-        expect(target.built_attributes.first).to eq("email" => "a@example.com", "note" => nil)
+        expect(target.built_attributes.first).to eq("email" => "a@example.com")
       end
 
-      it "keeps an empty value that has no default, as an explicit empty value" do
+      it "leaves out an empty value of a column that has no default as well, which is empty without it" do
         chunk_result
 
-        expect(target.built_attributes.first).to include("note" => nil)
+        expect(target.built_attributes.first).not_to have_key("note")
       end
 
       it "keeps a value that is given" do
@@ -134,14 +198,14 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         expect(target.built_attributes.last).to include("status" => "closed")
       end
 
-      it "keeps the empty value in the values of a failed row" do
+      it "gives the failed row what the record holds, without the empty value of a column that has a default" do
         failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column_name: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
           target_schema: target_schema, target: failing
         )
 
-        expect(result.failed_rows.first.mapped_values).to include("status" => nil)
+        expect(result.failed_rows.first.attributes).to eq("email" => "a@example.com")
       end
     end
 

@@ -35,8 +35,8 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     context "with an empty cell" do
       let(:row) { {"Mail" => nil, "Name" => "Ann"} }
 
-      it "gives nil" do
-        expect(values["email"]).to be_nil
+      it "leaves the column out, so the target decides what it becomes" do
+        expect(values).to eq("name" => "Ann")
       end
     end
 
@@ -60,16 +60,16 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
       context "when the value maps to nil" do
         let(:row) { {"Name" => "N/A"} }
 
-        it "gives nil" do
-          expect(values["name"]).to be_nil
+        it "leaves the column out" do
+          expect(values).not_to have_key("name")
         end
       end
 
       context "when the value maps to blank text" do
         let(:row) { {"Name" => "Bob"} }
 
-        it "gives nil" do
-          expect(values["name"]).to be_nil
+        it "leaves the column out" do
+          expect(values).not_to have_key("name")
         end
       end
 

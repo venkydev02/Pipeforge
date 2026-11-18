@@ -72,6 +72,60 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     end
   end
 
+  describe "#json_attributes" do
+    let(:attributes) do
+      {"email" => "ann@example.com", "seats" => "12", "fee" => "999.999", "tier" => "pro", "company_id" => company.id}
+    end
+
+    it "gives an integer as a number" do
+      expect(model_record.json_attributes).to include("seats" => 12, "company_id" => company.id)
+    end
+
+    it "gives a decimal as a text" do
+      expect(model_record.json_attributes["fee"]).to eq("1000.0")
+    end
+
+    it "has the columns of the attributes" do
+      expect(model_record.json_attributes.keys).to eq(model_record.attributes.keys)
+    end
+
+    context "with a date column" do
+      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::Event") }
+      let(:attributes) { {"starts_on" => "2024-01-31"} }
+
+      it "gives a date as its ISO text" do
+        expect(model_record.json_attributes["starts_on"]).to eq("2024-01-31")
+      end
+    end
+
+    context "when the model's callbacks change a value" do
+      let(:attributes) { {"email" => "  ann@example.com  ", "tier" => "basic", "company_id" => company.id} }
+
+      it "gives the changed value after the validation" do
+        model_record.valid?
+
+        expect(model_record.json_attributes["email"]).to eq("ann@example.com")
+      end
+    end
+
+    context "when an enum label is not one the model knows" do
+      let(:attributes) { {"email" => "ann@example.com", "tier" => "gold", "company_id" => company.id} }
+
+      it "gives the label as it was given" do
+        expect(model_record.json_attributes["tier"]).to eq("gold")
+      end
+    end
+
+    context "when a json column holds a text that is not JSON" do
+      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::Profile") }
+      let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
+
+      it "gives the text as it was given" do
+        expect(model_record.json_attributes["settings"]).to eq("{oops")
+      end
+    end
+  end
+
   describe "#valid?" do
     context "when the model finds no mistake" do
       it "is true, with no errors" do
