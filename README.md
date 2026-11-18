@@ -156,6 +156,8 @@ Pipeforge never prompts and never draws anything; the review between the steps i
 }
 ```
 
+The id column and the type column of a polymorphic association (a parent that can be of different classes, such as `commentable_id` and `commentable_type`) carry `"polymorphic": {"association_name": "commentable", "role": "type"}` (or `"role": "id"`) in their metadata, so a screen can show that the two belong together and that the type column holds the class name of the parent.
+
 A mapping screen can mark `company_id` as required, show that it points to `companies`, and list the other source columns that scored the same (`tied_source_column_names`), without anyone querying the database. This is one column from `analyze_column_values`, which a value-mapping screen is built on:
 
 ```json

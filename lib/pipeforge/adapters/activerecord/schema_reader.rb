@@ -32,13 +32,17 @@ module Pipeforge
 
     def build_columns
       foreign_keys = foreign_keys_by_column_name
+      polymorphic_columns = polymorphic_columns_by_column_name
       primary_keys = Array(@model.primary_key)
       target_columns = []
 
       @model.columns_hash.each_value do |model_column|
         next unless writable?(model_column: model_column, primary_keys: primary_keys)
 
-        target_columns << build_column(model_column: model_column, foreign_key: foreign_keys[model_column.name])
+        target_columns << build_column(
+          model_column: model_column, foreign_key: foreign_keys[model_column.name],
+          polymorphic: polymorphic_columns[model_column.name]
+        )
       end
 
       target_columns
@@ -81,7 +85,7 @@ module Pipeforge
     # Builds the target column from the model's view of the column: its attribute type and
     # +column_defaults+. For an enum column the labels are in +enum_labels+, and an integer column
     # is not signed when its attribute type is ActiveRecord's unsigned integer.
-    def build_column(model_column:, foreign_key:)
+    def build_column(model_column:, foreign_key:, polymorphic:)
       attribute_type = @model.type_for_attribute(model_column.name)
       type = attribute_type.type.to_s
       text_type = TEXT_TYPES.include?(type)
@@ -99,7 +103,8 @@ module Pipeforge
         default: @model.column_defaults[model_column.name],
         enum_labels: @enum_labels[model_column.name],
         required: required?(model_column: model_column),
-        foreign_key: foreign_key
+        foreign_key: foreign_key,
+        polymorphic: polymorphic
       )
     end
 
@@ -112,7 +117,8 @@ module Pipeforge
     end
 
     # The foreign key columns of the model, by column name, from its +belongs_to+ associations.
-    # A polymorphic association and a composite key are not described as foreign keys.
+    # A polymorphic association has no one parent table, and a composite key is not one column, so
+    # neither is described as a foreign key (a polymorphic one is described by {#polymorphic_columns_by_column_name}).
     def foreign_keys_by_column_name
       foreign_keys = {}
 
@@ -127,6 +133,21 @@ module Pipeforge
       end
 
       foreign_keys
+    end
+
+    # The id column and the type column of each polymorphic +belongs_to+ association of the model, by column name.
+    def polymorphic_columns_by_column_name
+      polymorphic_columns = {}
+
+      @model.reflect_on_all_associations(:belongs_to).each do |reflection|
+        next unless reflection.polymorphic?
+
+        association_name = reflection.name.to_s
+        polymorphic_columns[reflection.foreign_key] = PolymorphicColumn.new(association_name: association_name, role: "id")
+        polymorphic_columns[reflection.foreign_type] = PolymorphicColumn.new(association_name: association_name, role: "type")
+      end
+
+      polymorphic_columns
     end
   end
 end

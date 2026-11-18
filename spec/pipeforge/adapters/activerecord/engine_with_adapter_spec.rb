@@ -36,6 +36,24 @@ RSpec.describe Pipeforge::Engine, "with the ActiveRecord adapter installed" do
     )
   end
 
+  context "when the table has a polymorphic association" do
+    let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Comment") }
+    let(:csv) { "Commentable Id,Commentable Type\n7,Post\n" }
+
+    it "reports the association and the role in the metadata of its id column and its type column" do
+      expect(result.matches.map { |match| [match[:target_column_name], match[:metadata][:polymorphic]] }).to eq(
+        [
+          ["commentable_id", {association_name: "commentable", role: "id"}],
+          ["commentable_type", {association_name: "commentable", role: "type"}]
+        ]
+      )
+    end
+
+    it "gives no foreign key for them, because there is no one parent table" do
+      expect(result.matches.map { |match| match[:metadata][:foreign_key] }).to eq([nil, nil])
+    end
+  end
+
   it "reports the model" do
     expect(result.model_name).to eq("AdapterSpecModels::User")
   end

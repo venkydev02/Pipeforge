@@ -488,3 +488,14 @@
 * **Consequences:**
   * The two stages take the same input, and the schema stays inside the `Engine`.
   * `protocols.md` and the README sentence about the failed row are updated in the same change.
+
+### ADR-32: The Columns of a Polymorphic Association Are Described in the Metadata of a Target Column
+* **Status:** Accepted (2026-11-18). **Adds** a field to the metadata of a target column (ADR-18 amendments, ADR-22).
+* **Context:** A polymorphic `belongs_to` uses two columns, the id of the parent and the name of its class, and the parent can be of different classes. The schema could not describe it as a foreign key, which needs one parent table, so its two columns looked like unrelated columns (an integer and a string). A mapping screen could not tell that they belong together, or what the type column must hold, and the consumer could not decide what to change in the source file.
+* **Decision:**
+  1. **`TargetColumn` has a field `polymorphic`:** `nil`, or `PolymorphicColumn(association_name:, role:)` for the id column (`role: "id"`) and the type column (`role: "type"`) of a polymorphic association. `foreign_key` stays `nil` for both.
+  2. **The ActiveRecord adapter fills it** from the polymorphic `belongs_to` associations of the model: the foreign key column is the id and the foreign type column is the type.
+  3. **The header result shows it** in the metadata of the column: `polymorphic: nil` or `{association_name:, role:}`.
+* **Consequences:**
+  * A screen can say that a column is the type of an association and goes with its id column. The list of the classes that may be stored is not part of it, because ActiveRecord accepts any class name.
+  * `README.md` and `protocols.md` are updated in the same change.

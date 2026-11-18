@@ -69,7 +69,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   def default_metadata(**overrides)
     {
       type: "string", sql_type: "varchar", limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil,
-      default: nil, enum_labels: nil, required: false, foreign_key: nil
+      default: nil, enum_labels: nil, required: false, foreign_key: nil, polymorphic: nil
     }.merge(overrides)
   end
 
@@ -166,6 +166,26 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
 
         it "lists them in the order the matcher gave" do
           expect(result).to eq(result_of(unmatched_source_column_names: %w[Zip Notes]))
+        end
+      end
+
+      context "when a target column is the type column of a polymorphic association" do
+        let(:target_columns) do
+          [build_target_column(name: "commentable_type", polymorphic: build_polymorphic_column(association_name: "commentable", role: "type"))]
+        end
+        let(:matcher_result) { matcher_result_of(unmatched_target_column_names: %w[commentable_type]) }
+
+        it "gives the polymorphic association and the role in the metadata of that column" do
+          expect(result).to eq(
+            result_of(
+              unmatched_target_columns: [
+                {
+                  target_column_name: "commentable_type",
+                  metadata: default_metadata(polymorphic: {association_name: "commentable", role: "type"})
+                }
+              ]
+            )
+          )
         end
       end
 

@@ -26,13 +26,22 @@ module Pipeforge
   #                       and has no default (what the framework fills in by itself counts as
   #                       a default)
   #   foreign_key         a ForeignKey when the column points to a row of another table, else nil
+  #   polymorphic         a PolymorphicColumn when the column is the id column or the type column of a polymorphic
+  #                       association, else nil
   TargetColumn = Data.define(
     :name, :type, :sql_type, :limit, :is_signed, :max_length, :precision, :scale, :default, :enum_labels,
-    :required, :foreign_key
+    :required, :foreign_key, :polymorphic
   )
 
   # A column that points to a row of another table.
   #   association_name   the name of the association (company)
   #   parent_table_name  the table it points to (companies)
   ForeignKey = Data.define(:association_name, :parent_table_name)
+
+  # A column of a polymorphic association, whose parent can be of different classes: the id column holds the id of
+  # the parent and the type column holds the name of its class (+"Post"+), so the two go together and a column
+  # alone does not point to one table.
+  #   association_name  the name of the association (commentable)
+  #   role              "id" for the column that holds the id of the parent, "type" for the one that holds its class
+  PolymorphicColumn = Data.define(:association_name, :role)
 end

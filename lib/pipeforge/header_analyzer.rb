@@ -36,7 +36,8 @@ module Pipeforge
     #
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
     # max_length, precision, scale, default, enum_labels (nil, or the labels),
-    # required and foreign_key (nil, or {association_name:, parent_table_name:}).
+    # required, foreign_key (nil, or {association_name:, parent_table_name:}) and polymorphic (nil, or
+    # {association_name:, role:} for the id column and the type column of a polymorphic association).
     #
     # Everything in it is a plain Hash, Array, String, number, boolean or nil, so +to_h+ gives the
     # result as plain JSON types, ready to store or send.
@@ -125,6 +126,7 @@ module Pipeforge
       def metadata_of(target_column:)
         metadata = target_column.to_h.except(:name)
         metadata[:foreign_key] = target_column.foreign_key&.to_h
+        metadata[:polymorphic] = target_column.polymorphic&.to_h
 
         metadata
       end

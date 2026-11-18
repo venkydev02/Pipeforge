@@ -131,8 +131,8 @@ module Pipeforge
       result
     end
 
-    # Loads the parents that the records need, with one query for each +belongs_to+ association. A
-    # polymorphic association and a composite key are left alone.
+    # Loads the parents that the records need, with one query for each +belongs_to+ association (for each
+    # parent class of a polymorphic one).
     #
     # @param records [Array<ActiveRecordModelRecord>] the records built for one chunk
     # @return [void]
@@ -141,10 +141,6 @@ module Pipeforge
       records.each { |model_record| unsaved_records << model_record.record }
 
       @model.reflect_on_all_associations(:belongs_to).each do |reflection|
-        # The preloader needs one foreign key column and one parent class.
-        next if reflection.polymorphic?
-        next unless reflection.foreign_key.is_a?(String)
-
         # One query for each association, so the model's validation does not query the parent of each record.
         ActiveRecord::Associations::Preloader.new(records: unsaved_records, associations: reflection.name).call
       end

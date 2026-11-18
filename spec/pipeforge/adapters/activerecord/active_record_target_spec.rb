@@ -277,6 +277,24 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       it "does not describe its column as a foreign key" do
         expect(column_named(schema, "commentable_id").foreign_key).to be_nil
       end
+
+      it "describes the id column as the id of the association" do
+        expect(column_named(schema, "commentable_id").polymorphic).to eq(
+          Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "id")
+        )
+      end
+
+      it "describes the type column as the type of the association" do
+        expect(column_named(schema, "commentable_type").polymorphic).to eq(
+          Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "type")
+        )
+      end
+    end
+
+    context "with a model that has no polymorphic association" do
+      it "describes no column as polymorphic" do
+        expect(schema.columns.map(&:polymorphic)).to all(be_nil)
+      end
     end
 
     context "with a composite foreign key" do
@@ -757,21 +775,39 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
 
     context "with a polymorphic association" do
       let(:target_model_name) { "AdapterSpecModels::Comment" }
+      let(:model_records) do
+        [company.id, other_company.id].map do |id|
+          target.build_record(attributes: {"commentable_id" => id, "commentable_type" => "AdapterSpecModels::Company"})
+        end
+      end
 
-      it "leaves it alone" do
-        records = [target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => "Post"})]
+      it "loads the parents of each class with one query" do
+        model_records
 
-        expect { target.preload_parents(records: records) }.not_to raise_error
+        expect(queries_on("companies") { target.preload_parents(records: model_records) }.size).to eq(1)
+      end
+
+      it "makes the parent of each record available with no further query" do
+        target.preload_parents(records: model_records)
+
+        expect(queries_on("companies") { model_records.map { |model_record| model_record.record.commentable } }).to eq([])
       end
     end
 
     context "with a composite foreign key" do
       let(:target_model_name) { "AdapterSpecModels::OrderLine" }
+      let(:model_records) do
+        [2, 99].map { |number| target.build_record(attributes: {"shop_id" => 1, "order_number" => number}) }
+      end
 
-      it "leaves it alone" do
-        records = [target.build_record(attributes: {"shop_id" => 1, "order_number" => 2})]
+      before { AdapterSpecModels::Order.create!(shop_id: 1, number: 2) }
 
-        expect { target.preload_parents(records: records) }.not_to raise_error
+      after { AdapterSpecModels::Order.delete_all }
+
+      it "loads the parents with one query" do
+        model_records
+
+        expect(queries_on("orders") { target.preload_parents(records: model_records) }.size).to eq(1)
       end
     end
 
