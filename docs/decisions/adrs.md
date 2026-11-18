@@ -476,3 +476,15 @@
   * A consumer who read `mapped_values` reads `attributes`, with cast values: `4` and not `"4"`, a decimal as a text, a default shown where the cell was empty.
   * The record contract is `valid?`, `errors`, `attributes`, `json_attributes` and `load`; an adapter answers `json_attributes` too.
   * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.
+
+### ADR-31: The Run Works on the Resolved Mapped Columns
+* **Status:** Accepted (2026-11-18). **Amends** ADR-17 and its amendments about the input of the run.
+* **Context:** The column values stage takes the mapped columns after the engine has checked them and looked up the target column of each entry (`ResolvedMappedColumn`), and carries no schema. The run still took the consumer's plain Hash and the whole `TargetSchema`: the schema checker looked at every column of the table, the chunk processor took the names of the columns a failed row shows from the schema, and the engine replaced the keys of each value mapping in the Hash the consumer had given.
+* **Decision:**
+  1. **`Engine#run` makes the resolved mapped columns** as `analyze_column_values` does and gives them to the run. `RunProcessor`, `RowTransformer`, `SchemaChecker` and `ChunkProcessor` take them, and none takes a schema. The call of `run` does not change: it takes the same `mapped_columns`.
+  2. **The consumer's Hash is not changed.** The keys of a value mapping are turned into text in the resolved column, not in place.
+  3. **The core's schema check covers the mapped columns.** A required column is always mapped (the engine refuses the run otherwise), so the required check is the same. A column of the table that no entry fills is left to the model and the database: if a callback of the model fills it past its limit, the database refuses the write, and the row is a failed row with `origin: :database`.
+  4. **A failed row shows the mapped columns**, in the order of the mapping.
+* **Consequences:**
+  * The two stages take the same input, and the schema stays inside the `Engine`.
+  * `protocols.md` and the README sentence about the failed row are updated in the same change.

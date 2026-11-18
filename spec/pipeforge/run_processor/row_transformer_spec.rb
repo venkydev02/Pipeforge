@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::RunProcessor::RowTransformer do
-  subject(:transformer) { described_class.new(mapped_columns: mapped_columns) }
+  subject(:transformer) { described_class.new(resolved_mapped_columns: resolve_mapped_columns(mapped_columns)) }
 
   let(:mapped_columns) do
     {

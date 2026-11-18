@@ -15,6 +15,20 @@ module ResolvedMappedColumnHelper
       [target_column_name, Pipeforge::ResolvedMappedColumn.from_entry(entry: entry, target_column: target_column)]
     end
   end
+
+  # The same, for the target columns a spec built itself (with build_target_column): each entry is given the column of its name.
+  def resolve_mapped_columns_of(target_columns:, mapped_columns:)
+    resolved_mapped_columns = {}
+
+    mapped_columns.each do |target_column_name, entry|
+      target_column = target_columns.find { |candidate| candidate.name == target_column_name }
+      resolved_mapped_columns[target_column_name] = Pipeforge::ResolvedMappedColumn.from_entry(
+        entry: entry, target_column: target_column
+      )
+    end
+
+    resolved_mapped_columns
+  end
 end
 
 RSpec.configure { |config| config.include ResolvedMappedColumnHelper }

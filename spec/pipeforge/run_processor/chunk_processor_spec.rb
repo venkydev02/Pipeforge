@@ -5,7 +5,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     subject(:chunk_result) do
       described_class.call(
         rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
-        target_schema: target_schema, target: target
+        resolved_mapped_columns: resolved_mapped_columns, target: target
       )
     end
 
@@ -15,15 +15,17 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         build_target_column(name: "status", max_length: 6)
       ]
     end
-    let(:target_schema) { build_target_schema(columns: target_columns) }
     let(:mapped_columns) do
       {
         "email" => {source_column_name: "Mail"},
         "status" => {source_column_name: "State", value_mapping: {"ok" => "active"}}
       }
     end
-    let(:transformer) { Pipeforge::RunProcessor::RowTransformer.new(mapped_columns: mapped_columns) }
-    let(:schema_checker) { Pipeforge::RunProcessor::SchemaChecker.new(target_schema: target_schema) }
+    let(:resolved_mapped_columns) do
+      resolve_mapped_columns_of(target_columns: target_columns, mapped_columns: mapped_columns)
+    end
+    let(:transformer) { Pipeforge::RunProcessor::RowTransformer.new(resolved_mapped_columns: resolved_mapped_columns) }
+    let(:schema_checker) { Pipeforge::RunProcessor::SchemaChecker.new(resolved_mapped_columns: resolved_mapped_columns) }
     let(:target) { FakeTarget.new(errors_of: errors_of) }
     let(:errors_of) { ->(attributes:) { [] } }
     let(:rows) do
@@ -202,7 +204,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column_name: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
-          target_schema: target_schema, target: failing
+          resolved_mapped_columns: resolved_mapped_columns, target: failing
         )
 
         expect(result.failed_rows.first.attributes).to eq("email" => "a@example.com")

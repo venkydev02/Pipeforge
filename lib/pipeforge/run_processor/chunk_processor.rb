@@ -17,7 +17,7 @@ module Pipeforge
     # One row that failed, as the consumer sees it.
     #   row_number  absolute 1-based data record number (the header is not counted)
     #   attributes  what the model record held when the row failed, as plain JSON types: column => value for the
-    #               columns of the target schema, in table order, cast to the type of the column and after the
+    #               mapped columns, in the order of the mapping, cast to the type of the column and after the
     #               model's callbacks. It is never the raw source row.
     #   errors      one entry for each mistake: {origin:, target_column_name:, code:, message:}. +origin+ is where it
     #               was found: +:schema+ (the core's checks of the target schema), +:model+ (the application
@@ -35,11 +35,12 @@ module Pipeforge
         # @param first_row_number [Integer] absolute 1-based data record number of the first row
         # @param transformer [RowTransformer]
         # @param schema_checker [SchemaChecker]
-        # @param target_schema [TargetSchema]
+        # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column name => its resolved
+        #   mapped column; a failed row shows these columns
         # @param target [#build_record, #preload_parents] the target of the target model; the
         #   record it builds is written with +load+
         # @return [ChunkResult]
-        def call(rows:, first_row_number:, transformer:, schema_checker:, target_schema:, target:)
+        def call(rows:, first_row_number:, transformer:, schema_checker:, resolved_mapped_columns:, target:)
           model_records = build_model_records(rows: rows, transformer: transformer, target: target)
 
           # One query for each association for the whole chunk, so the model's validation does not query the
@@ -48,7 +49,7 @@ module Pipeforge
 
           failed_rows = validate_and_load(
             model_records: model_records, first_row_number: first_row_number, schema_checker: schema_checker,
-            target_column_names: target_column_names_of(target_schema: target_schema)
+            target_column_names: resolved_mapped_columns.keys
           )
 
           ChunkResult.new(
@@ -74,14 +75,6 @@ module Pipeforge
           model_records
         end
 
-        # The names of the columns the run loads, in table order.
-        def target_column_names_of(target_schema:)
-          target_column_names = []
-          target_schema.columns.each { |target_column| target_column_names << target_column.name }
-
-          target_column_names
-        end
-
         # Takes the model records one at a time, in row order: validates a record and, when it is valid,
         # loads it before the next record is looked at. Returns the failed rows of the chunk.
         def validate_and_load(model_records:, first_row_number:, schema_checker:, target_column_names:)
@@ -97,8 +90,8 @@ module Pipeforge
             # A row that passed the validation and that the database refused has the database's errors.
             errors = model_record.errors.dup if errors.empty?
 
-            # The record also holds columns the run does not load (the primary key, a generated column), so only
-            # the columns of the schema are shown.
+            # The record also holds columns the consumer did not map (the primary key, a generated column), so only
+            # the mapped columns are shown.
             failed_rows << FailedRow.new(
               row_number: first_row_number + position,
               attributes: model_record.json_attributes.slice(*target_column_names),

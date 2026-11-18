@@ -244,6 +244,12 @@ RSpec.describe Pipeforge::Engine, "#run" do
 
       expect(chunk_results.flat_map(&:failed_rows).first.attributes).to eq("level" => "2")
     end
+
+    it "does not change the mapped columns it is given" do
+      run_engine
+
+      expect(mapped_columns["level"][:value_mapping]).to eq(1 => "one", 3 => "tre")
+    end
   end
 
   context "when a required column is not mapped" do

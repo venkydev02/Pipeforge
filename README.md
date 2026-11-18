@@ -186,7 +186,7 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
 }
 ```
 
-And one failed row from a run, with the attributes the record held (the columns of the table, cast to their types, as JSON values), never the raw line:
+And one failed row from a run, with the attributes the record held (the columns you mapped, in the order of your mapping, cast to their types, as JSON values), never the raw line:
 
 ```json
 {

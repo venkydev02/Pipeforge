@@ -16,7 +16,9 @@ RSpec.describe Pipeforge::RunProcessor do
   let(:target_columns) do
     [build_target_column(name: "email", required: true), build_target_column(name: "status", max_length: 6)]
   end
-  let(:target_schema) { build_target_schema(columns: target_columns) }
+  let(:resolved_mapped_columns) do
+    resolve_mapped_columns_of(target_columns: target_columns, mapped_columns: mapped_columns)
+  end
   let(:mapped_columns) do
     {
       "email" => {source_column_name: "Mail"},
@@ -31,7 +33,7 @@ RSpec.describe Pipeforge::RunProcessor do
 
   def run_all
     described_class.call(
-      source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+      source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
       offset: offset, chunk_size: chunk_size, mode: mode, target: target
     ) { |chunk_result| chunk_results << chunk_result }
   end
@@ -82,7 +84,7 @@ RSpec.describe Pipeforge::RunProcessor do
     it "gives the same totals in a dry run and in a run" do
       dry_run_result = run_all
       run_result_in_run_mode = described_class.call(
-        source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
         offset: 0, chunk_size: 2, mode: :run, target: FakeTarget.new
       )
 
@@ -108,7 +110,7 @@ RSpec.describe Pipeforge::RunProcessor do
 
       it "calls the block while the transaction is open" do
         described_class.call(
-          source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+          source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
           offset: 0, chunk_size: 2, mode: mode, target: target
         ) { |_chunk_result| target.events << [:chunk] }
 
@@ -163,7 +165,7 @@ RSpec.describe Pipeforge::RunProcessor do
     context "when no block is given" do
       it "still returns the totals" do
         run_result = described_class.call(
-          source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+          source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
           offset: 0, chunk_size: 2, mode: mode, target: target
         )
 

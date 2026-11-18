@@ -1,9 +1,21 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
-  subject(:checker) { described_class.new(target_schema: build_target_schema(columns: target_columns)) }
+  subject(:checker) { described_class.new(resolved_mapped_columns: resolved_mapped_columns) }
 
   let(:target_columns) { [build_target_column(name: "email")] }
+  # The columns of the table that an entry fills; the others are not mapped.
+  let(:mapped_target_columns) { target_columns }
+  let(:resolved_mapped_columns) do
+    mapped_target_columns.to_h do |target_column|
+      [
+        target_column.name,
+        Pipeforge::ResolvedMappedColumn.new(
+          source_column_name: target_column.name, value_mapping: {}, target_column: target_column
+        )
+      ]
+    end
+  end
 
   # The limits themselves are tested once, in the spec of ColumnLimitsChecker; here a column of each kind
   # shows that the checker asks it and turns what it finds into an entry.
@@ -205,6 +217,17 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
           [["email", :value_missing], ["code", :value_too_long], ["age", :value_out_of_range]]
         )
       end
+    end
+  end
+
+  describe "a column of the table that is not mapped" do
+    subject(:errors) { checker.call(attributes: {"email" => "ann@example.com", "note" => nil}) }
+
+    let(:target_columns) { [build_target_column(name: "email"), build_target_column(name: "note", required: true)] }
+    let(:mapped_target_columns) { [target_columns.first] }
+
+    it "is not checked: the model and the database check it" do
+      expect(errors).to eq([])
     end
   end
 end

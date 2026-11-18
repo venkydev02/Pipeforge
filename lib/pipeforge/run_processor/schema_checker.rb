@@ -4,7 +4,8 @@ require_relative "../column_limits_checker"
 
 module Pipeforge
   module RunProcessor
-    # The checks the core can make on one record from the target schema alone, without reading any row:
+    # The checks the core can make on one record from the columns the consumer mapped, without reading any row.
+    # A column of the table that no entry fills is not checked: the model and the database check it.
     #   - a required column left empty:                    +value_missing+
     #   - a value outside the limits of its column, as {ColumnLimitsChecker} finds it:
     #       a string or text longer than +max_length+:     +value_too_long+
@@ -21,9 +22,12 @@ module Pipeforge
     #
     # A value may be text or already cast to the type of its column (an Integer, a Float or a decimal number).
     class SchemaChecker
-      # @param target_schema [TargetSchema]
-      def initialize(target_schema:)
-        @target_columns = target_schema.columns
+      # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column name => its resolved
+      #   mapped column; the checks are made on the target column of each
+      def initialize(resolved_mapped_columns:)
+        @target_columns = []
+        resolved_mapped_columns.each_value { |resolved_mapped_column| @target_columns << resolved_mapped_column.target_column }
+
         @limits_by_column_name = {}
 
         @target_columns.each do |target_column|

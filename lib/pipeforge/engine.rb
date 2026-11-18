@@ -124,8 +124,7 @@ module Pipeforge
     # the target database.
     #
     # @param mode [Symbol] +:dry_run+ or +:run+
-    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}; the keys of their value mapping
-    #   are replaced by text in the entries, which must not be frozen
+    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}; the caller's Hash is not changed
     # @param offset [Integer] rows to skip before the first one processed; the +row_number+ of the last
     #   row of an earlier run continues that run
     # @param chunk_size [Integer] rows read, processed and yielded at a time; the +execution.chunk_size+
@@ -140,10 +139,9 @@ module Pipeforge
     def run(mode:, mapped_columns:, offset: 0, chunk_size: Configuration.execution.chunk_size, &on_chunk)
       check_run_arguments(mode: mode, offset: offset, chunk_size: chunk_size)
       check_mapped_columns(mapped_columns: mapped_columns)
-      convert_value_mapping_keys(mapped_columns: mapped_columns)
 
       RunProcessor.call(
-        source_reader: @source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
+        source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
         offset: offset, chunk_size: chunk_size, mode: mode, target: target, &on_chunk
       )
     end
@@ -210,19 +208,8 @@ module Pipeforge
       @target_schema
     end
 
-    # The values of the file are text, so the keys of every value mapping are turned into text
-    # (+1+ and +"1"+ are the same key; when two keys give the same text, the later one is used).
-    # It replaces the value mapping in the entries it is given.
-    def convert_value_mapping_keys(mapped_columns:)
-      mapped_columns.each_value do |mapped_column|
-        next if mapped_column[:value_mapping].nil?
-
-        mapped_column[:value_mapping] = mapped_column[:value_mapping].transform_keys(&:to_s)
-      end
-    end
-
-    # Makes the resolved mapped columns the column values stage takes from the consumer's mapped columns, which the
-    # engine has checked: each entry gets the column of the target table it fills.
+    # Makes the resolved mapped columns that the column values stage and the run take from the consumer's mapped
+    # columns, which the engine has checked: each entry gets the column of the target table it fills.
     #
     # @param mapped_columns [Hash{String => Hash}] target column => the entry the caller wrote
     # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
