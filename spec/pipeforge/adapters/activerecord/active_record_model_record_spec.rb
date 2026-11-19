@@ -8,7 +8,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
   let(:attributes) { {"email" => "ann@example.com", "tier" => "basic", "company_id" => company.id} }
 
   def codes_of(model_record)
-    model_record.errors.map { |error| error[:code] }
+    model_record.errors.values.map { |error| error[:code] }
   end
 
   describe "#record" do
@@ -19,7 +19,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
   describe "#errors" do
     it "is empty before the record is validated" do
-      expect(model_record.errors).to eq([])
+      expect(model_record.errors.values).to eq([])
     end
   end
 
@@ -57,8 +57,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     context "when an enum label is not one the model knows" do
       let(:attributes) { {"email" => "ann@example.com", "tier" => "gold", "company_id" => company.id} }
 
-      it "includes the label as it was given, because the record could not hold it" do
-        expect(model_record.attributes["tier"]).to eq("gold")
+      it "does not include the label, which the target did not give the record" do
+        expect(model_record.attributes["tier"]).to be_nil
       end
     end
 
@@ -66,8 +66,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::Profile") }
       let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
 
-      it "includes the text as it was given, because the record could not hold it" do
-        expect(model_record.attributes["settings"]).to eq("{oops")
+      it "does not include the text, which the target did not give the record" do
+        expect(model_record.attributes["settings"]).to be_nil
       end
     end
   end
@@ -107,22 +107,73 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.json_attributes["email"]).to eq("ann@example.com")
       end
     end
+  end
 
-    context "when an enum label is not one the model knows" do
-      let(:attributes) { {"email" => "ann@example.com", "tier" => "gold", "company_id" => company.id} }
+  describe "a polymorphic type that names no model" do
+    let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::CommentWithRequiredParent") }
+    let(:attributes) { {"commentable_id" => 1, "commentable_type" => "Post"} }
 
-      it "gives the label as it was given" do
-        expect(model_record.json_attributes["tier"]).to eq("gold")
-      end
+    it "has the error of the type column as soon as the record is built" do
+      expect(model_record.errors.values).to contain_exactly(
+        include(origin: :model, code: :value_not_accepted, target_column_name: "commentable_type")
+      )
     end
 
-    context "when a json column holds a text that is not JSON" do
-      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::Profile") }
-      let(:attributes) { {"name" => "ann", "settings" => "{oops"} }
+    it "has the message that names the type" do
+      expect(model_record.errors["commentable_type"][:message]).to eq("commentable_type: Post is not a model of the application")
+    end
 
-      it "gives the text as it was given" do
-        expect(model_record.json_attributes["settings"]).to eq("{oops")
+    it "also has the model's own error of the id column, one error for each column" do
+      model_record.valid?
+
+      expect(model_record.errors.values.map { |error| [error[:target_column_name], error[:code]] }).to eq(
+        [["commentable_type", :value_not_accepted], ["commentable_id", :parent_missing]]
+      )
+    end
+
+    context "when the type names a model whose parent does not exist" do
+      let(:attributes) { {"commentable_id" => 999_999, "commentable_type" => "AdapterSpecModels::Company"} }
+
+      it "still reports the missing parent, as parent_missing" do
+        model_record.valid?
+
+        expect(model_record.errors.values).to contain_exactly(
+          include(code: :parent_missing, target_column_name: "commentable_id")
+        )
       end
+    end
+  end
+
+  describe "#add_error" do
+    def entry(code:, target_column_name:, origin: :model)
+      {origin: origin, code: code, message: "a message", target_column_name: target_column_name}
+    end
+
+    it "adds the error of a column" do
+      model_record.add_error(**entry(code: :value_invalid, target_column_name: "email"))
+
+      expect(model_record.errors).to eq("email" => entry(code: :value_invalid, target_column_name: "email"))
+    end
+
+    it "keeps the first error of a column and ignores a later one" do
+      model_record.add_error(**entry(code: :value_invalid, target_column_name: "email"))
+      model_record.add_error(**entry(code: :value_missing, target_column_name: "email", origin: :schema))
+
+      expect(model_record.errors.values.map { |error| error[:code] }).to eq([:value_invalid])
+    end
+
+    it "keeps the errors of different columns, in the order they were added" do
+      model_record.add_error(**entry(code: :value_invalid, target_column_name: "seats"))
+      model_record.add_error(**entry(code: :value_missing, target_column_name: "email"))
+
+      expect(model_record.errors.keys).to eq(%w[seats email])
+    end
+
+    it "keeps one error for the record as a whole, the one that has no column" do
+      model_record.add_error(**entry(code: :value_invalid, target_column_name: nil))
+      model_record.add_error(**entry(code: :database_error, target_column_name: nil, origin: :database))
+
+      expect(model_record.errors.values.map { |error| error[:code] }).to eq([:value_invalid])
     end
   end
 
@@ -130,7 +181,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     context "when the model finds no mistake" do
       it "is true, with no errors" do
         expect(model_record.valid?).to be(true)
-        expect(model_record.errors).to eq([])
+        expect(model_record.errors.values).to eq([])
       end
     end
 
@@ -139,13 +190,13 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "is false, with value_missing for that column" do
         expect(model_record.valid?).to be(false)
-        expect(model_record.errors).to contain_exactly(include(code: :value_missing, target_column_name: "email"))
+        expect(model_record.errors.values).to contain_exactly(include(code: :value_missing, target_column_name: "email"))
       end
 
       it "gives a message that a person can read" do
         model_record.valid?
 
-        expect(model_record.errors.first[:message]).to include("Email")
+        expect(model_record.errors.values.first[:message]).to include("Email")
       end
     end
 
@@ -155,7 +206,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_too_long for that column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :value_too_long, target_column_name: "email"))
+        expect(model_record.errors.values).to contain_exactly(include(code: :value_too_long, target_column_name: "email"))
       end
     end
 
@@ -167,7 +218,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_not_unique for that column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :value_not_unique, target_column_name: "email"))
+        expect(model_record.errors.values).to contain_exactly(include(code: :value_not_unique, target_column_name: "email"))
       end
     end
 
@@ -177,7 +228,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives parent_missing for the foreign key column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :parent_missing, target_column_name: "company_id"))
+        expect(model_record.errors.values).to contain_exactly(include(code: :parent_missing, target_column_name: "company_id"))
       end
     end
 
@@ -187,7 +238,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_missing for the foreign key column, because the value is empty" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :value_missing, target_column_name: "company_id"))
+        expect(model_record.errors.values).to contain_exactly(include(code: :value_missing, target_column_name: "company_id"))
       end
     end
 
@@ -197,7 +248,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_invalid for that column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_invalid, target_column_name: "seats"))
+        expect(model_record.errors.values).to contain_exactly(include(origin: :model, code: :value_invalid, target_column_name: "seats"))
       end
     end
 
@@ -207,16 +258,16 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "gives value_invalid with no column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(code: :value_invalid, target_column_name: nil))
+        expect(model_record.errors.values).to contain_exactly(include(code: :value_invalid, target_column_name: nil))
       end
     end
 
     context "when an enum label is not one the model knows" do
       let(:attributes) { {"email" => "ann@example.com", "tier" => "gold", "company_id" => company.id} }
 
-      it "gives value_not_allowed for that column" do
+      it "gives value_not_accepted for that column" do
         expect(model_record.valid?).to be(false)
-        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_not_allowed, target_column_name: "tier"))
+        expect(model_record.errors.values).to contain_exactly(include(origin: :model, code: :value_not_accepted, target_column_name: "tier"))
       end
 
       it "does not add the blank value the model sees as a second mistake" do
@@ -232,8 +283,8 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "reports both" do
         model_record.valid?
 
-        expect(model_record.errors.map { |error| [error[:target_column_name], error[:code]] }).to contain_exactly(
-          ["tier", :value_not_allowed], ["email", :value_missing]
+        expect(model_record.errors.values.map { |error| [error[:target_column_name], error[:code]] }).to contain_exactly(
+          ["tier", :value_not_accepted], ["email", :value_missing]
         )
       end
     end
@@ -246,10 +297,10 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.valid?).to be(false)
       end
 
-      it "gives value_not_json for that column" do
+      it "gives value_not_accepted for that column" do
         model_record.valid?
 
-        expect(model_record.errors).to contain_exactly(include(origin: :model, code: :value_not_json, target_column_name: "settings"))
+        expect(model_record.errors.values).to contain_exactly(include(origin: :model, code: :value_not_accepted, target_column_name: "settings"))
       end
 
       context "and the model also requires the column" do
@@ -257,11 +308,11 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
           Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::ProfileWithRequiredSettings")
         end
 
-        it "gives value_not_json and not the blank value the model sees as a second mistake" do
+        it "gives value_not_accepted and not the blank value the model sees as a second mistake" do
           model_record.valid?
 
-          expect(model_record.errors).to contain_exactly(
-            include(origin: :model, code: :value_not_json, target_column_name: "settings")
+          expect(model_record.errors.values).to contain_exactly(
+            include(origin: :model, code: :value_not_accepted, target_column_name: "settings")
           )
         end
       end
@@ -271,7 +322,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
         it "is true, with no errors" do
           expect(model_record.valid?).to be(true)
-          expect(model_record.errors).to eq([])
+          expect(model_record.errors.values).to eq([])
         end
       end
 
@@ -281,7 +332,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         it "reports both columns" do
           model_record.valid?
 
-          expect(model_record.errors.map { |error| error[:target_column_name] }).to contain_exactly("settings", "extras")
+          expect(model_record.errors.values.map { |error| error[:target_column_name] }).to contain_exactly("settings", "extras")
         end
       end
 
@@ -291,22 +342,31 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         it "reports both mistakes" do
           model_record.valid?
 
-          expect(model_record.errors.map { |error| [error[:target_column_name], error[:code]] }).to contain_exactly(
-            ["settings", :value_not_json], ["name", :value_missing]
+          expect(model_record.errors.values.map { |error| [error[:target_column_name], error[:code]] }).to contain_exactly(
+            ["settings", :value_not_accepted], ["name", :value_missing]
           )
         end
       end
     end
 
     context "when it is called again" do
-      it "reports the mistakes of the last call only" do
+      let(:attributes) { {"email" => nil, "tier" => "basic", "company_id" => company.id} }
+
+      it "keeps one error for each column" do
         model_record.valid?
-        model_record.record.email = "ann@example.com"
-        model_record.record.tier = :basic
-        model_record.record.company = company
         model_record.valid?
 
-        expect(model_record.errors).to eq([])
+        expect(model_record.errors.values.map { |error| error[:target_column_name] }).to eq(%w[email])
+      end
+    end
+
+    context "when the target already gave the record an error for a column" do
+      let(:attributes) { {"email" => "ann@example.com", "tier" => "gold", "company_id" => company.id} }
+
+      it "keeps that error and does not clear it" do
+        model_record.valid?
+
+        expect(model_record.errors["tier"]).to include(code: :value_not_accepted)
       end
     end
   end
@@ -320,7 +380,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     context "when the table takes the row" do
       it "is true, with no errors" do
         expect(model_record.load).to be(true)
-        expect(model_record.errors).to eq([])
+        expect(model_record.errors.values).to eq([])
       end
 
       it "saves the record" do
@@ -334,7 +394,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         record = validating_target.build_record(attributes: {"email" => nil, "tier" => "basic"})
 
         expect(record.load).to be(false)
-        expect(record.errors.map { |error| error[:code] }).to eq([:value_missing])
+        expect(record.errors.values.map { |error| error[:code] }).to eq([:value_missing])
         expect(record.record.errors).to be_empty
       end
     end
@@ -344,7 +404,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "is false, with value_not_unique from the database and no column" do
         expect(model_record.load).to be(false)
-        expect(model_record.errors).to match(
+        expect(model_record.errors.values).to match(
           [a_hash_including(origin: :database, code: :value_not_unique, target_column_name: nil)]
         )
       end
@@ -352,7 +412,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "keeps the native message" do
         model_record.load
 
-        expect(model_record.errors.first[:message]).to include("duplicate key value violates unique constraint")
+        expect(model_record.errors.values.first[:message]).to include("duplicate key value violates unique constraint")
       end
 
       it "leaves the table as it was" do
@@ -367,7 +427,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "is false, with value_missing from the database and no column" do
         expect(model_record.load).to be(false)
-        expect(model_record.errors).to match(
+        expect(model_record.errors.values).to match(
           [a_hash_including(origin: :database, code: :value_missing, target_column_name: nil)]
         )
       end
@@ -378,7 +438,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "is false, with parent_missing from the database and no column" do
         expect(model_record.load).to be(false)
-        expect(model_record.errors).to match(
+        expect(model_record.errors.values).to match(
           [a_hash_including(origin: :database, code: :parent_missing, target_column_name: nil)]
         )
       end
@@ -389,7 +449,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       it "is false, with value_invalid from the model" do
         expect(model_record.load).to be(false)
-        expect(model_record.errors).to match([a_hash_including(origin: :model, code: :value_invalid, target_column_name: nil)])
+        expect(model_record.errors.values).to match([a_hash_including(origin: :model, code: :value_invalid, target_column_name: nil)])
       end
     end
 
@@ -401,7 +461,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "reports value_too_long" do
         model_record.load
 
-        expect(model_record.errors).to match([a_hash_including(code: :value_too_long, target_column_name: nil)])
+        expect(model_record.errors.values).to match([a_hash_including(code: :value_too_long, target_column_name: nil)])
       end
     end
 
@@ -413,7 +473,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "reports value_out_of_range" do
         model_record.load
 
-        expect(model_record.errors).to match([a_hash_including(code: :value_out_of_range)])
+        expect(model_record.errors.values).to match([a_hash_including(code: :value_out_of_range)])
       end
     end
 
@@ -425,7 +485,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "reports database_error with the native message" do
         model_record.load
 
-        expect(model_record.errors).to match([a_hash_including(code: :database_error, message: "disk is full")])
+        expect(model_record.errors.values).to match([a_hash_including(code: :database_error, message: "disk is full")])
       end
     end
 
@@ -436,7 +496,7 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         model_record.record.email = "bob@example.com"
         model_record.load
 
-        expect(model_record.errors).to eq([])
+        expect(model_record.errors.values).to eq([])
       end
     end
 

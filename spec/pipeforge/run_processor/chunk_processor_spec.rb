@@ -131,9 +131,9 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       context "when the model finds a mistake the schema does not" do
         let(:errors_of) { ->(attributes:) { [model_error(code: :value_invalid, target_column_name: "email")] } }
 
-        it "keeps the model's mistake first, then the schema's" do
+        it "keeps the model's mistake of the column, not the schema's, and the schema's mistake of the other column" do
           expect(errors_of_failed_row.map { |error| [error[:code], error[:target_column_name]] }).to eq(
-            [[:value_invalid, "email"], [:value_missing, "email"], [:value_missing, "phone"]]
+            [[:value_invalid, "email"], [:value_missing, "phone"]]
           )
         end
       end

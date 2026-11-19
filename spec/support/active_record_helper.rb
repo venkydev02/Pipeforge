@@ -179,6 +179,12 @@ module AdapterSpecModels
     belongs_to :commentable, polymorphic: true
   end
 
+  # The same table, with the parent required (what a Rails application has by default).
+  class CommentWithRequiredParent < ActiveRecord::Base
+    self.table_name = "comments"
+    belongs_to :commentable, polymorphic: true, optional: false
+  end
+
   class Order < ActiveRecord::Base
     self.table_name = "orders"
   end

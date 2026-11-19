@@ -24,6 +24,7 @@ module Pipeforge
       @model = find_model(target_model_name: target_model_name)
       reject_missing_table
       @enum_labels = read_enum_labels
+      @polymorphic_columns = read_polymorphic_columns
     end
 
     # The labels of the model's enum for a column.
@@ -38,58 +39,51 @@ module Pipeforge
     #
     # @return [TargetSchema]
     def schema
-      ActiveRecordSchemaReader.new(model: @model, enum_labels: @enum_labels).call
+      ActiveRecordSchemaReader.new(
+        model: @model, enum_labels: @enum_labels, polymorphic_columns: @polymorphic_columns
+      ).call
     end
 
-    # Builds the model's unsaved record from the attributes. The text of a json or jsonb column is decoded as
-    # JSON. A text that is not JSON and a value that is not a label of the column's enum are set aside for the
-    # record to report.
+    # Builds the model's unsaved record from the attributes. Each value is cast as {#cast_value} casts it, and
+    # the record is given the cast value. A value the record cannot be given is not given
+    # to it, and the record has an error for that column instead: a value the column's type cannot cast (a text that
+    # is not JSON, a day that is not in the calendar), a value that is not a label of the column's enum (ActiveRecord raises on a label it does not know), and a type
+    # of a polymorphic association that names no model. An empty value is always given, the model's own validation
+    # decides what it means.
     #
     # @param attributes [Hash{String => Object}] target column => value to load
     # @return [ActiveRecordModelRecord] the unsaved record, wrapped
     def build_record(attributes:)
-      model_attributes = {}
-      unknown_enum_labels = {}
-      invalid_json_texts = {}
+      assigned_values = {}
+      rejections = {}
 
       attributes.each do |column_name, value|
-        attribute_type = @model.type_for_attribute(column_name)
-
-        # Only a text is decoded; nil and an object from a value mapping are assigned as they are.
-        if json_text?(attribute_type: attribute_type, value: value)
-          json_text_cast = cast_by_attribute_type(attribute_type: attribute_type, value: value)
-
-          unless json_text_cast.castable
-            invalid_json_texts[column_name] = value
-            next
-          end
-
-          value = json_text_cast.cast_value
-        end
-
-        labels = enum_labels(column_name: column_name)
-
-        if labels.nil? || value.nil?
-          model_attributes[column_name] = value
+        if value.nil?
+          assigned_values[column_name] = nil
           next
         end
 
-        # ActiveRecord raises on an enum label it does not know, so a value that is not a label (a value the
-        # database stores for one included) is set aside and reported by the record as value_not_allowed.
-        label = value.to_s
+        cast_result = cast_value(column_name: column_name, value: value)
+        casted_value = cast_result.cast_value
 
-        if labels.include?(label)
-          model_attributes[column_name] = label
+        if !cast_result.castable
+          rejections[column_name] = "#{column_name}: the value cannot be given to the model"
+        elsif not_an_enum_label?(column_name: column_name, casted_value: casted_value)
+          rejections[column_name] = "#{column_name}: #{casted_value} is not a label of the enum"
+        elsif polymorphic_type_unknown?(column_name: column_name, casted_value: casted_value)
+          rejections[column_name] = "#{column_name}: #{casted_value} is not a model of the application"
         else
-          unknown_enum_labels[column_name] = label
+          assigned_values[column_name] = casted_value
         end
       end
 
-      ActiveRecordModelRecord.new(
-        record: @model.new(model_attributes),
-        unknown_enum_labels: unknown_enum_labels,
-        invalid_json_texts: invalid_json_texts
-      )
+      model_record = ActiveRecordModelRecord.new(record: @model.new(assigned_values))
+
+      rejections.each do |column_name, message|
+        model_record.add_error(origin: :model, code: :value_not_accepted, message: message, target_column_name: column_name)
+      end
+
+      model_record
     end
 
     # Reads a value as the column's type would: what the model would load (the cast value, a Ruby object) and
@@ -159,6 +153,46 @@ module Pipeforge
       end
 
       labels_by_column_name
+    end
+
+    # The id column and the type column of each polymorphic +belongs_to+ association of the model, by column
+    # name. The associations of the model do not change, so they are read once.
+    def read_polymorphic_columns
+      polymorphic_columns = {}
+
+      @model.reflect_on_all_associations(:belongs_to).each do |reflection|
+        next unless reflection.polymorphic?
+
+        association_name = reflection.name.to_s
+        polymorphic_columns[reflection.foreign_key] = PolymorphicColumn.new(association_name: association_name, role: "id")
+        polymorphic_columns[reflection.foreign_type] = PolymorphicColumn.new(association_name: association_name, role: "type")
+      end
+
+      polymorphic_columns
+    end
+
+    # Whether the column has an enum and the cast value is not one of its labels.
+    def not_an_enum_label?(column_name:, casted_value:)
+      labels = enum_labels(column_name: column_name)
+
+      !labels.nil? && !labels.include?(casted_value.to_s)
+    end
+
+    # Whether the column is the type column of a polymorphic association and the cast value names no model.
+    # ActiveRecord raises NameError when it reads the parent of such a type.
+    def polymorphic_type_unknown?(column_name:, casted_value:)
+      polymorphic_column = @polymorphic_columns[column_name]
+      return false if polymorphic_column.nil? || polymorphic_column.role != "type"
+
+      !model_named?(name: casted_value.to_s)
+    end
+
+    # Whether the text names a model, as ActiveRecord reads the type of a polymorphic association: a constant that
+    # is a class below ActiveRecord::Base. A model that is not loaded yet is found by the autoload.
+    def model_named?(name:)
+      model_class = name.safe_constantize
+
+      model_class.is_a?(Class) && model_class < ActiveRecord::Base
     end
 
     # The loaded model with that name. An abstract class is not a model of a table, so it is not found.

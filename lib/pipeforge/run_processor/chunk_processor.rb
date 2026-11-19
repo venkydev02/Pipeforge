@@ -75,64 +75,40 @@ module Pipeforge
           model_records
         end
 
-        # Takes the model records one at a time, in row order: validates a record and, when it is valid,
+        # Takes the model records one at a time, in row order: validates a record and, when it has no error,
         # loads it before the next record is looked at. Returns the failed rows of the chunk.
         def validate_and_load(model_records:, first_row_number:, schema_checker:, target_column_names:)
           failed_rows = []
 
           model_records.each_with_index do |model_record, position|
-            errors = validation_errors(model_record: model_record, schema_checker: schema_checker)
+            add_errors(model_record: model_record, schema_checker: schema_checker)
 
             # One row at a time: a later row is validated after the earlier ones are in the table, so the
             # model's own uniqueness check also finds two rows of the file with the same value.
-            next if errors.empty? && model_record.load
-
-            # A row that passed the validation and that the database refused has the database's errors.
-            errors = model_record.errors.dup if errors.empty?
+            next if model_record.errors.empty? && model_record.load
 
             # The record also holds columns the consumer did not map (the primary key, a generated column), so only
-            # the mapped columns are shown.
+            # the mapped columns are shown. After a refused write the record's errors are the database's.
             failed_rows << FailedRow.new(
               row_number: first_row_number + position,
               attributes: model_record.json_attributes.slice(*target_column_names),
-              errors: errors
+              errors: model_record.errors.values
             )
           end
 
           failed_rows
         end
 
-        # The errors of the two levels for one row, each mistake once.
-        #
-        # @return [Array<Hash>] empty when the row passed both levels
-        def validation_errors(model_record:, schema_checker:)
-          model_errors = []
-          model_errors = model_record.errors unless model_record.valid?
+        # Adds the errors of the two levels to the record, one for each column: the record keeps the first error
+        # of a column, so the ones it found itself come before the schema's.
+        def add_errors(model_record:, schema_checker:)
+          model_record.valid?
+
           # The schema is checked on what the model record holds after its validation, because the model's
           # callbacks can change a value.
-          schema_errors = schema_checker.call(attributes: model_record.attributes)
-
-          merge_errors(model_errors: model_errors, schema_errors: schema_errors)
-        end
-
-        # Puts the errors of the two levels together so that a mistake is reported once: the same target
-        # column with the same code appears once, and the model-level entry is the one kept.
-        #
-        # @param model_errors [Array<Hash>] entries {origin: :model, code:, message:, target_column_name:}
-        # @param schema_errors [Array<Hash>] entries {origin: :schema, code:, message:, target_column_name:}
-        # @return [Array<Hash>] the model-level entries, then the schema-level entries not already there
-        def merge_errors(model_errors:, schema_errors:)
-          merged = model_errors.dup
-
-          schema_errors.each do |schema_error|
-            already_there = merged.any? do |error|
-              error[:target_column_name] == schema_error[:target_column_name] && error[:code] == schema_error[:code]
-            end
-
-            merged << schema_error unless already_there
+          schema_checker.call(attributes: model_record.attributes).each do |entry|
+            model_record.add_error(**entry)
           end
-
-          merged
         end
       end
     end

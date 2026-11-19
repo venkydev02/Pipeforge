@@ -91,13 +91,15 @@ class FakeTarget
     nil
   end
 
-  # The record that +build_record+ returns.
+  # The record that +build_record+ returns. Its errors are a Hash, target column name => entry, and +add_error+ keeps
+  # the first entry of a column, as the record of an adapter does.
   class FakeModelRecord
     attr_reader :attributes, :errors
 
-    def initialize(attributes:, errors:, changes_on_validation:, load_errors:, events:)
+    def initialize(attributes:, model_errors:, changes_on_validation:, load_errors:, events:)
       @attributes = attributes
-      @errors = errors
+      @errors = {}
+      @model_errors = model_errors
       @changes_on_validation = changes_on_validation
       @load_errors = load_errors
       @events = events
@@ -108,9 +110,17 @@ class FakeTarget
       attributes
     end
 
+    def add_error(origin:, code:, message:, target_column_name:)
+      return if @errors.key?(target_column_name)
+
+      @errors[target_column_name] = {origin: origin, code: code, message: message, target_column_name: target_column_name}
+    end
+
+    # Adds the errors of the model (the +errors_of+ lambda of the target) and says whether the record has none.
     def valid?
       @events << [:valid, @attributes]
       @attributes = @changes_on_validation.call(attributes: @attributes)
+      @model_errors.each { |entry| add_error(**entry) }
 
       @errors.empty?
     end
@@ -118,7 +128,8 @@ class FakeTarget
     # Stands for the write: true, or false with the configured database errors in +errors+.
     def load
       @events << [:load, @attributes]
-      @errors = @load_errors
+      @errors = {}
+      @load_errors.each { |entry| add_error(**entry) }
 
       @load_errors.empty?
     end
@@ -155,7 +166,7 @@ class FakeTarget
   def build_record(attributes:)
     @built_attributes << attributes
     FakeModelRecord.new(
-      attributes: attributes, errors: @errors_of.call(attributes: attributes),
+      attributes: attributes, model_errors: @errors_of.call(attributes: attributes),
       changes_on_validation: @changes_on_validation,
       load_errors: @load_errors_of.call(attributes: attributes), events: @events
     )

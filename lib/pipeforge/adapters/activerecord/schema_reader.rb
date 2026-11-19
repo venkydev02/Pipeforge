@@ -18,9 +18,12 @@ module Pipeforge
     # @param model [Class] the ActiveRecord model of the target table
     # @param enum_labels [Hash{String => Array<String>}] column name => the labels of its enum, for the enum
     #   columns of the model
-    def initialize(model:, enum_labels:)
+    # @param polymorphic_columns [Hash{String => PolymorphicColumn}] column name => the polymorphic association it
+    #   belongs to, for the id column and the type column of each polymorphic association of the model
+    def initialize(model:, enum_labels:, polymorphic_columns:)
       @model = model
       @enum_labels = enum_labels
+      @polymorphic_columns = polymorphic_columns
     end
 
     # @return [TargetSchema] the table name, the model name and the columns that can be given a source column
@@ -32,7 +35,6 @@ module Pipeforge
 
     def build_columns
       foreign_keys = foreign_keys_by_column_name
-      polymorphic_columns = polymorphic_columns_by_column_name
       primary_keys = Array(@model.primary_key)
       target_columns = []
 
@@ -41,7 +43,7 @@ module Pipeforge
 
         target_columns << build_column(
           model_column: model_column, foreign_key: foreign_keys[model_column.name],
-          polymorphic: polymorphic_columns[model_column.name]
+          polymorphic: @polymorphic_columns[model_column.name]
         )
       end
 
@@ -118,7 +120,7 @@ module Pipeforge
 
     # The foreign key columns of the model, by column name, from its +belongs_to+ associations.
     # A polymorphic association has no one parent table, and a composite key is not one column, so
-    # neither is described as a foreign key (a polymorphic one is described by {#polymorphic_columns_by_column_name}).
+    # neither is described as a foreign key (a polymorphic one is described by +polymorphic+ on its id and type columns).
     def foreign_keys_by_column_name
       foreign_keys = {}
 
@@ -133,21 +135,6 @@ module Pipeforge
       end
 
       foreign_keys
-    end
-
-    # The id column and the type column of each polymorphic +belongs_to+ association of the model, by column name.
-    def polymorphic_columns_by_column_name
-      polymorphic_columns = {}
-
-      @model.reflect_on_all_associations(:belongs_to).each do |reflection|
-        next unless reflection.polymorphic?
-
-        association_name = reflection.name.to_s
-        polymorphic_columns[reflection.foreign_key] = PolymorphicColumn.new(association_name: association_name, role: "id")
-        polymorphic_columns[reflection.foreign_type] = PolymorphicColumn.new(association_name: association_name, role: "type")
-      end
-
-      polymorphic_columns
     end
   end
 end

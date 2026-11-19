@@ -423,10 +423,8 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         expect(model_record.record.tier).to be_nil
       end
 
-      it "reports it as value_not_allowed" do
-        model_record.valid?
-
-        expect(model_record.errors).to include(include(code: :value_not_allowed, target_column_name: "tier"))
+      it "has an error for the column as soon as the record is built, with value_not_accepted" do
+        expect(model_record.errors["tier"]).to include(code: :value_not_accepted, message: "tier: 1 is not a label of the enum")
       end
     end
 
@@ -495,8 +493,8 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
           expect(model_record.record.settings).to be_nil
         end
 
-        it "keeps the text, as given, for the record to report" do
-          expect(model_record.attributes["settings"]).to eq("{oops")
+        it "has an error for the column as soon as the record is built, with value_not_accepted" do
+          expect(model_record.errors["settings"]).to include(code: :value_not_accepted, message: "settings: the value cannot be given to the model")
         end
       end
 
@@ -536,6 +534,46 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       it "holds the object the text describes" do
         expect(model_record.record.extras).to eq("beta" => true)
       end
+    end
+  end
+
+  describe "#build_record with a polymorphic association" do
+    let(:target_model_name) { "AdapterSpecModels::Comment" }
+    let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
+
+    it "gives the record a type that names a model" do
+      model_record = target.build_record(
+        attributes: {"commentable_id" => company.id, "commentable_type" => "AdapterSpecModels::Company"}
+      )
+
+      expect(model_record.record).to have_attributes(commentable_id: company.id, commentable_type: "AdapterSpecModels::Company")
+    end
+
+    it "does not give the record a type that names no model, so reading its parent cannot raise" do
+      model_record = target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => "Post"})
+
+      expect(model_record.record.commentable).to be_nil
+    end
+
+    it "does not give the record a constant that is not a model" do
+      model_record = target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => "Kernel"})
+
+      expect(model_record.record.commentable_type).to be_nil
+    end
+
+    it "gives the record an empty type as it is" do
+      model_record = target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => nil})
+
+      expect(model_record.record.commentable_type).to be_nil
+    end
+
+    it "preloads the parents of records of which one has a type that names no model, with no error" do
+      records = [
+        target.build_record(attributes: {"commentable_id" => company.id, "commentable_type" => "AdapterSpecModels::Company"}),
+        target.build_record(attributes: {"commentable_id" => 1, "commentable_type" => "Post"})
+      ]
+
+      expect { target.preload_parents(records: records) }.not_to raise_error
     end
   end
 

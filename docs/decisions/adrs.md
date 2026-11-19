@@ -499,3 +499,16 @@
 * **Consequences:**
   * A screen can say that a column is the type of an association and goes with its id column. The list of the classes that may be stored is not part of it, because ActiveRecord accepts any class name.
   * `README.md` and `protocols.md` are updated in the same change.
+
+### ADR-33: The Model Record Holds One Error for Each Column, and the Target Adds the Errors of a Value It Cannot Give the Record
+* **Status:** Accepted (2026-11-19). **Supersedes** the merge of the model's errors and the schema's by code in ADR-30, and the codes `value_not_json` and, for the model, `value_not_allowed`.
+* **Context:** A value the record cannot hold (an enum label the model does not know, a text that is not JSON, a polymorphic type that names no model) was kept apart by the target and turned into an error by the record later, and the model's errors and the schema's were merged by column and code in two places. A column could still end with several errors, and a bad polymorphic type raised `NameError` out of the preload and the validation, which aborted the run.
+* **Decision:**
+  1. **The model record holds its errors in a Hash keyed by the target column name**, in the order they were added, and `add_error(origin:, code:, message:, target_column_name:)` keeps the first error of a column. The record as a whole (no column) has at most one. The model's errors (`valid?`) and the core's schema errors are added through it, so there is one rule in one place.
+  2. **`build_record` adds the errors of the values it cannot give the record**, with one code, `value_not_accepted`, and a message that says which kind it is (an enum label, a text that is not JSON, a polymorphic type that names no model). The record is built from the values it can take, so neither the preload nor the validation can raise on the others. A type names a model when `safe_constantize` gives a class below `ActiveRecord::Base`, which is how ActiveRecord reads it.
+  3. **`valid?` does not clear the errors**, and a refused `load` replaces them with the database's entry.
+  4. **A failed row has at most one error for each column**, and its `attributes` are what the record holds: a value the record was not given is not in them.
+* **Consequences:**
+  * One bad cell is one failed row. A bad polymorphic type gives two entries, one for the type (`value_not_accepted`) and one for the id column (`parent_missing`, from the model).
+  * The record contract is `valid?`, `errors` (a Hash), `add_error`, `attributes`, `json_attributes` and `load`.
+  * `protocols.md` and `target-access.md` are updated in the same change.

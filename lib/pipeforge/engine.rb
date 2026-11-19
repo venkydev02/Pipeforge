@@ -28,7 +28,8 @@ module Pipeforge
   # row), +preload_parents(records:)+ (loads the parents a chunk needs) and
   # +transaction(rollback_at_end:)+ (runs a block inside one transaction of the target database,
   # rolled back when the block ends if +rollback_at_end+ is true). A record answers +valid?+,
-  # +errors+, +attributes+, +json_attributes+ and +load+ (see {RunProcessor::ChunkProcessor}).
+  # +errors+ (a Hash, target column name => its error entry), +add_error(origin:, code:, message:, target_column_name:)+, +attributes+, +json_attributes+
+  # and +load+ (see {RunProcessor::ChunkProcessor}).
   class Engine
     # The values +mode+ of {#run} can have.
     RUN_MODES = %i[dry_run run].freeze
