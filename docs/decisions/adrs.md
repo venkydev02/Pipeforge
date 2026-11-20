@@ -525,3 +525,18 @@
   * One bad cell is one failed row. A bad polymorphic type gives two entries, one for the type (`value_not_accepted`) and one for the id column (`parent_missing`, from the model).
   * The record contract is `valid?`, `errors` (a Hash), `add_error`, `attributes`, `json_attributes` and `load`.
   * `protocols.md` and `target-access.md` are updated in the same change.
+
+### ADR-34: Every Error of a Row Is Built by One Catalog, a Hash of Functions Keyed by Code and Kind, with a Promised Shape
+* **Status:** Accepted (2026-11-20). Extends ADR-33.
+* **Context:** The sentences of a row's errors were written in four classes (the schema checker, the limits checker, the target and the model record), each building its own Hash, and the errors of the model and of the database carried ActiveRecord's own text. The same code had different wording at different levels, an error had no facts a screen could use, a value the record could not hold was shown nowhere but in a message, and nothing said what an error looks like.
+* **Decision:**
+  1. **One Hash, `Pipeforge::ErrorCatalog::ERRORS`, keyed by the code and its kind joined** (`:value_out_of_range_bytes`, or the code alone when it has no kind). The value of a key is a function that takes `origin:`, `target_column_name:`, the failed `value:` and the facts its sentence uses, as keywords, and returns the error as a Hash with `origin`, `code`, `kind`, `target_column_name`, `message`, `details` and `value`. Each function lists every fact it accepts, so Ruby refuses a call that misses one or names one it does not know.
+  2. **A component that finds a mistake calls the function and gives what only it knows**: where it found the mistake (`origin`) and the failed value. Nothing is added after the call. Every error of a failed row has seven keys: `origin`, `code`, `kind`, `target_column_name`, `message`, `details` and `value`.
+  3. **The message is always ours**, `"<column>: <sentence>"` (the sentence alone when there is no column). The text of the model or of the database is the fact `native_message`, and a few sentences end with it in brackets.
+  4. **The origin and the failed value are required keywords of every function and are in the error**, in JSON types (the cast value, or the value as given when it cannot be cast), and `nil` when there is none. A value the record could not hold is not in the failed row's attributes, so this is where it is shown.
+  5. **A component is verified by comparing its error with the catalog's call for the same input**, so each sentence is written once and tested once, in the catalog's own spec.
+* **Consequences:**
+  * `ColumnLimitsChecker` knows its column and returns the catalog's Hash (or nil); its `Violation` is removed.
+  * The record contract is `add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)`.
+  * The raised data errors (the mapped columns, the source file, the target) have their own fields and are not in the catalog yet.
+  * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.

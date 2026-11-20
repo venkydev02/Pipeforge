@@ -5,6 +5,7 @@
 # it is loaded. See docs/architecture/overview.md.
 require_relative "pipeforge/version"
 require_relative "pipeforge/errors"
+require_relative "pipeforge/error_catalog"
 require_relative "pipeforge/utilities"
 require_relative "pipeforge/cast_result"
 require_relative "pipeforge/resolved_mapped_column"

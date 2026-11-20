@@ -154,7 +154,7 @@ module Pipeforge
         else
           @incompatible_values.record(
             value: value, mapping_applied: mapping_applied, mapped_value: mapped_value,
-            casted_to: cast_result.json_value, reason: violation.code
+            casted_to: cast_result.json_value, reason: violation[:code]
           )
         end
       end

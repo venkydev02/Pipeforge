@@ -31,21 +31,13 @@ module Pipeforge
         @limits_by_column_name = {}
 
         @target_columns.each do |target_column|
-          @limits_by_column_name[target_column.name] = ColumnLimitsChecker.new(
-            type: target_column.type,
-            limit: target_column.limit,
-            is_signed: target_column.is_signed,
-            max_length: target_column.max_length,
-            precision: target_column.precision,
-            scale: target_column.scale,
-            enum_labels: target_column.enum_labels
-          )
+          @limits_by_column_name[target_column.name] = ColumnLimitsChecker.for(target_column: target_column)
         end
       end
 
       # @param attributes [Hash{String => Object}] target column => value to load
-      # @return [Array<Hash>] one entry {origin: :schema, code:, message:, target_column_name:} for each mistake;
-      #   empty when the record passes
+      # @return [Array<Hash>] one entry for each mistake, as the {ErrorCatalog} builds it, with +origin: :schema+
+      #   (its +value+ is the value that failed, nil for an empty required value); empty when the record passes
       def call(attributes:)
         errors = []
 
@@ -58,7 +50,7 @@ module Pipeforge
           end
 
           violation = @limits_by_column_name.fetch(target_column.name).violation_of(value: value)
-          errors << limit_error(target_column: target_column, violation: violation) unless violation.nil?
+          errors << violation unless violation.nil?
         end
 
         errors
@@ -67,21 +59,7 @@ module Pipeforge
       private
 
       def missing_error(target_column:)
-        {
-          origin: :schema,
-          code: :value_missing,
-          message: "#{target_column.name} is required but its value is empty",
-          target_column_name: target_column.name
-        }
-      end
-
-      def limit_error(target_column:, violation:)
-        {
-          origin: :schema,
-          code: violation.code,
-          message: "#{target_column.name}: #{violation.detail}",
-          target_column_name: target_column.name
-        }
+        ErrorCatalog::ERRORS.fetch(:value_missing).call(origin: :schema, target_column_name: target_column.name, value: nil)
       end
     end
   end

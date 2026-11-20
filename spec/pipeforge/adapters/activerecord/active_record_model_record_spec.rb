@@ -11,6 +11,13 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     model_record.errors.values.map { |error| error[:code] }
   end
 
+  # The error that the record promises is the one the ErrorCatalog builds for the mistake, with the origin and the
+  # value that failed.
+  def catalog_error(key, target_column_name:, origin:, value:, **facts)
+    Pipeforge::ErrorCatalog::ERRORS.fetch(key)
+      .call(origin: origin, target_column_name: target_column_name, value: value, **facts)
+  end
+
   describe "#record" do
     it "is the unsaved record" do
       expect(model_record.record).to be_a(AdapterSpecModels::Membership).and have_attributes(new_record?: true)
@@ -119,8 +126,12 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       )
     end
 
-    it "has the message that names the type" do
-      expect(model_record.errors["commentable_type"][:message]).to eq("commentable_type: Post is not a model of the application")
+    it "has the error of the catalog, with the type that failed as the value" do
+      expect(model_record.errors["commentable_type"]).to eq(
+        catalog_error(
+          :value_not_accepted_polymorphic_type, target_column_name: "commentable_type", origin: :model, value: "Post"
+        )
+      )
     end
 
     it "also has the model's own error of the id column, one error for each column" do
@@ -146,7 +157,10 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
   describe "#add_error" do
     def entry(code:, target_column_name:, origin: :model)
-      {origin: origin, code: code, message: "a message", target_column_name: target_column_name}
+      {
+        origin: origin, code: code, kind: nil, target_column_name: target_column_name, message: "a message",
+        details: {}, value: nil
+      }
     end
 
     it "adds the error of a column" do
@@ -193,20 +207,27 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         expect(model_record.errors.values).to contain_exactly(include(code: :value_missing, target_column_name: "email"))
       end
 
-      it "gives a message that a person can read" do
+      it "gives the error of the catalog, with no value" do
         model_record.valid?
 
-        expect(model_record.errors.values.first[:message]).to include("Email")
+        expect(model_record.errors["email"]).to eq(
+          catalog_error(:value_missing, target_column_name: "email", origin: :model, value: nil)
+        )
       end
     end
 
     context "when a value is too long" do
       let(:attributes) { {"email" => "a-very-long-address@example.com", "tier" => "basic", "company_id" => company.id} }
 
-      it "gives value_too_long for that column" do
+      it "gives value_too_long for that column, with the maximum, the length and the value that failed" do
         model_record.valid?
 
-        expect(model_record.errors.values).to contain_exactly(include(code: :value_too_long, target_column_name: "email"))
+        expect(model_record.errors["email"]).to eq(
+          catalog_error(
+            :value_too_long, target_column_name: "email", origin: :model, value: "a-very-long-address@example.com",
+            length: 31, max_length: 20
+          )
+        )
       end
     end
 
@@ -242,23 +263,46 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       end
     end
 
+    context "when the model reports a length error on an attribute that is not a column, with no maximum" do
+      let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: "AdapterSpecModels::LooseLengthAccount") }
+      let(:attributes) { {"email" => "ann@example.com"} }
+
+      it "gives value_too_long with no maximum, no length and no value" do
+        model_record.valid?
+
+        expect(model_record.errors["alias_name"]).to eq(
+          catalog_error(:value_too_long, target_column_name: "alias_name", origin: :model, value: nil)
+        )
+      end
+    end
+
     context "when another validation fails" do
       let(:attributes) { {"email" => "ann@example.com", "tier" => "basic", "company_id" => company.id, "seats" => 200_000} }
 
-      it "gives value_invalid for that column" do
+      it "gives value_invalid for that column, with the text of the model as a fact and the value that failed" do
         model_record.valid?
 
-        expect(model_record.errors.values).to contain_exactly(include(origin: :model, code: :value_invalid, target_column_name: "seats"))
+        expect(model_record.errors["seats"]).to eq(
+          catalog_error(
+            :value_invalid, target_column_name: "seats", origin: :model, value: 200_000,
+            native_message: "must be less than 100000", error_type: :less_than
+          )
+        )
       end
     end
 
     context "when the mistake is on the record as a whole" do
       let(:attributes) { {"email" => "closed@example.com", "tier" => "basic", "company_id" => company.id} }
 
-      it "gives value_invalid with no column" do
+      it "gives value_invalid with no column and no value" do
         model_record.valid?
 
-        expect(model_record.errors.values).to contain_exactly(include(code: :value_invalid, target_column_name: nil))
+        expect(model_record.errors[nil]).to eq(
+          catalog_error(
+            :value_invalid, target_column_name: nil, origin: :model, value: nil,
+            native_message: "signups are closed for this email", error_type: "signups are closed for this email"
+          )
+        )
       end
     end
 
@@ -409,10 +453,18 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         )
       end
 
-      it "keeps the native message" do
+      it "gives the error of the catalog, with the text of the database as native_message" do
         model_record.load
 
-        expect(model_record.errors.values.first[:message]).to include("duplicate key value violates unique constraint")
+        entry = model_record.errors[nil]
+
+        expect(entry).to eq(
+          catalog_error(
+            :value_not_unique, target_column_name: nil, origin: :database, value: nil,
+            native_message: entry[:details][:native_message]
+          )
+        )
+        expect(entry[:details][:native_message]).to include("duplicate key value violates unique constraint")
       end
 
       it "leaves the table as it was" do
@@ -485,7 +537,11 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       it "reports database_error with the native message" do
         model_record.load
 
-        expect(model_record.errors.values).to match([a_hash_including(code: :database_error, message: "disk is full")])
+        expect(model_record.errors[nil]).to eq(
+          catalog_error(
+            :database_error, target_column_name: nil, origin: :database, value: nil, native_message: "disk is full"
+          )
+        )
       end
     end
 

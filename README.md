@@ -198,14 +198,19 @@ And one failed row from a run, with the attributes the record held (the columns 
     {
       "origin": "schema",
       "code": "value_too_long",
+      "kind": null,
+      "target_column_name": "status",
       "message": "status: the value has 34 characters, more than the 20 allowed",
-      "target_column_name": "status"
+      "details": {"length": 34, "max_length": 20},
+      "value": "this status is far too long to fit"
     }
   ]
 }
 ```
 
-Write your screens against the `code`, never against the message text. The codes are stable; the wording is not.
+Every error of a row has these seven keys: who found it (`origin`: `schema`, `model` or `database`), what is wrong (`code`), which case of the code (`kind`, or `null`), the column (`target_column_name`, `null` for the whole row), a `message` that is always ours (the text of the model or of the database is kept in `details` as `native_message`), the facts of the mistake (`details`), and the value that failed (`value`, in JSON types; `null` when there is none, as for a refusal of the database). A row has at most one error for each column.
+
+Write your screens against the `code` and the `kind`, never against the message text. The codes are stable; the wording is not.
 
 ## What it costs
 

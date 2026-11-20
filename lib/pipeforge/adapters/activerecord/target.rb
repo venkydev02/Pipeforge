@@ -46,7 +46,7 @@ module Pipeforge
 
     # Builds the model's unsaved record from the attributes. Each value is cast as {#cast_value} casts it, and
     # the record is given the cast value. A value the record cannot be given is not given
-    # to it, and the record has an error for that column instead: a value the column's type cannot cast (a text that
+    # to it, and the record has an error for that column instead, with the value that failed: a value the column's type cannot cast (a text that
     # is not JSON, a day that is not in the calendar), a value that is not a label of the column's enum (ActiveRecord raises on a label it does not know), and a type
     # of a polymorphic association that names no model. An empty value is always given, the model's own validation
     # decides what it means.
@@ -67,11 +67,12 @@ module Pipeforge
         casted_value = cast_result.cast_value
 
         if !cast_result.castable
-          rejections[column_name] = "#{column_name}: the value cannot be given to the model"
+          # There is no cast value, so the error shows the value as it was given.
+          rejections[column_name] = {key: :value_not_accepted_not_castable, value: value.as_json}
         elsif not_an_enum_label?(column_name: column_name, casted_value: casted_value)
-          rejections[column_name] = "#{column_name}: #{casted_value} is not a label of the enum"
+          rejections[column_name] = {key: :value_not_accepted_enum_label, value: casted_value.as_json}
         elsif polymorphic_type_unknown?(column_name: column_name, casted_value: casted_value)
-          rejections[column_name] = "#{column_name}: #{casted_value} is not a model of the application"
+          rejections[column_name] = {key: :value_not_accepted_polymorphic_type, value: casted_value.as_json}
         else
           assigned_values[column_name] = casted_value
         end
@@ -79,8 +80,11 @@ module Pipeforge
 
       model_record = ActiveRecordModelRecord.new(record: @model.new(assigned_values))
 
-      rejections.each do |column_name, message|
-        model_record.add_error(origin: :model, code: :value_not_accepted, message: message, target_column_name: column_name)
+      rejections.each do |column_name, rejection|
+        model_record.add_error(
+          **ErrorCatalog::ERRORS.fetch(rejection[:key])
+            .call(origin: :model, target_column_name: column_name, value: rejection[:value])
+        )
       end
 
       model_record

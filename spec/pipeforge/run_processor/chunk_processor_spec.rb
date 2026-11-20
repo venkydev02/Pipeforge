@@ -88,7 +88,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       let(:errors_of) do
         lambda do |attributes:|
           if attributes["email"] == "dup@example.com"
-            [{origin: :model, code: :value_not_unique, message: "taken", target_column_name: "email"}]
+            [{origin: :model, kind: nil, details: {}, value: nil, code: :value_not_unique, message: "taken", target_column_name: "email"}]
           else
             []
           end
@@ -109,7 +109,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       let(:errors_of_failed_row) { chunk_result.failed_rows.first.errors }
 
       def model_error(code:, target_column_name:, message: "from the model")
-        {origin: :model, code: code, message: message, target_column_name: target_column_name}
+        {origin: :model, kind: nil, details: {}, value: nil, code: code, message: message, target_column_name: target_column_name}
       end
 
       context "when the model finds the same mistake as the schema on one column" do
@@ -201,7 +201,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       end
 
       it "gives the failed row what the record holds, without the empty value of a column that has a default" do
-        failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, code: :value_invalid, message: "x", target_column_name: "email"}] })
+        failing = FakeTarget.new(errors_of: ->(attributes:) { [{origin: :model, kind: nil, details: {}, value: nil, code: :value_invalid, message: "x", target_column_name: "email"}] })
         result = described_class.call(
           rows: rows, first_row_number: 5, transformer: transformer, schema_checker: schema_checker,
           resolved_mapped_columns: resolved_mapped_columns, target: failing
@@ -277,7 +277,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         [{"Mail" => "a@example.com", "State" => "ok"}, {"Mail" => "dup@example.com", "State" => "ok"}, {"Mail" => "c@example.com", "State" => "ok"}]
       end
       let(:database_error) do
-        {origin: :database, code: :value_not_unique, message: "UNIQUE constraint failed", target_column_name: "email"}
+        {origin: :database, kind: nil, details: {}, value: nil, code: :value_not_unique, message: "UNIQUE constraint failed", target_column_name: "email"}
       end
       let(:target) do
         FakeTarget.new(

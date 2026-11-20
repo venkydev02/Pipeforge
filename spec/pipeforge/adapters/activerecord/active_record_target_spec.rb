@@ -424,7 +424,10 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       end
 
       it "has an error for the column as soon as the record is built, with value_not_accepted" do
-        expect(model_record.errors["tier"]).to include(code: :value_not_accepted, message: "tier: 1 is not a label of the enum")
+        expect(model_record.errors["tier"]).to eq(
+          Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_enum_label)
+            .call(origin: :model, target_column_name: "tier", value: "1")
+        )
       end
     end
 
@@ -494,7 +497,10 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         end
 
         it "has an error for the column as soon as the record is built, with value_not_accepted" do
-          expect(model_record.errors["settings"]).to include(code: :value_not_accepted, message: "settings: the value cannot be given to the model")
+          expect(model_record.errors["settings"]).to eq(
+            Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_not_castable)
+              .call(origin: :model, target_column_name: "settings", value: "{oops")
+          )
         end
       end
 

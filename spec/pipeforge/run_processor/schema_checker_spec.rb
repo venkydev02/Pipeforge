@@ -18,12 +18,17 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
   end
 
   # The limits themselves are tested once, in the spec of ColumnLimitsChecker; here a column of each kind
-  # shows that the checker asks it and turns what it finds into an entry.
+  # shows that the checker asks it and gives what it finds as an entry with the origin and the value. The entry is
+  # compared with the one the ErrorCatalog builds for the same mistake.
   describe "#call" do
     subject(:errors) { checker.call(attributes: attributes) }
 
     let(:attributes) { {"email" => "ann@example.com"} }
     let(:codes) { errors.map { |error| error[:code] } }
+
+    def catalog_error(key, **facts)
+      Pipeforge::ErrorCatalog::ERRORS.fetch(key).call(**facts)
+    end
 
     it "gives no error for a record that passes" do
       expect(errors).to eq([])
@@ -35,16 +40,10 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       context "when its value is empty" do
         let(:attributes) { {"email" => nil} }
 
-        it "gives value_missing for that column" do
-          expect(errors).to contain_exactly(include(code: :value_missing, target_column_name: "email"))
-        end
-
-        it "gives a message that a person can read" do
-          expect(errors.first[:message]).to include("email")
-        end
-
-        it "gives the origin schema" do
-          expect(errors.first[:origin]).to eq(:schema)
+        it "gives value_missing for that column, with the origin schema and no value" do
+          expect(errors).to eq(
+            [catalog_error(:value_missing, origin: :schema, target_column_name: "email", value: nil)]
+          )
         end
       end
 
@@ -77,8 +76,14 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       context "when the value is longer" do
         let(:attributes) { {"code" => "abcd"} }
 
-        it "gives value_too_long for that column, with a message that names it" do
-          expect(errors).to contain_exactly(include(origin: :schema, code: :value_too_long, target_column_name: "code", message: /\Acode: /))
+        it "gives value_too_long for that column, with the origin schema and the value that failed" do
+          expect(errors).to eq(
+            [
+              catalog_error(
+                :value_too_long, origin: :schema, target_column_name: "code", value: "abcd", length: 4, max_length: 3
+              )
+            ]
+          )
         end
       end
 

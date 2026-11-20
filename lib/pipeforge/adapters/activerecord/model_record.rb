@@ -13,9 +13,9 @@ module Pipeforge
     # database they are its entry instead, with +origin: :database+, the same codes, +value_out_of_range+ and
     # +database_error+; a callback that stopped the save is +value_invalid+ with +origin: :model+.
     #
-    # @return [Hash{String, nil => Hash}] target column name => its entry {origin:, code:, message:,
-    #   target_column_name:}, in the order the entries were added; the key nil is the record as a whole. Empty
-    #   when there is none
+    # @return [Hash{String, nil => Hash}] target column name => its entry {origin:, code:, kind:,
+    #   target_column_name:, message:, details:, value:} (built by the {ErrorCatalog}), in the order the entries were
+    #   added; the key nil is the record as a whole. Empty when there is none
     attr_reader :errors
 
     # @param record [ActiveRecord::Base] the unsaved record
@@ -29,14 +29,18 @@ module Pipeforge
     #
     # @param origin [Symbol] where the mistake was found: +:model+, +:schema+ or +:database+
     # @param code [Symbol] the shared code of the mistake
-    # @param message [String]
+    # @param kind [Symbol, nil] which case of the code, or nil
     # @param target_column_name [String, nil] the column it is about; nil for the record as a whole
+    # @param message [String]
+    # @param details [Hash] the facts of the mistake
+    # @param value [Object, nil] the value that failed, in JSON types; nil when there is none
     # @return [void]
-    def add_error(origin:, code:, message:, target_column_name:)
+    def add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)
       return if @errors.key?(target_column_name)
 
       @errors[target_column_name] = {
-        origin: origin, code: code, message: message, target_column_name: target_column_name
+        origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
+        details: details, value: value
       }
     end
 
@@ -71,7 +75,10 @@ module Pipeforge
       false
     rescue ActiveRecord::RecordNotSaved => not_saved_error
       # A callback of the model stopped the save.
-      add_error(origin: :model, code: :value_invalid, message: not_saved_error.message, target_column_name: nil)
+      add_error(
+        **ErrorCatalog::ERRORS.fetch(:value_invalid_save_stopped)
+          .call(origin: :model, target_column_name: nil, value: nil, native_message: not_saved_error.message)
+      )
 
       false
     end
@@ -95,21 +102,18 @@ module Pipeforge
 
     private
 
-    # The entry {origin: :database, code:, message:, target_column_name:} for one database exception:
-    # RecordNotUnique -> value_not_unique, InvalidForeignKey -> parent_missing,
-    # NotNullViolation -> value_missing, ValueTooLong -> value_too_long,
-    # RangeError -> value_out_of_range, anything else -> database_error (native message kept).
+    # The entry of the {ErrorCatalog} for one database exception, as the database found it (no column, no value),
+    # with the text of the database as +native_message+.
     def database_error_entry(database_error:)
-      {
-        origin: :database,
-        code: database_code_of(database_error: database_error),
-        message: database_error.message,
+      ErrorCatalog::ERRORS.fetch(database_key_of(database_error: database_error))
         # The column is not worked out from the message: the wording differs between databases.
-        target_column_name: nil
-      }
+        .call(origin: :database, target_column_name: nil, value: nil, native_message: database_error.message)
     end
 
-    def database_code_of(database_error:)
+    # The key of {ErrorCatalog::ERRORS} for a database exception: RecordNotUnique -> value_not_unique,
+    # InvalidForeignKey -> parent_missing, NotNullViolation -> value_missing, ValueTooLong -> value_too_long,
+    # RangeError -> value_out_of_range, anything else -> database_error.
+    def database_key_of(database_error:)
       case database_error
       when ActiveRecord::RecordNotUnique then :value_not_unique
       when ActiveRecord::InvalidForeignKey then :parent_missing
@@ -122,27 +126,57 @@ module Pipeforge
 
     def add_model_errors
       @record.errors.each do |model_error|
-        add_error(
-          origin: :model,
-          code: code_of(model_error: model_error),
-          message: model_error.full_message,
-          target_column_name: target_column_name_of(model_error: model_error)
-        )
+        add_error(**model_error_entry(model_error: model_error))
       end
     end
 
-    def code_of(model_error:)
+    # The entry of the {ErrorCatalog} for one error of the model's validations, with the value the record holds for
+    # the column.
+    def model_error_entry(model_error:)
+      key = key_of(model_error: model_error)
+      target_column_name = target_column_name_of(model_error: model_error)
+      failed_value = value_of(target_column_name: target_column_name)
+
+      ErrorCatalog::ERRORS.fetch(key)
+        .call(
+          origin: :model, target_column_name: target_column_name, value: failed_value.as_json,
+          **facts_of(model_error: model_error, key: key, failed_value: failed_value)
+        )
+    end
+
+    # The value the record holds for a column; nil for the record as a whole and for an attribute that is not a column.
+    def value_of(target_column_name:)
+      return nil if target_column_name.nil? || !@record.has_attribute?(target_column_name)
+
+      @record[target_column_name]
+    end
+
+    # The facts the sentence of the error uses. A validation that has no code of its own gives the text of the model
+    # as +native_message+.
+    def facts_of(model_error:, key:, failed_value:)
+      case key
+      when :value_too_long
+        facts = {max_length: model_error.options[:count]}.compact
+        facts[:length] = failed_value.to_s.length unless failed_value.nil?
+        facts
+      when :value_invalid then {native_message: model_error.message, error_type: model_error.type}
+      else {}
+      end
+    end
+
+    # The key of {ErrorCatalog::ERRORS} for an error of the model.
+    def key_of(model_error:)
       case model_error.type
-      when :blank then blank_code_of(model_error: model_error)
+      when :blank then blank_key_of(model_error: model_error)
       when :too_long then :value_too_long
       when :taken then :value_not_unique
       else :value_invalid
       end
     end
 
-    # The code of a blank error: +parent_missing+ for a +belongs_to+ association whose foreign key holds
+    # The key of a blank error: +parent_missing+ for a +belongs_to+ association whose foreign key holds
     # a value, and +value_missing+ otherwise.
-    def blank_code_of(model_error:)
+    def blank_key_of(model_error:)
       reflection = parent_association_of(model_error: model_error)
       return :value_missing if reflection.nil? || @record[reflection.foreign_key].nil?
 

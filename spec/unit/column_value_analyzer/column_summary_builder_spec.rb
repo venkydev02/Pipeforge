@@ -294,8 +294,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       let(:source_column_name) { "Name" }
       let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: "abcdef", json_value: "abcdef") }
       let(:violation) do
-        Pipeforge::ColumnLimitsChecker::Violation.new(
-          code: :value_too_long, detail: "the value has 6 characters, more than the 3 allowed"
+        Pipeforge::ErrorCatalog::ERRORS.fetch(:value_too_long).call(
+          origin: :schema, target_column_name: "name", value: "abcdef", length: 6, max_length: 3
         )
       end
 
@@ -319,8 +319,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
           Pipeforge::CastResult.new(castable: true, cast_value: BigDecimal("1000.5"), json_value: "1000.5")
         end
         let(:violation) do
-          Pipeforge::ColumnLimitsChecker::Violation.new(
-            code: :value_out_of_range, detail: "the value has more than 3 digits before the point"
+          Pipeforge::ErrorCatalog::ERRORS.fetch(:value_out_of_range_digits).call(
+            origin: :schema, target_column_name: "price", value: "1000.5", allowed_digits: 3
           )
         end
 
@@ -375,8 +375,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
     context "when a text that does not fit is added twice" do
       let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 300, json_value: 300) }
       let(:violation) do
-        Pipeforge::ColumnLimitsChecker::Violation.new(
-          code: :value_out_of_range, detail: "the value does not fit in 1 bytes"
+        Pipeforge::ErrorCatalog::ERRORS.fetch(:value_out_of_range_bytes).call(
+          origin: :schema, target_column_name: "quantity", value: 300, bytes: 1
         )
       end
 

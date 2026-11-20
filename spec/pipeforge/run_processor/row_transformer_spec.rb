@@ -99,7 +99,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
         target_column_name: "status",
         source_column_name: "Status",
         position: 0,
-        limits_checker: Pipeforge::ColumnLimitsChecker.new(type: "string"),
+        limits_checker: Pipeforge::ColumnLimitsChecker.new(target_column_name: "status", type: "string"),
         target: FakeTarget.new,
         value_mapping: value_mapping
       )

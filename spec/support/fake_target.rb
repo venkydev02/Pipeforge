@@ -110,10 +110,13 @@ class FakeTarget
       attributes
     end
 
-    def add_error(origin:, code:, message:, target_column_name:)
+    def add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)
       return if @errors.key?(target_column_name)
 
-      @errors[target_column_name] = {origin: origin, code: code, message: message, target_column_name: target_column_name}
+      @errors[target_column_name] = {
+        origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
+        details: details, value: value
+      }
     end
 
     # Adds the errors of the model (the +errors_of+ lambda of the target) and says whether the record has none.

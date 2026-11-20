@@ -89,6 +89,18 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     expect(codes_of_row(6)).to eq([:value_not_accepted])
   end
 
+  it "gives the error of the catalog for the enum label that is not the model's, with the value that failed" do
+    run_result
+
+    error = failed_rows.find { |failed_row| failed_row.row_number == 6 }.errors.first
+
+    expect(error).to eq(
+      Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_enum_label)
+        .call(origin: :model, target_column_name: error[:target_column_name], value: error[:value])
+    )
+    expect(error[:value]).to be_a(String)
+  end
+
   it "reports a parent that does not exist, on the foreign key column" do
     run_result
 
