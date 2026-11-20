@@ -225,7 +225,7 @@
   * The consumer's setup is one gem line for the adapter. The core's gemspec has no Rails or ActiveRecord dependency.
   * The adapter contract is a public API from the first release, so changing it is a breaking change.
   * **Open:** the final method names; whether `schema` is one call or split into columns and associations.
-* **Amendment (2026-10-17): how the core finds the adapter.**
+* **Amendment (2026-10-17): how the core finds the adapter.** *(Superseded by ADR-28: the engine reaches a target class that the adapter gem installs, and the `TargetAdapter` module and its `ensure_installed` check are gone.)*
   * **The core's one door.** The core has a module, `Pipeforge::TargetAdapter`, with one method for each operation of the adapter contract (`TargetAdapter.schema(target_table:)` today). The core only ever calls these methods. It never holds, creates or receives an adapter.
   * **The adapter gem installs the real adapter, once.** When the gem is loaded it calls `Pipeforge::TargetAdapter.install(adapter: Pipeforge::ActiveRecordAdapter.new)`. Each call on the module then goes to that installed adapter. A consumer who installed `pipeforge-activerecord` writes nothing about it, and `Engine.new` takes no adapter argument. If two adapter gems are loaded, the last one installed is used.
   * **The installed adapter is shared** by every engine, so it keeps no state of its own. Specs stub `TargetAdapter.schema`, or install a fake adapter object the same way.
@@ -447,6 +447,19 @@
   * A contributor needs a local PostgreSQL to run the specs; CI starts one.
   * The `sqlite3` gem leaves the Gemfile.
   * The sample console and its sample database are removed; developer tools are added after the first release.
+
+### ADR-28: The Engine Reaches the Target Through a Target Class That the Adapter Gem Installs
+* **Status:** Accepted (2026-11-19). **Supersedes** the amendment of ADR-16 (2026-10-17) "how the core finds the adapter" (the core's one door, `TargetAdapter`, and the check that an adapter is installed), and the model adapter of the adapter contract. The rest of ADR-16 and ADR-23 stands.
+* **Context:** The adapter was a shared object with no state, reached through the `TargetAdapter` module, and it handed out a second object, the model adapter, for each model. A consumer installs the adapter gem and nothing else, so the check that an adapter is installed could never help, and the two objects split the schema, the casting and the records of one model between them.
+* **Decision:**
+  1. **The adapter gem installs a target class, once**, with `Pipeforge::Engine.install_target(target_class:)` when its entry file is required. The engine builds one target from it for its target model, with `new(target_model_name:)`. If two adapter gems are loaded, the last one installed is used.
+  2. **A target is one object for one target model.** It answers `schema` (the `TargetSchema`), `cast_value(column_name:, value:)` (a `CastResult`), `build_record(attributes:)`, `preload_parents(records:)` and `transaction(rollback_at_end:)`. The ActiveRecord target is `ActiveRecordTarget`.
+  3. **A record is what `build_record` returns.** It answers `valid?`, `errors` (a Hash keyed by the target column name), `add_error(origin:, code:, message:, target_column_name:)`, `attributes`, `json_attributes` and `load`. The database errors are mapped to codes inside the record, so there is no `map_error`.
+  4. **The check that an adapter is installed is removed**, with the error `target_adapter_not_installed` and the class `TargetAdapterError`.
+* **Consequences:**
+  * The contract is called **the target contract** in the docs, and it is a public API from the first release (ADR-16).
+  * The core still names no database library and no ActiveRecord class (ADR-24).
+  * `CLAUDE.md`, `target-access.md` and `protocols.md` use the new names in the same change.
 
 ### ADR-29: A Name Ends in `_name` and an Object Has No Suffix
 * **Status:** Accepted (2026-11-17). **Renames** the fields that earlier ADRs name (ADR-17, ADR-18, ADR-20, ADR-25, ADR-26): those ADRs keep the field names they used when they were written.
