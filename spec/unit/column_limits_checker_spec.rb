@@ -2,17 +2,21 @@
 
 # Each describe is one part of the checker, named as the code names it. Each context gives the limits
 # of the column and the value that is checked, with the field names and values as the code spells them,
-# and each example says what the checker does to the value: it accepts it, or refuses it with a Violation.
-# The whole Violation is compared in the first refusing example of each kind and the code only after that.
+# and each example says what the checker does to the value: it accepts it, or refuses it with the error that the
+# ErrorCatalog builds for the mistake (the checker promises that error, so it is compared with the catalog's own call
+# and no sentence is copied here). The whole error is compared in the first refusing example of each kind and the
+# code only after that.
 # An accepting example that no break fails alone is kept for what it says the rule accepts (contract only).
 # Utilities.largest_float is a pure helper and stays real.
 RSpec.describe Pipeforge::ColumnLimitsChecker do
-  subject(:checker) { described_class.new(type: type, **limits) }
+  subject(:checker) { described_class.new(target_column_name: "amount", type: type, **limits) }
 
   let(:answer) { checker.violation_of(value: value) }
 
-  def violation_with(code:, detail:)
-    described_class::Violation.new(code: code, detail: detail)
+  def catalog_error(key, **facts)
+    Pipeforge::ErrorCatalog::ERRORS.fetch(key).call(
+      origin: :schema, target_column_name: "amount", value: value.as_json, **facts
+    )
   end
 
   # The factory only creates the checker with the values of the target column; what the checker does with
@@ -27,13 +31,13 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
 
     before { allow(described_class).to receive(:new).and_call_original }
 
-    context "when the target column has a type, limit, is_signed, max_length, precision, scale and enum_labels" do
+    context "when the target column has a name, type, limit, is_signed, max_length, precision, scale and enum_labels" do
       it "creates the checker with each of them" do
         described_class.for(target_column: target_column)
 
         expect(described_class).to have_received(:new).with(
-          type: "decimal", limit: 4, is_signed: false, max_length: 3, precision: 7, scale: 2,
-          enum_labels: %w[draft placed]
+          target_column_name: "amount", type: "decimal", limit: 4, is_signed: false, max_length: 3, precision: 7,
+          scale: 2, enum_labels: %w[draft placed]
         )
       end
     end
@@ -59,9 +63,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "shipped" }
 
           it "refuses it with value_not_allowed, naming the labels and not the value" do
-            expect(answer).to eq(
-              violation_with(code: :value_not_allowed, detail: "the value is not one of draft, placed")
-            )
+            expect(answer).to eq(catalog_error(:value_not_allowed, labels: %w[draft placed]))
           end
         end
 
@@ -78,7 +80,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "Draft" }
 
           it "refuses it with value_not_allowed, because a label is matched as it is written" do
-            expect(answer.code).to eq(:value_not_allowed)
+            expect(answer[:code]).to eq(:value_not_allowed)
           end
         end
       end
@@ -94,9 +96,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "abcd" }
 
           it "refuses it with value_too_long, naming the length found and max_length" do
-            expect(answer).to eq(
-              violation_with(code: :value_too_long, detail: "the value has 4 characters, more than the 3 allowed")
-            )
+            expect(answer).to eq(catalog_error(:value_too_long, length: 4, max_length: 3))
           end
         end
 
@@ -104,7 +104,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 12_345 }
 
           it "refuses it with value_too_long, because the text of the value is counted" do
-            expect(answer.code).to eq(:value_too_long)
+            expect(answer[:code]).to eq(:value_too_long)
           end
         end
 
@@ -140,7 +140,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "abcd" }
 
           it "refuses it with value_too_long" do
-            expect(answer.code).to eq(:value_too_long)
+            expect(answer[:code]).to eq(:value_too_long)
           end
         end
       end
@@ -164,9 +164,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 32_768 }
 
           it "refuses it with value_out_of_range, naming limit as the bytes" do
-            expect(answer).to eq(
-              violation_with(code: :value_out_of_range, detail: "the value does not fit in 2 bytes")
-            )
+            expect(answer).to eq(catalog_error(:value_out_of_range_bytes, bytes: 2))
           end
         end
       end
@@ -186,7 +184,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 65_536 }
 
           it "refuses it with value_out_of_range" do
-            expect(answer.code).to eq(:value_out_of_range)
+            expect(answer[:code]).to eq(:value_out_of_range)
           end
         end
 
@@ -194,7 +192,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { -1 }
 
           it "refuses it with value_out_of_range" do
-            expect(answer.code).to eq(:value_out_of_range)
+            expect(answer[:code]).to eq(:value_out_of_range)
           end
         end
       end
@@ -214,7 +212,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 2_147_483_648 }
 
           it "refuses it with value_out_of_range, reading limit as 4 bytes" do
-            expect(answer.code).to eq(:value_out_of_range)
+            expect(answer[:code]).to eq(:value_out_of_range)
           end
         end
       end
@@ -238,9 +236,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { BigDecimal(1000) }
 
           it "refuses it with value_out_of_range, naming the 3 digits before the point that precision minus scale allows" do
-            expect(answer).to eq(
-              violation_with(code: :value_out_of_range, detail: "the value has more than 3 digits before the point")
-            )
+            expect(answer).to eq(catalog_error(:value_out_of_range_digits, allowed_digits: 3))
           end
         end
 
@@ -249,7 +245,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
 
           # The database stores it rounded to scale 2, as 1000.00.
           it "refuses it with value_out_of_range" do
-            expect(answer.code).to eq(:value_out_of_range)
+            expect(answer[:code]).to eq(:value_out_of_range)
           end
         end
 
@@ -335,11 +331,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { Float::INFINITY }
 
           it "refuses it with value_out_of_range" do
-            expect(answer).to eq(
-              violation_with(
-                code: :value_out_of_range, detail: "the value is larger than a float of this column can hold"
-              )
-            )
+            expect(answer).to eq(catalog_error(:value_out_of_range_float))
           end
         end
 
@@ -367,7 +359,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { -3.5e38 }
 
           it "refuses it with value_out_of_range, on the negative side as on the positive" do
-            expect(answer.code).to eq(:value_out_of_range)
+            expect(answer[:code]).to eq(:value_out_of_range)
           end
         end
       end
@@ -404,7 +396,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "ab" }
 
           it "refuses it with value_too_long, reading the type as the text \"string\"" do
-            expect(answer.code).to eq(:value_too_long)
+            expect(answer[:code]).to eq(:value_too_long)
           end
         end
       end

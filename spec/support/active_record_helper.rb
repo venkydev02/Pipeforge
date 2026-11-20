@@ -179,6 +179,12 @@ module AdapterSpecModels
     belongs_to :commentable, polymorphic: true
   end
 
+  # The same table, with the parent required (what a Rails application has by default).
+  class CommentWithRequiredParent < ActiveRecord::Base
+    self.table_name = "comments"
+    belongs_to :commentable, polymorphic: true, optional: false
+  end
+
   class Order < ActiveRecord::Base
     self.table_name = "orders"
   end
@@ -248,9 +254,22 @@ module AdapterSpecModels
     end
   end
 
+  # A class with no table of its own, as ApplicationRecord is in an application.
+  class AbstractRecord < ActiveRecord::Base
+    self.abstract_class = true
+  end
+
   class Account < ActiveRecord::Base
     self.table_name = "accounts"
     before_save { throw :abort if nickname == "halt" }
+  end
+
+  # A model whose length error is on an attribute that is not a column and gives no maximum.
+  class LooseLengthAccount < ActiveRecord::Base
+    self.table_name = "accounts"
+    attr_accessor :alias_name
+
+    validate { errors.add(:alias_name, :too_long) }
   end
 
   class Playlist < ActiveRecord::Base

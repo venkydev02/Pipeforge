@@ -18,7 +18,7 @@ Usually a developer finds out by reading the schema, reading the model, and runn
 
 Target model: the model class the rows are loaded through, given by name, for example `"User"`. Its table is the target table. What counts as a model is the adapter's decision; for the ActiveRecord adapter it is an ActiveRecord class.
 
-Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{"age" => {source_column: "Age"}}`. The source is the CSV file, and a source column is one of its header names.
+Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{"age" => {source_column_name: "Age"}}`. The source is the CSV file, and a source column is one of its header names.
 
 Distinct values: each different value found in a column, with how many times it appears.
 
@@ -26,7 +26,7 @@ Value mapping: an optional part of one entry that rewrites values from the file 
 
 Dry run: the same checks and writes as a real run, inside one transaction that is rolled back at the end.
 
-Failed row: a row that did not load, with its row number, the values after mapping, and each mistake with a stable `code`.
+Failed row: a row that did not load, with its row number, the attributes its record held as plain JSON values, and each mistake with a stable `code`.
 
 ## What it answers
 
@@ -49,16 +49,16 @@ The example below uses a `User` model that belongs to a `Company`, and a CSV fil
 ```ruby
 engine = Pipeforge::Engine.new(
   source_io: File.open("users.csv"),
-  target_model: "User"
+  target_model_name: "User"
 )
 header_analysis = engine.analyze_headers
-header_analysis.matches.each { |match| puts "#{match[:target_column]} <- #{match[:source_column]} (#{match[:score]})" }
+header_analysis.matches.each { |match| puts "#{match[:target_column_name]} <- #{match[:source_column_name]} (#{match[:score]})" }
 # email <- Email (100.0)
 # first_name <- First Name (100.0)
 # ...
 # company_id <- Company (66.67)
 
-header_analysis.unmatched_source_columns   # => []
+header_analysis.unmatched_source_column_names   # => []
 header_analysis.unmatched_target_columns   # created_at and updated_at: the model fills them
 ```
 
@@ -70,14 +70,14 @@ You build `mapped_columns` yourself, from the matches or from your own knowledge
 
 ```ruby
 mapped_columns = {
-  "email" => {source_column: "Email"},
-  "first_name" => {source_column: "First Name"},
-  "last_name" => {source_column: "Last Name"},
-  "company_id" => {source_column: "Company"},
-  "age" => {source_column: "Age"},
-  "balance" => {source_column: "Balance"},
-  "status" => {source_column: "Status"},
-  "active" => {source_column: "Active"}
+  "email" => {source_column_name: "Email"},
+  "first_name" => {source_column_name: "First Name"},
+  "last_name" => {source_column_name: "Last Name"},
+  "company_id" => {source_column_name: "Company"},
+  "age" => {source_column_name: "Age"},
+  "balance" => {source_column_name: "Balance"},
+  "status" => {source_column_name: "Status"},
+  "active" => {source_column_name: "Active"}
 }
 value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
@@ -143,24 +143,26 @@ Pipeforge never prompts and never draws anything; the review between the steps i
 
 ```json
 {
-  "target_column": "company_id",
-  "source_column": "Company",
+  "target_column_name": "company_id",
+  "source_column_name": "Company",
   "score": 66.67,
-  "tied_with": [],
+  "tied_source_column_names": [],
   "metadata": {
     "type": "integer",
     "required": true,
     "enum_labels": null,
-    "foreign_key": {"association": "company", "parent_table": "companies"}
+    "foreign_key": {"association_name": "company", "parent_table_name": "companies"}
   }
 }
 ```
 
-A mapping screen can mark `company_id` as required, show that it points to `companies`, and list the other source columns that scored the same (`tied_with`), without anyone querying the database. This is one column from `analyze_column_values`, which a value-mapping screen is built on:
+The id column and the type column of a polymorphic association (a parent that can be of different classes, such as `commentable_id` and `commentable_type`) carry `"polymorphic": {"association_name": "commentable", "role": "type"}` (or `"role": "id"`) in their metadata, so a screen can show that the two belong together and that the type column holds the class name of the parent.
+
+A mapping screen can mark `company_id` as required, show that it points to `companies`, and list the other source columns that scored the same (`tied_source_column_names`), without anyone querying the database. This is one column from `analyze_column_values`, which a value-mapping screen is built on:
 
 ```json
 {
-  "source_column": "Status",
+  "source_column_name": "Status",
   "position": 6,
   "empty": 0,
   "distinct_values": {
@@ -186,24 +188,29 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
 }
 ```
 
-And one failed row from a run, with the values after mapping, never the raw line:
+And one failed row from a run, with the attributes the record held (the columns you mapped, in the order of your mapping, cast to their types, as JSON values), never the raw line:
 
 ```json
 {
   "row_number": 4,
-  "mapped_values": {"email": "noah.fox@example.com", "company_id": "4", "status": "this status is far too long to fit"},
+  "attributes": {"email": "noah.fox@example.com", "company_id": 4, "status": "this status is far too long to fit"},
   "errors": [
     {
       "origin": "schema",
       "code": "value_too_long",
+      "kind": null,
+      "target_column_name": "status",
       "message": "status: the value has 34 characters, more than the 20 allowed",
-      "target_column": "status"
+      "details": {"length": 34, "max_length": 20},
+      "value": "this status is far too long to fit"
     }
   ]
 }
 ```
 
-Write your screens against the `code`, never against the message text. The codes are stable; the wording is not.
+Every error of a row has these seven keys: who found it (`origin`: `schema`, `model` or `database`), what is wrong (`code`), which case of the code (`kind`, or `null`), the column (`target_column_name`, `null` for the whole row), a `message` that is always ours (the text of the model or of the database is kept in `details` as `native_message`), the facts of the mistake (`details`), and the value that failed (`value`, in JSON types; `null` when there is none, as for a refusal of the database). A row has at most one error for each column.
+
+Write your screens against the `code` and the `kind`, never against the message text. The codes are stable; the wording is not.
 
 ## What it costs
 

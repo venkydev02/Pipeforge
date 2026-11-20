@@ -30,7 +30,7 @@ The catalog says `users.status` is a `VARCHAR(50)`; it does not say which values
 ### 1.4 Staged Engine Methods (ADR-14, ADR-17)
 
 ```text
-Engine.new(source_io:, target_model:)      the source and the target model, given once
+Engine.new(source_io:, target_model_name:) the source and the target model, given once
 analyze_headers                           → HeaderAnalysis      (names only, no values)
 analyze_column_values(mapped_columns:)           → ColumnValueAnalyzer::Result (values, facts, value mappings)
 run(mode:, mapped_columns:, offset:, chunk_size:) { |chunk_result| }
@@ -96,7 +96,7 @@ Source analysis and target schema reading are independent and may run concurrent
 ### 3.1 `analyze_headers`
 * **Input:** the source file and the target table (named by table name), both given to `Engine.new`.
 * **Reads:** the source header row only, and the target model's metadata.
-* **Output:** `HeaderAnalysis`: `matches`, a list in table order (target column, source column, score, `tied_with`, and the metadata of the target column, including its foreign key), `unmatched_source_columns`, and `unmatched_target_columns` (a list of target column and metadata; ADR-25). A source column is shared by the targets that have the same score for it, and the consumer chooses.
+* **Output:** `HeaderAnalysis`: `matches`, a list in table order (target column, source column, score, `tied_source_column_names`, and the metadata of the target column, including its foreign key), `unmatched_source_column_names`, and `unmatched_target_columns` (a list of target column and metadata; ADR-25). A source column is shared by the targets that have the same score for it, and the consumer chooses.
 * **Non-responsibilities:** no values, no data-based ranking, no invented mappings.
 
 ### 3.2 `analyze_column_values`
@@ -129,7 +129,7 @@ sequenceDiagram
 
     Note over Core: Stage 1: names
     Core->>Src: Read header row only
-    Core->>Adapter: schema(target_model:)
+    Core->>Adapter: schema(target_model_name:)
     Adapter-->>Core: TargetSchema (metadata only)
     Core->>Consumer: HeaderAnalysis (matches, unmatched columns, metadata)
 

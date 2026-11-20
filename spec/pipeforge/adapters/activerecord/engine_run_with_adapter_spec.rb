@@ -6,7 +6,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Membership") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Membership") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
@@ -28,8 +28,8 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   end
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Email"}, "seats" => {source_column: "Seats"}, "fee" => {source_column: "Fee"},
-      "tier" => {source_column: "Tier"}, "company_id" => {source_column: "Company"}
+      "email" => {source_column_name: "Email"}, "seats" => {source_column_name: "Seats"}, "fee" => {source_column_name: "Fee"},
+      "tier" => {source_column_name: "Tier"}, "company_id" => {source_column_name: "Company"}
     }
   end
 
@@ -86,14 +86,26 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   it "reports an enum label that is not one of the model's, once" do
     run_result
 
-    expect(codes_of_row(6)).to eq([:value_not_allowed])
+    expect(codes_of_row(6)).to eq([:value_not_accepted])
+  end
+
+  it "gives the error of the catalog for the enum label that is not the model's, with the value that failed" do
+    run_result
+
+    error = failed_rows.find { |failed_row| failed_row.row_number == 6 }.errors.first
+
+    expect(error).to eq(
+      Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_enum_label)
+        .call(origin: :model, target_column_name: error[:target_column_name], value: error[:value])
+    )
+    expect(error[:value]).to be_a(String)
   end
 
   it "reports a parent that does not exist, on the foreign key column" do
     run_result
 
     expect(failed_rows.find { |failed_row| failed_row.row_number == 7 }.errors).to contain_exactly(
-      include(origin: :model, code: :parent_missing, target_column: "company_id")
+      include(origin: :model, code: :parent_missing, target_column_name: "company_id")
     )
   end
 
@@ -106,14 +118,14 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   it "reports a stored enum value written as text, as an enum label that is not one of the model's" do
     run_result
 
-    expect(codes_of_row(9)).to eq([:value_not_allowed])
+    expect(codes_of_row(9)).to eq([:value_not_accepted])
   end
 
-  it "shows the values as they would have been loaded, keyed by target column" do
+  it "shows the values as they would have been loaded, as JSON values, for the columns of the schema" do
     run_result
 
-    expect(failed_rows.first.mapped_values).to eq(
-      "email" => nil, "seats" => "10", "fee" => "10.50", "tier" => "basic", "company_id" => company.id.to_s
+    expect(failed_rows.first.attributes).to eq(
+      "email" => nil, "seats" => 10, "fee" => "10.5", "tier" => "basic", "company_id" => company.id
     )
   end
 
@@ -146,12 +158,12 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Counter") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Counter") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Hits,Misses\n40000,1\n65535,1\n65536,1\n-1,1\n0,40000\n" }
   let(:mapped_columns) do
-    {"hits" => {source_column: "Hits"}, "misses" => {source_column: "Misses"}}
+    {"hits" => {source_column_name: "Hits"}, "misses" => {source_column_name: "Misses"}}
   end
 
   it "accepts a value above the signed range but within the unsigned one" do
@@ -171,7 +183,7 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
   it "keeps the signed range for the other column of the table" do
     run_result
 
-    expect(failed_rows.last.errors.first).to include(target_column: "misses", code: :value_out_of_range)
+    expect(failed_rows.last.errors.first).to include(target_column_name: "misses", code: :value_out_of_range)
   end
 end
 
@@ -181,17 +193,17 @@ RSpec.describe Pipeforge::Engine, "#run with float columns" do
     engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Measurement") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Measurement") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:csv) { "Ratio,Weight\n1.5,1.5\n1e50,1e50\n1e39,1e9999\n3.4e38,1.7e308\n" }
   let(:mapped_columns) do
-    {"ratio" => {source_column: "Ratio"}, "weight" => {source_column: "Weight"}}
+    {"ratio" => {source_column_name: "Ratio"}, "weight" => {source_column_name: "Weight"}}
   end
 
   def errors_of_row(row_number)
     failed_rows.find { |failed_row| failed_row.row_number == row_number }.errors.map do |error|
-      [error[:target_column], error[:code]]
+      [error[:target_column_name], error[:code]]
     end
   end
 
@@ -219,7 +231,7 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
     engine.run(mode: mode, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
   end
 
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Profile") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Profile") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
   let(:failed_codes) { failed_rows.flat_map { |failed_row| failed_row.errors.map { |error| error[:code] } } }
@@ -231,7 +243,7 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
       cat,null
     CSV
   end
-  let(:mapped_columns) { {"name" => {source_column: "Name"}, "settings" => {source_column: "Settings"}} }
+  let(:mapped_columns) { {"name" => {source_column_name: "Name"}, "settings" => {source_column_name: "Settings"}} }
 
   context "when the rows are loaded" do
     let(:mode) { :run }
@@ -250,8 +262,8 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
       expect(AdapterSpecModels::Profile.find_by(name: "bob")).to be_nil
     end
 
-    it "reports the row whose text is not JSON as failed, with value_not_json" do
-      expect(failed_codes).to eq([:value_not_json])
+    it "reports the row whose text is not JSON as failed, with value_not_accepted" do
+      expect(failed_codes).to eq([:value_not_accepted])
     end
   end
 
@@ -261,7 +273,53 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
     before { run_result }
 
     it "reports the same failed row as a run" do
-      expect(failed_codes).to eq([:value_not_json])
+      expect(failed_codes).to eq([:value_not_accepted])
     end
+  end
+end
+
+RSpec.describe Pipeforge::Engine, "#run with a polymorphic association" do
+  subject(:run_result) do
+    engine.run(mode: :dry_run, mapped_columns: mapped_columns) { |chunk_result| chunk_results << chunk_result }
+  end
+
+  let(:engine) do
+    described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::CommentWithRequiredParent")
+  end
+  let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
+  let(:chunk_results) { [] }
+  let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
+  # Both rows are in one chunk. The second names a type that is no model of the application.
+  let(:csv) do
+    <<~CSV
+      Parent id,Parent type
+      #{company.id},AdapterSpecModels::Company
+      7,Post
+    CSV
+  end
+  let(:mapped_columns) do
+    {
+      "commentable_id" => {source_column_name: "Parent id"},
+      "commentable_type" => {source_column_name: "Parent type"}
+    }
+  end
+
+  it "fails only the row whose type names no model, and loads the other" do
+    expect(run_result).to have_attributes(processed_rows_count: 2, valid_rows_count: 1, failed_rows_count: 1)
+  end
+
+  it "reports that row with an error for each column: value_not_accepted on the type, parent_missing on the id" do
+    run_result
+
+    expect(failed_rows.map(&:row_number)).to eq([2])
+    expect(failed_rows.first.errors.map { |error| [error[:target_column_name], error[:code]] }).to eq(
+      [["commentable_type", :value_not_accepted], ["commentable_id", :parent_missing]]
+    )
+  end
+
+  it "shows in the failed row what the record holds: the id, and no type" do
+    run_result
+
+    expect(failed_rows.first.attributes).to eq("commentable_id" => 7, "commentable_type" => nil)
   end
 end

@@ -1,23 +1,22 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine, "#run" do
-  subject(:engine) { described_class.new(source_io: csv_io(csv), target_model: "Record") }
+  subject(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "Record") }
 
   let(:csv) { "Mail,Level\na@example.com,1\n,2\nc@example.com,3\n" }
   let(:target_columns) do
     [build_target_column(name: "email", required: true), build_target_column(name: "level", max_length: 3)]
   end
-  let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
-  let(:model_adapter) { FakeModelAdapter.new }
-  let(:mapped_columns) { {"email" => {source_column: "Mail"}, "level" => {source_column: "Level"}} }
+  let(:schema) { build_target_schema(table_name: "records", model_name: "Record", columns: target_columns) }
+  let(:target) { FakeTarget.new(schema: schema) }
+  let(:target_class) { double("target class", new: target) }
+  let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "level" => {source_column_name: "Level"}} }
   let(:mode) { :dry_run }
   let(:chunk_results) { [] }
 
-  # The core is tested without an adapter gem, so the adapter calls are stubbed.
+  # The core is tested without an adapter gem, so the engine builds a fake target.
   before do
-    allow(Pipeforge::TargetAdapter).to receive(:ensure_installed)
-    allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
-    allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(model_adapter)
+    allow(Pipeforge::Engine).to receive(:target_class).and_return(target_class)
     use_settings(execution: {chunk_size: 2})
   end
 
@@ -43,10 +42,10 @@ RSpec.describe Pipeforge::Engine, "#run" do
     expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.first[:code]] }).to eq([[2, :value_missing]])
   end
 
-  it "asks the adapter for the model adapter of the table it was given" do
+  it "builds the target of the model it was given" do
     run_engine
 
-    expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record")
+    expect(target_class).to have_received(:new).with(target_model_name: "Record")
   end
 
   it "gives the same result in a dry run and in a run" do
@@ -106,8 +105,8 @@ RSpec.describe Pipeforge::Engine, "#run" do
     it "stops before a row is read or a transaction is opened" do
       expect { run_engine(**arguments) }.to raise_error(ArgumentError)
 
-      expect(model_adapter.built_attributes).to eq([])
-      expect(model_adapter.transaction_calls).to eq([])
+      expect(target.built_attributes).to eq([])
+      expect(target.transaction_calls).to eq([])
     end
   end
 
@@ -222,7 +221,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
   end
 
   context "when an argument and the mapped columns are both wrong" do
-    let(:mapped_columns) { {"level" => {source_column: "Level"}} }
+    let(:mapped_columns) { {"level" => {source_column_name: "Level"}} }
 
     it "reports the argument first, because it is checked before the mapped columns" do
       expect { run_engine(chunk_size: 0) }.to raise_error(ArgumentError)
@@ -231,36 +230,42 @@ RSpec.describe Pipeforge::Engine, "#run" do
 
   context "with a value mapping whose keys are numbers" do
     let(:mapped_columns) do
-      {"email" => {source_column: "Mail"}, "level" => {source_column: "Level", value_mapping: {1 => "one", 3 => "tre"}}}
+      {"email" => {source_column_name: "Mail"}, "level" => {source_column_name: "Level", value_mapping: {1 => "one", 3 => "tre"}}}
     end
 
     it "applies it to the values of the file, which are text" do
       run_engine
 
-      expect(model_adapter.built_attributes.map { |attributes| attributes["level"] }).to eq(%w[one 2 tre])
+      expect(target.built_attributes.map { |attributes| attributes["level"] }).to eq(%w[one 2 tre])
     end
 
-    it "shows the mapped values in a failed row" do
+    it "shows the attributes of the record in a failed row, without the empty value" do
       run_engine
 
-      expect(chunk_results.flat_map(&:failed_rows).first.mapped_values).to eq("email" => nil, "level" => "2")
+      expect(chunk_results.flat_map(&:failed_rows).first.attributes).to eq("level" => "2")
+    end
+
+    it "does not change the mapped columns it is given" do
+      run_engine
+
+      expect(mapped_columns["level"][:value_mapping]).to eq(1 => "one", 3 => "tre")
     end
   end
 
   context "when a required column is not mapped" do
-    let(:mapped_columns) { {"level" => {source_column: "Level"}} }
+    let(:mapped_columns) { {"level" => {source_column_name: "Level"}} }
 
     it "stops with required_column_unmapped, before any row is read" do
       expect { run_engine }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
         expect(error.codes).to eq([:required_column_unmapped])
       end
 
-      expect(model_adapter.built_attributes).to eq([])
+      expect(target.built_attributes).to eq([])
     end
   end
 
   context "when several mapped columns are wrong" do
-    let(:mapped_columns) { {"nope" => {source_column: "Mail"}, "level" => {source_column: "Missing"}} }
+    let(:mapped_columns) { {"nope" => {source_column_name: "Mail"}, "level" => {source_column_name: "Missing"}} }
 
     it "lists every mistake together" do
       expect { run_engine }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|

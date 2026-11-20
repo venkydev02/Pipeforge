@@ -22,7 +22,7 @@ RSpec.describe Pipeforge::Error do
   describe ".single" do
     subject(:error) do
       Pipeforge::InvalidMappedColumnsError.single(
-        code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column: "Mail"
+        code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column_name: "Mail"
       )
     end
 
@@ -36,7 +36,7 @@ RSpec.describe Pipeforge::Error do
 
     it "has one entry with the code, the message and the fields that locate it" do
       expect(error.errors).to eq(
-        [{code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column: "Mail"}]
+        [{code: :mapped_column_not_in_file, message: "Mail is not in the file", source_column_name: "Mail"}]
       )
     end
   end

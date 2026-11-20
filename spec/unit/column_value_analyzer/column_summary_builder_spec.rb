@@ -3,23 +3,23 @@
 RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
   subject(:summary_builder) do
     described_class.new(
-      target_column: target_column,
-      source_column: source_column,
+      target_column_name: target_column_name,
+      source_column_name: source_column_name,
       position: position,
       limits_checker: limits_checker,
-      model_adapter: model_adapter,
+      target: target,
       value_mapping: value_mapping
     )
   end
 
   # An integer column and the text 30, unless a context is about another kind of column.
-  let(:target_column) { "age" }
-  let(:source_column) { "Age" }
+  let(:target_column_name) { "age" }
+  let(:source_column_name) { "Age" }
   let(:position) { 1 }
   let(:value_mapping) { {} }
   let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 30, json_value: 30) }
   let(:violation) { nil }
-  let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter, cast_value: cast_result) }
+  let(:target) { instance_double(Pipeforge::ActiveRecordTarget, cast_value: cast_result) }
   let(:limits_checker) { instance_double(Pipeforge::ColumnLimitsChecker, violation_of: violation) }
 
   # Records one row for each cell, in order. A nil is an empty cell.
@@ -31,7 +31,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
   # was given; what an example does not set is what a builder with no row gives.
   def expected_summary(empty: 0, compatible: [], incompatible: [], compatible_count: 0, incompatible_count: 0)
     Pipeforge::ColumnValueAnalyzer::ColumnSummary.new(
-      source_column: source_column,
+      source_column_name: source_column_name,
       position: position,
       empty: empty,
       distinct_values: Pipeforge::ColumnValueAnalyzer::DistinctValueLists.new(
@@ -53,7 +53,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "does not cast anything" do
-        expect(model_adapter).not_to have_received(:cast_value)
+        expect(target).not_to have_received(:cast_value)
       end
     end
 
@@ -127,7 +127,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the mapped text and not the cell" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "7")
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: "7")
       end
     end
 
@@ -157,13 +157,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       before { add_cells("seven") }
 
       it "casts the number as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: 7)
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: 7)
       end
     end
 
     context "when a cell is mapped to a Hash" do
-      let(:target_column) { "settings" }
-      let(:source_column) { "Settings" }
+      let(:target_column_name) { "settings" }
+      let(:source_column_name) { "Settings" }
       let(:value_mapping) { {"default" => {"theme" => "dark"}} }
       let(:cast_result) do
         Pipeforge::CastResult.new(castable: true, cast_value: {"theme" => "dark"}, json_value: {"theme" => "dark"})
@@ -183,13 +183,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the Hash as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: {"theme" => "dark"})
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: {"theme" => "dark"})
       end
     end
 
     context "when a cell is mapped to false" do
-      let(:target_column) { "active" }
-      let(:source_column) { "Active" }
+      let(:target_column_name) { "active" }
+      let(:source_column_name) { "Active" }
       let(:value_mapping) { {"no" => false} }
       let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: false, json_value: false) }
 
@@ -205,7 +205,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts false as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: false)
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: false)
       end
     end
 
@@ -224,7 +224,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the cell as it is" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "30")
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: "30")
       end
     end
 
@@ -258,7 +258,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text for the target column" do
-        expect(model_adapter).to have_received(:cast_value).with(column_name: target_column, value: "1,000")
+        expect(target).to have_received(:cast_value).with(column_name: target_column_name, value: "1,000")
       end
 
       it "asks the limits checker about the cast value" do
@@ -267,8 +267,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
     end
 
     context "when a new text fits and its cast value is not its json value" do
-      let(:target_column) { "price" }
-      let(:source_column) { "Price" }
+      let(:target_column_name) { "price" }
+      let(:source_column_name) { "Price" }
       # A decimal column casts 10.50 to a BigDecimal, which is a string in JSON types.
       let(:cast_result) do
         Pipeforge::CastResult.new(castable: true, cast_value: BigDecimal("10.5"), json_value: "10.5")
@@ -290,12 +290,12 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
     end
 
     context "when a new text breaks a limit" do
-      let(:target_column) { "name" }
-      let(:source_column) { "Name" }
+      let(:target_column_name) { "name" }
+      let(:source_column_name) { "Name" }
       let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: "abcdef", json_value: "abcdef") }
       let(:violation) do
-        Pipeforge::ColumnLimitsChecker::Violation.new(
-          code: :value_too_long, detail: "the value has 6 characters, more than the 3 allowed"
+        Pipeforge::ErrorCatalog::ERRORS.fetch(:value_too_long).call(
+          origin: :schema, target_column_name: "name", value: "abcdef", length: 6, max_length: 3
         )
       end
 
@@ -313,14 +313,14 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       context "and the cast value is not the json value" do
-        let(:target_column) { "price" }
-        let(:source_column) { "Price" }
+        let(:target_column_name) { "price" }
+        let(:source_column_name) { "Price" }
         let(:cast_result) do
           Pipeforge::CastResult.new(castable: true, cast_value: BigDecimal("1000.5"), json_value: "1000.5")
         end
         let(:violation) do
-          Pipeforge::ColumnLimitsChecker::Violation.new(
-            code: :value_out_of_range, detail: "the value has more than 3 digits before the point"
+          Pipeforge::ErrorCatalog::ERRORS.fetch(:value_out_of_range_digits).call(
+            origin: :schema, target_column_name: "price", value: "1000.5", allowed_digits: 3
           )
         end
 
@@ -367,7 +367,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts and checks the text only the first time" do
-        expect(model_adapter).to have_received(:cast_value).once
+        expect(target).to have_received(:cast_value).once
         expect(limits_checker).to have_received(:violation_of).once
       end
     end
@@ -375,8 +375,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
     context "when a text that does not fit is added twice" do
       let(:cast_result) { Pipeforge::CastResult.new(castable: true, cast_value: 300, json_value: 300) }
       let(:violation) do
-        Pipeforge::ColumnLimitsChecker::Violation.new(
-          code: :value_out_of_range, detail: "the value does not fit in 1 bytes"
+        Pipeforge::ErrorCatalog::ERRORS.fetch(:value_out_of_range_bytes).call(
+          origin: :schema, target_column_name: "quantity", value: 300, bytes: 1
         )
       end
 
@@ -392,13 +392,13 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
       end
 
       it "casts the text only the first time" do
-        expect(model_adapter).to have_received(:cast_value).once
+        expect(target).to have_received(:cast_value).once
       end
     end
 
     context "when a text that fits and a text that does not fit were added" do
       before do
-        allow(model_adapter).to receive(:cast_value).with(column_name: target_column, value: "abc")
+        allow(target).to receive(:cast_value).with(column_name: target_column_name, value: "abc")
           .and_return(Pipeforge::CastResult::NOT_CASTABLE)
         add_cells("30", "abc")
       end
@@ -422,7 +422,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       let(:column_summary) do
         described_class.new(
-          source_column: "Age",
+          source_column_name: "Age",
           position: 1,
           empty: 2,
           distinct_values: Pipeforge::ColumnValueAnalyzer::DistinctValueLists.new(
@@ -437,7 +437,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder do
 
       it "writes the summary in plain JSON types, each listed value as a hash with its fields" do
         expect(plain_summary).to eq(
-          source_column: "Age",
+          source_column_name: "Age",
           position: 1,
           empty: 2,
           distinct_values: {

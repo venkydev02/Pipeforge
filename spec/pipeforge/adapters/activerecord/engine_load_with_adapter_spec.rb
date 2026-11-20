@@ -3,7 +3,7 @@
 # The core's run writes the rows through the ActiveRecord adapter, end to end, against an in-memory
 # database: a run keeps the rows, a dry run keeps none, and both report the same failed rows.
 RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter installed" do
-  let(:engine) { described_class.new(source_io: csv_io(csv), target_model: "AdapterSpecModels::Account") }
+  let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Account") }
   let(:company) { AdapterSpecModels::Company.create!(name: "Acme") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
@@ -22,8 +22,8 @@ RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter in
   end
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Email"}, "nickname" => {source_column: "Nick"},
-      "company_id" => {source_column: "Company"}
+      "email" => {source_column_name: "Email"}, "nickname" => {source_column_name: "Nick"},
+      "company_id" => {source_column_name: "Company"}
     }
   end
 
@@ -45,7 +45,7 @@ RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter in
     end
 
     it "reports the rows the table refused, with the origin database" do
-      expect(errors_of_row(3)).to match([a_hash_including(origin: :database, code: :value_not_unique, target_column: nil)])
+      expect(errors_of_row(3)).to match([a_hash_including(origin: :database, code: :value_not_unique, target_column_name: nil)])
       expect(errors_of_row(4)).to match([a_hash_including(origin: :database, code: :parent_missing)])
     end
 

@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::RunProcessor::RowTransformer do
-  subject(:transformer) { described_class.new(mapped_columns: mapped_columns) }
+  subject(:transformer) { described_class.new(resolved_mapped_columns: resolve_mapped_columns(mapped_columns)) }
 
   let(:mapped_columns) do
     {
-      "email" => {source_column: "Mail"},
-      "name" => {source_column: "Name"}
+      "email" => {source_column_name: "Mail"},
+      "name" => {source_column_name: "Name"}
     }
   end
   let(:row) { {"Mail" => "ann@example.com", "Name" => "Ann", "Zip" => "10001"} }
@@ -24,7 +24,7 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
 
     context "when two target columns read the same source column" do
       let(:mapped_columns) do
-        {"first_name" => {source_column: "Name"}, "display_name" => {source_column: "Name"}}
+        {"first_name" => {source_column_name: "Name"}, "display_name" => {source_column_name: "Name"}}
       end
 
       it "gives each of them the value" do
@@ -35,14 +35,14 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     context "with an empty cell" do
       let(:row) { {"Mail" => nil, "Name" => "Ann"} }
 
-      it "gives nil" do
-        expect(values["email"]).to be_nil
+      it "leaves the column out, so the target decides what it becomes" do
+        expect(values).to eq("name" => "Ann")
       end
     end
 
     context "with a value mapping" do
       let(:mapped_columns) do
-        {"name" => {source_column: "Name", value_mapping: {"Ann" => "Anna", "N/A" => nil, "Bob" => "   ", "Cy" => false}}}
+        {"name" => {source_column_name: "Name", value_mapping: {"Ann" => "Anna", "N/A" => nil, "Bob" => "   ", "Cy" => false}}}
       end
 
       it "gives the value the mapping maps to" do
@@ -60,16 +60,16 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
       context "when the value maps to nil" do
         let(:row) { {"Name" => "N/A"} }
 
-        it "gives nil" do
-          expect(values["name"]).to be_nil
+        it "leaves the column out" do
+          expect(values).not_to have_key("name")
         end
       end
 
       context "when the value maps to blank text" do
         let(:row) { {"Name" => "Bob"} }
 
-        it "gives nil" do
-          expect(values["name"]).to be_nil
+        it "leaves the column out" do
+          expect(values).not_to have_key("name")
         end
       end
 
@@ -93,14 +93,14 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
       ]
     end
     let(:value_mapping) { {"yes" => "Y", "N/A" => nil, "blank" => "  "} }
-    let(:mapped_columns) { {"status" => {source_column: "Status", value_mapping: value_mapping}} }
+    let(:mapped_columns) { {"status" => {source_column_name: "Status", value_mapping: value_mapping}} }
     let(:column_summary) do
       summary_builder = Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder.new(
-        target_column: "status",
-        source_column: "Status",
+        target_column_name: "status",
+        source_column_name: "Status",
         position: 0,
-        limits_checker: Pipeforge::ColumnLimitsChecker.new(type: "string"),
-        model_adapter: FakeModelAdapter.new,
+        limits_checker: Pipeforge::ColumnLimitsChecker.new(target_column_name: "status", type: "string"),
+        target: FakeTarget.new,
         value_mapping: value_mapping
       )
       rows.each { |row| summary_builder.add_cell(cell: row["Status"]) }

@@ -4,7 +4,7 @@
 # from a table (the tokens the real tokenizer gives), and the pair scorer gives the score that a
 # context names for a (target column, source column) pair, and 0 for any other pair.
 #
-# Each context gives the columns (source_columns, target_columns) and the scores (score_pairs); the
+# Each context gives the columns (source_column_names, target_column_names) and the scores (score_pairs); the
 # example only states the result expected from them.
 #
 # The groups follow what Matcher#call does, in order:
@@ -27,9 +27,9 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
   let(:inclusion_threshold) { 55 }
   let(:tokenizer) { instance_double(Pipeforge::HeaderAnalyzer::Tokenizer) }
   let(:pair_scorer) { instance_double(Pipeforge::HeaderAnalyzer::PairScorer) }
-  let(:source_columns) { raise "the context gives source_columns" }
-  let(:target_columns) { raise "the context gives target_columns" }
-  let(:result) { matcher.call(source_columns: source_columns, target_columns: target_columns) }
+  let(:source_column_names) { raise "the context gives source_column_names" }
+  let(:target_column_names) { raise "the context gives target_column_names" }
+  let(:result) { matcher.call(source_column_names: source_column_names, target_column_names: target_column_names) }
 
   let(:tokens_of_name) do
     {
@@ -49,8 +49,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
   # receives tokens, so each pair is looked up by the tokens of its two column names.
   def score_pairs(scores)
     scores_by_tokens = {}
-    scores.each do |(target_column, source_column), score|
-      scores_by_tokens[[tokens_of_name.fetch(target_column), tokens_of_name.fetch(source_column)]] = score
+    scores.each do |(target_column_name, source_column_name), score|
+      scores_by_tokens[[tokens_of_name.fetch(target_column_name), tokens_of_name.fetch(source_column_name)]] = score
     end
 
     allow(pair_scorer).to receive(:call) do |left_tokens:, right_tokens:|
@@ -58,43 +58,43 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
     end
   end
 
-  def match_of(source:, target:, score:, tied_with: [])
-    described_class::Match.new(source_column: source, target_column: target, score: score, tied_with: tied_with)
+  def match_of(source:, target:, score:, tied_source_column_names: [])
+    described_class::Match.new(source_column_name: source, target_column_name: target, score: score, tied_source_column_names: tied_source_column_names)
   end
 
-  def result_of(matches: [], unmatched_source_columns: [], unmatched_target_columns: [])
+  def result_of(matches: [], unmatched_source_column_names: [], unmatched_target_column_names: [])
     described_class::Result.new(
       matches: matches,
-      unmatched_source_columns: unmatched_source_columns,
-      unmatched_target_columns: unmatched_target_columns
+      unmatched_source_column_names: unmatched_source_column_names,
+      unmatched_target_column_names: unmatched_target_column_names
     )
   end
 
   describe "#call" do
     describe "the contract" do
       context "when there are no source columns" do
-        let(:source_columns) { [] }
-        let(:target_columns) { ["email"] }
+        let(:source_column_names) { [] }
+        let(:target_column_names) { ["email"] }
 
         it "matches nothing and leaves the target columns unmatched" do
-          expect(result).to eq(result_of(unmatched_target_columns: ["email"]))
+          expect(result).to eq(result_of(unmatched_target_column_names: ["email"]))
         end
       end
 
       context "when there are no target columns" do
-        let(:source_columns) { ["email"] }
-        let(:target_columns) { [] }
+        let(:source_column_names) { ["email"] }
+        let(:target_column_names) { [] }
 
         it "matches nothing and leaves the source columns unmatched" do
-          expect(result).to eq(result_of(unmatched_source_columns: ["email"]))
+          expect(result).to eq(result_of(unmatched_source_column_names: ["email"]))
         end
       end
 
       context "when it is given a source column and a target column" do
-        let(:source_columns) { ["zip"] }
-        let(:target_columns) { ["email"] }
+        let(:source_column_names) { ["zip"] }
+        let(:target_column_names) { ["email"] }
 
-        before { matcher.call(source_columns: source_columns, target_columns: target_columns) }
+        before { matcher.call(source_column_names: source_column_names, target_column_names: target_column_names) }
 
         it "asks the tokenizer for the tokens of the source column name" do
           expect(tokenizer).to have_received(:call).with(name: "zip")
@@ -113,8 +113,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
     describe "the inclusion threshold" do
       context "when the inclusion threshold is 50" do
         let(:inclusion_threshold) { 50 }
-        let(:source_columns) { ["user_name"] }
-        let(:target_columns) { ["first_name"] }
+        let(:source_column_names) { ["user_name"] }
+        let(:target_column_names) { ["first_name"] }
 
         before { score_pairs(["first_name", "user_name"] => pair_score) }
 
@@ -143,7 +143,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
 
           it "leaves the pair unmatched" do
             expect(result).to eq(
-              result_of(unmatched_source_columns: ["user_name"], unmatched_target_columns: ["first_name"])
+              result_of(unmatched_source_column_names: ["user_name"], unmatched_target_column_names: ["first_name"])
             )
           end
         end
@@ -152,8 +152,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
 
     describe "choosing the source column of a target column" do
       context "when several source columns score for a target column" do
-        let(:source_columns) { ["user_name", "f_name", "first_name"] }
-        let(:target_columns) { ["first_name"] }
+        let(:source_column_names) { ["user_name", "f_name", "first_name"] }
+        let(:target_column_names) { ["first_name"] }
 
         before do
           score_pairs(
@@ -165,19 +165,19 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
           expect(result).to eq(
             result_of(
               matches: [match_of(source: "first_name", target: "first_name", score: 100.0)],
-              unmatched_source_columns: ["user_name", "f_name"]
+              unmatched_source_column_names: ["user_name", "f_name"]
             )
           )
         end
       end
 
       context "when no other source column has the same score as the match" do
-        let(:source_columns) { ["first_name"] }
-        let(:target_columns) { ["first_name"] }
+        let(:source_column_names) { ["first_name"] }
+        let(:target_column_names) { ["first_name"] }
 
         before { score_pairs(["first_name", "first_name"] => 100.0) }
 
-        it "leaves tied_with empty" do
+        it "leaves tied_source_column_names empty" do
           expect(result).to eq(
             result_of(matches: [match_of(source: "first_name", target: "first_name", score: 100.0)])
           )
@@ -187,8 +187,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
 
     describe "a source column that several target columns score" do
       context "when the target columns give it the same score" do
-        let(:source_columns) { ["name"] }
-        let(:target_columns) { ["first_name", "last_name", "full_name"] }
+        let(:source_column_names) { ["name"] }
+        let(:target_column_names) { ["first_name", "last_name", "full_name"] }
 
         before do
           score_pairs(["first_name", "name"] => 66.67, ["last_name", "name"] => 66.67, ["full_name", "name"] => 66.67)
@@ -208,9 +208,9 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
       end
 
       context "when the target columns give it different scores" do
-        let(:source_columns) { ["last_name"] }
+        let(:source_column_names) { ["last_name"] }
         # The higher score is on the second target column, so the order of the table cannot decide.
-        let(:target_columns) { ["name", "last_name"] }
+        let(:target_column_names) { ["name", "last_name"] }
 
         before { score_pairs(["name", "last_name"] => 66.67, ["last_name", "last_name"] => 100.0) }
 
@@ -218,7 +218,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
           expect(result).to eq(
             result_of(
               matches: [match_of(source: "last_name", target: "last_name", score: 100.0)],
-              unmatched_target_columns: ["name"]
+              unmatched_target_column_names: ["name"]
             )
           )
         end
@@ -227,35 +227,35 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
 
     describe "the order" do
       context "when source columns have the same score for a target column (a tie)" do
-        let(:target_columns) { ["phone"] }
+        let(:target_column_names) { ["phone"] }
 
         before do
           score_pairs(["phone", "phone_1"] => 66.67, ["phone", "phone_2"] => 66.67, ["phone", "phone_3"] => 66.67)
         end
 
         context "and there are two of them" do
-          let(:source_columns) { ["phone_2", "phone_1"] }
+          let(:source_column_names) { ["phone_2", "phone_1"] }
 
-          it "matches the source column whose name comes first and lists the other one in tied_with" do
+          it "matches the source column whose name comes first and lists the other one in tied_source_column_names" do
             expect(result).to eq(
               result_of(
-                matches: [match_of(source: "phone_1", target: "phone", score: 66.67, tied_with: ["phone_2"])],
-                unmatched_source_columns: ["phone_2"]
+                matches: [match_of(source: "phone_1", target: "phone", score: 66.67, tied_source_column_names: ["phone_2"])],
+                unmatched_source_column_names: ["phone_2"]
               )
             )
           end
         end
 
         context "and there are three of them" do
-          let(:source_columns) { ["phone_3", "phone_1", "phone_2"] }
+          let(:source_column_names) { ["phone_3", "phone_1", "phone_2"] }
 
-          it "lists the other tied source columns in tied_with, in name order" do
+          it "lists the other tied source columns in tied_source_column_names, in name order" do
             expect(result).to eq(
               result_of(
                 matches: [
-                  match_of(source: "phone_1", target: "phone", score: 66.67, tied_with: ["phone_2", "phone_3"])
+                  match_of(source: "phone_1", target: "phone", score: 66.67, tied_source_column_names: ["phone_2", "phone_3"])
                 ],
-                unmatched_source_columns: ["phone_3", "phone_2"]
+                unmatched_source_column_names: ["phone_3", "phone_2"]
               )
             )
           end
@@ -263,8 +263,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
       end
 
       context "when the target columns are in a different order from the source columns" do
-        let(:source_columns) { ["first_name", "last_name"] }
-        let(:target_columns) { ["last_name", "first_name"] }
+        let(:source_column_names) { ["first_name", "last_name"] }
+        let(:target_column_names) { ["last_name", "first_name"] }
 
         before { score_pairs(["first_name", "first_name"] => 100.0, ["last_name", "last_name"] => 100.0) }
 
@@ -281,8 +281,8 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
       end
 
       context "when some source columns match nothing" do
-        let(:source_columns) { ["zip", "email", "city"] }
-        let(:target_columns) { ["email"] }
+        let(:source_column_names) { ["zip", "email", "city"] }
+        let(:target_column_names) { ["email"] }
 
         before { score_pairs(["email", "email"] => 100.0) }
 
@@ -290,15 +290,15 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
           expect(result).to eq(
             result_of(
               matches: [match_of(source: "email", target: "email", score: 100.0)],
-              unmatched_source_columns: ["zip", "city"]
+              unmatched_source_column_names: ["zip", "city"]
             )
           )
         end
       end
 
       context "when some target columns match nothing" do
-        let(:source_columns) { ["email"] }
-        let(:target_columns) { ["phone", "email", "city"] }
+        let(:source_column_names) { ["email"] }
+        let(:target_column_names) { ["phone", "email", "city"] }
 
         before { score_pairs(["email", "email"] => 100.0) }
 
@@ -306,7 +306,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer::Matcher do
           expect(result).to eq(
             result_of(
               matches: [match_of(source: "email", target: "email", score: 100.0)],
-              unmatched_target_columns: ["phone", "city"]
+              unmatched_target_column_names: ["phone", "city"]
             )
           )
         end

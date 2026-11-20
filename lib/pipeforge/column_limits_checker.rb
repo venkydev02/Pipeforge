@@ -6,16 +6,10 @@ module Pipeforge
   # the adapter cast (an Integer, a Float or a decimal for a number).
   #
   # @example
-  #   limits = ColumnLimitsChecker.new(type: "integer", limit: 2)
-  #   limits.violation_of(value: 40_000)  # => #<data Violation code=:value_out_of_range, ...>
+  #   limits = ColumnLimitsChecker.new(target_column_name: "age", type: "integer", limit: 2)
+  #   limits.violation_of(value: 40_000)  # => ErrorCatalog::ERRORS[:value_out_of_range_bytes].call(target_column_name: "age", bytes: 2)
   #   limits.violation_of(value: 100)     # => nil
   class ColumnLimitsChecker
-    # What is wrong with a value that is outside the limits.
-    #   code    +:value_too_long+, +:value_out_of_range+ or +:value_not_allowed+
-    #   detail  a clause that says it, such as "the value has 5 characters, more than the 3 allowed";
-    #           it never quotes the value
-    Violation = Data.define(:code, :detail)
-
     # The types that have a limit, each with the check that applies to its values. A value of any other
     # type (a boolean, a date, a uuid, json, and so on) has no limit.
     CHECKS = {
@@ -35,6 +29,7 @@ module Pipeforge
     # @return [ColumnLimitsChecker]
     def self.for(target_column:)
       new(
+        target_column_name: target_column.name,
         type: target_column.type,
         limit: target_column.limit,
         is_signed: target_column.is_signed,
@@ -45,6 +40,7 @@ module Pipeforge
       )
     end
 
+    # @param target_column_name [String] the column the checks are made for, which the message of a violation names
     # @param type [String, Symbol, nil] the type of the target column; a type with no limit, or nil, has none
     # @param limit [Integer, nil] integer: the size in bytes, 4 when not given; float: the significand bits, 24 or
     #   less for single precision and anything else for double
@@ -54,7 +50,11 @@ module Pipeforge
     # @param precision [Integer, nil] the digits of a decimal column
     # @param scale [Integer, nil] the digits of a decimal column after the point; 0 when not given
     # @param enum_labels [Array<String>, nil] the labels of an enum column, which accepts these and nothing else
-    def initialize(type:, limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil, enum_labels: nil)
+    def initialize(
+      target_column_name:, type:, limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil,
+      enum_labels: nil
+    )
+      @target_column_name = target_column_name
       @type = type.to_s
       @enum_labels = enum_labels
       @limit = limit
@@ -67,7 +67,8 @@ module Pipeforge
     end
 
     # @param value [Object] the value the adapter cast for the column
-    # @return [Violation, nil] nil when the value is within the limits, or when the type has no limit
+    # @return [Hash, nil] the error that the {ErrorCatalog} gives for the mistake, with +origin: :schema+ and the value in
+    #   JSON types; nil when the value is within the limits, or when the type has no limit
     def violation_of(value:)
       return enum_violation(value: value) unless @enum_labels.nil?
 
@@ -83,7 +84,9 @@ module Pipeforge
     def enum_violation(value:)
       return nil if @enum_labels.include?(value.to_s)
 
-      Violation.new(code: :value_not_allowed, detail: "the value is not one of #{@enum_labels.join(", ")}")
+      ErrorCatalog::ERRORS.fetch(:value_not_allowed).call(
+        origin: :schema, target_column_name: @target_column_name, value: value.as_json, labels: @enum_labels
+      )
     end
 
     # Only the length is limited, and only when the column has a limit; it is counted in characters.
@@ -91,8 +94,8 @@ module Pipeforge
       length = value.to_s.length
       return nil if @max_length.nil? || length <= @max_length
 
-      Violation.new(
-        code: :value_too_long, detail: "the value has #{length} characters, more than the #{@max_length} allowed"
+      ErrorCatalog::ERRORS.fetch(:value_too_long).call(
+        origin: :schema, target_column_name: @target_column_name, value: value.as_json, length: length, max_length: @max_length
       )
     end
 
@@ -100,7 +103,9 @@ module Pipeforge
       bytes = @limit || DEFAULT_INTEGER_LIMIT
       return nil if value.between?(*integer_range(bytes: bytes))
 
-      Violation.new(code: :value_out_of_range, detail: "the value does not fit in #{bytes} bytes")
+      ErrorCatalog::ERRORS.fetch(:value_out_of_range_bytes).call(
+        origin: :schema, target_column_name: @target_column_name, value: value.as_json, bytes: bytes
+      )
     end
 
     # The smallest and the largest whole number of a column of that many bytes: an unsigned column
@@ -121,8 +126,8 @@ module Pipeforge
       allowed_digits = @precision - @scale
       return nil if digits_before_point(number: value.to_r) <= allowed_digits
 
-      Violation.new(
-        code: :value_out_of_range, detail: "the value has more than #{allowed_digits} digits before the point"
+      ErrorCatalog::ERRORS.fetch(:value_out_of_range_digits).call(
+        origin: :schema, target_column_name: @target_column_name, value: value.as_json, allowed_digits: allowed_digits
       )
     end
 
@@ -139,7 +144,9 @@ module Pipeforge
       return nil if number.nan?
       return nil if number.finite? && number.abs <= Utilities.largest_float(limit: @limit)
 
-      Violation.new(code: :value_out_of_range, detail: "the value is larger than a float of this column can hold")
+      ErrorCatalog::ERRORS.fetch(:value_out_of_range_float).call(
+        origin: :schema, target_column_name: @target_column_name, value: value.as_json
+      )
     end
   end
 end

@@ -22,7 +22,7 @@ module Pipeforge
   # @api private
   #
   # @example through the engine
-  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column: "Mail"}})
+  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column_name: "Mail"}})
   #   result.column_summaries["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
@@ -35,8 +35,8 @@ module Pipeforge
       def to_h
         column_summaries_as_hashes = {}
 
-        column_summaries.each do |target_column, column_summary|
-          column_summaries_as_hashes[target_column] = column_summary.to_h
+        column_summaries.each do |target_column_name, column_summary|
+          column_summaries_as_hashes[target_column_name] = column_summary.to_h
         end
 
         {
@@ -60,7 +60,7 @@ module Pipeforge
       # to several target columns is measured once for each of them. Nothing the caller gave is changed.
       #
       # @param source_reader [Source::CsvReader] the reader of the CSV source
-      # @param model_adapter [#cast_value] the adapter's object for the target table, which casts a value
+      # @param target [#cast_value] the target of the target model, which casts a value
       #   for a column so that it is checked as the value it would load
       # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column => its source column, value mapping
       #   and column of the target table, which gives the type and the limits. Only these columns are measured.
@@ -68,29 +68,29 @@ module Pipeforge
       # @raise [Source::EmptySourceError] the file has no header line
       # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
       # @raise [Source::MalformedSourceError] a row cannot be parsed
-      def call(source_reader:, resolved_mapped_columns:, model_adapter:)
+      def call(source_reader:, resolved_mapped_columns:, target:)
         header_names = source_reader.headers
 
         summary_builders = {}
         resolved_mapped_columns.each do |target_column_name, resolved_mapped_column|
           summary_builders[target_column_name] = ColumnSummaryBuilder.new(
-            target_column: target_column_name,
-            source_column: resolved_mapped_column.source_column,
-            position: header_names.index(resolved_mapped_column.source_column) + 1,
+            target_column_name: target_column_name,
+            source_column_name: resolved_mapped_column.source_column_name,
+            position: header_names.index(resolved_mapped_column.source_column_name) + 1,
             limits_checker: ColumnLimitsChecker.for(target_column: resolved_mapped_column.target_column),
             value_mapping: resolved_mapped_column.value_mapping,
-            model_adapter: model_adapter
+            target: target
           )
         end
 
         row_count = source_reader.each_row do |row|
           summary_builders.each_value do |summary_builder|
-            summary_builder.add_cell(cell: row[summary_builder.source_column])
+            summary_builder.add_cell(cell: row[summary_builder.source_column_name])
           end
         end
 
         column_summaries = {}
-        summary_builders.each { |target_column, summary_builder| column_summaries[target_column] = summary_builder.summary }
+        summary_builders.each { |target_column_name, summary_builder| column_summaries[target_column_name] = summary_builder.summary }
 
         Result.new(source_identifier: source_reader.identifier, row_count: row_count, column_summaries: column_summaries)
       end

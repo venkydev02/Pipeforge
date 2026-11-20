@@ -2,7 +2,6 @@
 
 require_relative "run_processor/row_transformer"
 require_relative "run_processor/schema_checker"
-require_relative "run_processor/row_candidate"
 require_relative "run_processor/chunk_processor"
 
 module Pipeforge
@@ -23,27 +22,27 @@ module Pipeforge
       # called inside that transaction, so it must not write to the target database.
       #
       # @param source_reader [Source::CsvReader] the reader of the source
-      # @param mapped_columns [Hash{String => Hash}] target column => {source_column:, value_mapping:}
-      # @param target_schema [TargetSchema]
+      # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column name => its source column,
+      #   value mapping and target column; only these columns are read and checked
       # @param offset [Integer] rows to skip before the first one processed
       # @param chunk_size [Integer] rows read, processed and yielded at a time
       # @param mode [Symbol] +:dry_run+ or +:run+
-      # @param model_adapter [#build_record, #preload_parents, #transaction] the adapter's object for the
-      #   target table (see {TargetAdapter.model_adapter})
+      # @param target [#build_record, #preload_parents, #transaction] the target of the target model
+      #   (see {Engine})
       # @yieldparam chunk_result [ChunkResult] the outcome of one chunk
       # @return [RunResult]
-      def call(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, mode:, model_adapter:, &on_chunk)
+      def call(source_reader:, resolved_mapped_columns:, offset:, chunk_size:, mode:, target:, &on_chunk)
         if mode == :dry_run
-          model_adapter.transaction(rollback_at_end: true) do
+          target.transaction(rollback_at_end: true) do
             read_and_process_chunks(
-              source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-              offset: offset, chunk_size: chunk_size, model_adapter: model_adapter, &on_chunk
+              source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
+              offset: offset, chunk_size: chunk_size, target: target, &on_chunk
             )
           end
         else
           read_and_process_chunks(
-            source_reader: source_reader, mapped_columns: mapped_columns, target_schema: target_schema,
-            offset: offset, chunk_size: chunk_size, model_adapter: model_adapter, &on_chunk
+            source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns,
+            offset: offset, chunk_size: chunk_size, target: target, &on_chunk
           )
         end
       end
@@ -52,9 +51,9 @@ module Pipeforge
 
       # Reads the source in chunks, gives each to {ChunkProcessor}, yields each result to the block and
       # adds up the counts.
-      def read_and_process_chunks(source_reader:, mapped_columns:, target_schema:, offset:, chunk_size:, model_adapter:)
-        transformer = RowTransformer.new(mapped_columns: mapped_columns)
-        schema_checker = SchemaChecker.new(target_schema: target_schema)
+      def read_and_process_chunks(source_reader:, resolved_mapped_columns:, offset:, chunk_size:, target:)
+        transformer = RowTransformer.new(resolved_mapped_columns: resolved_mapped_columns)
+        schema_checker = SchemaChecker.new(resolved_mapped_columns: resolved_mapped_columns)
         processed_rows_count = 0
         valid_rows_count = 0
         failed_rows_count = 0
@@ -62,11 +61,12 @@ module Pipeforge
 
         # The reader gives only the columns the mapping uses, so a chunk holds no unused cells.
         source_reader.each_chunk(
-          offset: offset, chunk_size: chunk_size, columns: source_columns_of(mapped_columns: mapped_columns)
+          offset: offset, chunk_size: chunk_size,
+          columns: source_column_names_of(resolved_mapped_columns: resolved_mapped_columns)
         ) do |rows|
           chunk_result = ChunkProcessor.call(
             rows: rows, first_row_number: first_row_number, transformer: transformer,
-            schema_checker: schema_checker, target_schema: target_schema, model_adapter: model_adapter
+            schema_checker: schema_checker, resolved_mapped_columns: resolved_mapped_columns, target: target
           )
           yield chunk_result if block_given?
 
@@ -84,15 +84,15 @@ module Pipeforge
       end
 
       # The source columns that the mapped columns read, each once.
-      def source_columns_of(mapped_columns:)
-        source_columns = []
+      def source_column_names_of(resolved_mapped_columns:)
+        source_column_names = []
 
-        mapped_columns.each_value do |mapped_column|
-          source_column = mapped_column[:source_column]
-          source_columns << source_column unless source_columns.include?(source_column)
+        resolved_mapped_columns.each_value do |resolved_mapped_column|
+          source_column_name = resolved_mapped_column.source_column_name
+          source_column_names << source_column_name unless source_column_names.include?(source_column_name)
         end
 
-        source_columns
+        source_column_names
       end
     end
   end

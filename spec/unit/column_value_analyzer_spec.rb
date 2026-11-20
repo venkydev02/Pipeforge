@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the model adapter are doubles: the analyzer only
+# The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the target are doubles: the analyzer only
 # reads the header for the position of each source column, builds a summary builder for each resolved mapped column,
 # hands each builder the cell of its source column row after row and collects the summaries into a Result.
 # What a summary builder does with a cell belongs to its own spec. An example that documents what the analyzer accepts
@@ -12,12 +12,12 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
   describe ".call" do
     subject(:result) do
       described_class.call(
-        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns, model_adapter: model_adapter
+        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns, target: target
       )
     end
 
     let(:source_reader) { instance_double(Pipeforge::Source::CsvReader, identifier: "users.csv") }
-    let(:model_adapter) { instance_double(Pipeforge::ActiveRecordModelAdapter) }
+    let(:target) { instance_double(Pipeforge::ActiveRecordTarget) }
     let(:header_names) { %w[Mail Age] }
     let(:rows) do
       [
@@ -30,10 +30,10 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     let(:email_summary) { instance_double(column_summary_class) }
     let(:age_summary) { instance_double(column_summary_class) }
     let(:email_builder) do
-      instance_double(summary_builder_class, source_column: "Mail", add_cell: nil, summary: email_summary)
+      instance_double(summary_builder_class, source_column_name: "Mail", add_cell: nil, summary: email_summary)
     end
     let(:age_builder) do
-      instance_double(summary_builder_class, source_column: "Age", add_cell: nil, summary: age_summary)
+      instance_double(summary_builder_class, source_column_name: "Age", add_cell: nil, summary: age_summary)
     end
     let(:summary_builders) { {"email" => email_builder, "age" => age_builder} }
 
@@ -44,12 +44,12 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     let(:value_mapping) { {"30" => 30} }
     let(:email_resolved_mapped_column) do
       Pipeforge::ResolvedMappedColumn.new(
-        source_column: "Mail", value_mapping: {}, target_column: build_target_column(name: "email")
+        source_column_name: "Mail", value_mapping: {}, target_column: build_target_column(name: "email")
       )
     end
     let(:age_resolved_mapped_column) do
       Pipeforge::ResolvedMappedColumn.new(
-        source_column: "Age", value_mapping: value_mapping, target_column: build_target_column(name: "age")
+        source_column_name: "Age", value_mapping: value_mapping, target_column: build_target_column(name: "age")
       )
     end
     let(:resolved_mapped_columns) { {"age" => age_resolved_mapped_column} }
@@ -60,8 +60,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         rows.each(&block)
         rows.size
       end
-      allow(summary_builder_class).to receive(:new) do |target_column:, **|
-        summary_builders.fetch(target_column)
+      allow(summary_builder_class).to receive(:new) do |target_column_name:, **|
+        summary_builders.fetch(target_column_name)
       end
       allow(Pipeforge::ColumnLimitsChecker).to receive(:for) do |target_column:|
         limits_checkers.fetch(target_column.name)
@@ -89,8 +89,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
           result
 
           expect(summary_builder_class).to have_received(:new).once.with(
-            target_column: "age", source_column: "Age", position: 2, limits_checker: age_limits_checker,
-            value_mapping: value_mapping, model_adapter: model_adapter
+            target_column_name: "age", source_column_name: "Age", position: 2, limits_checker: age_limits_checker,
+            value_mapping: value_mapping, target: target
           )
         end
       end
@@ -103,8 +103,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         it "builds one summary builder and asks ColumnLimitsChecker.for once for each target_column" do
           result
 
-          expect(summary_builder_class).to have_received(:new).with(hash_including(target_column: "email")).once
-          expect(summary_builder_class).to have_received(:new).with(hash_including(target_column: "age")).once
+          expect(summary_builder_class).to have_received(:new).with(hash_including(target_column_name: "email")).once
+          expect(summary_builder_class).to have_received(:new).with(hash_including(target_column_name: "age")).once
 
           expect(Pipeforge::ColumnLimitsChecker).to have_received(:for)
             .with(target_column: email_resolved_mapped_column.target_column).once
@@ -145,7 +145,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
           {"email" => email_resolved_mapped_column, "age" => age_resolved_mapped_column}
         end
 
-        it "gives each summary builder the cell of its own source_column" do
+        it "gives each summary builder the cell of its own source_column_name" do
           result
 
           expect(email_builder).to have_received(:add_cell).with(cell: "a@example.com")

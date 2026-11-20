@@ -391,8 +391,8 @@ RSpec.describe Pipeforge::Source::CsvReader do
 
       it "stops with source_header_duplicated and the name" do
         expect { reader.headers }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :source_column) }).to eq(
-            [{code: :source_header_duplicated, source_column: "A"}]
+          expect(error.errors.map { |entry| entry.slice(:code, :source_column_name) }).to eq(
+            [{code: :source_header_duplicated, source_column_name: "A"}]
           )
         end
       end

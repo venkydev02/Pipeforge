@@ -225,7 +225,7 @@
   * The consumer's setup is one gem line for the adapter. The core's gemspec has no Rails or ActiveRecord dependency.
   * The adapter contract is a public API from the first release, so changing it is a breaking change.
   * **Open:** the final method names; whether `schema` is one call or split into columns and associations.
-* **Amendment (2026-10-17): how the core finds the adapter.**
+* **Amendment (2026-10-17): how the core finds the adapter.** *(Superseded by ADR-28: the engine reaches a target class that the adapter gem installs, and the `TargetAdapter` module and its `ensure_installed` check are gone.)*
   * **The core's one door.** The core has a module, `Pipeforge::TargetAdapter`, with one method for each operation of the adapter contract (`TargetAdapter.schema(target_table:)` today). The core only ever calls these methods. It never holds, creates or receives an adapter.
   * **The adapter gem installs the real adapter, once.** When the gem is loaded it calls `Pipeforge::TargetAdapter.install(adapter: Pipeforge::ActiveRecordAdapter.new)`. Each call on the module then goes to that installed adapter. A consumer who installed `pipeforge-activerecord` writes nothing about it, and `Engine.new` takes no adapter argument. If two adapter gems are loaded, the last one installed is used.
   * **The installed adapter is shared** by every engine, so it keeps no state of its own. Specs stub `TargetAdapter.schema`, or install a fake adapter object the same way.
@@ -447,3 +447,96 @@
   * A contributor needs a local PostgreSQL to run the specs; CI starts one.
   * The `sqlite3` gem leaves the Gemfile.
   * The sample console and its sample database are removed; developer tools are added after the first release.
+
+### ADR-28: The Engine Reaches the Target Through a Target Class That the Adapter Gem Installs
+* **Status:** Accepted (2026-11-19). **Supersedes** the amendment of ADR-16 (2026-10-17) "how the core finds the adapter" (the core's one door, `TargetAdapter`, and the check that an adapter is installed), and the model adapter of the adapter contract. The rest of ADR-16 and ADR-23 stands.
+* **Context:** The adapter was a shared object with no state, reached through the `TargetAdapter` module, and it handed out a second object, the model adapter, for each model. A consumer installs the adapter gem and nothing else, so the check that an adapter is installed could never help, and the two objects split the schema, the casting and the records of one model between them.
+* **Decision:**
+  1. **The adapter gem installs a target class, once**, with `Pipeforge::Engine.install_target(target_class:)` when its entry file is required. The engine builds one target from it for its target model, with `new(target_model_name:)`. If two adapter gems are loaded, the last one installed is used.
+  2. **A target is one object for one target model.** It answers `schema` (the `TargetSchema`), `cast_value(column_name:, value:)` (a `CastResult`), `build_record(attributes:)`, `preload_parents(records:)` and `transaction(rollback_at_end:)`. The ActiveRecord target is `ActiveRecordTarget`.
+  3. **A record is what `build_record` returns.** It answers `valid?`, `errors` (a Hash keyed by the target column name), `add_error(origin:, code:, message:, target_column_name:)`, `attributes`, `json_attributes` and `load`. The database errors are mapped to codes inside the record, so there is no `map_error`.
+  4. **The check that an adapter is installed is removed**, with the error `target_adapter_not_installed` and the class `TargetAdapterError`.
+* **Consequences:**
+  * The contract is called **the target contract** in the docs, and it is a public API from the first release (ADR-16).
+  * The core still names no database library and no ActiveRecord class (ADR-24).
+  * `CLAUDE.md`, `target-access.md` and `protocols.md` use the new names in the same change.
+
+### ADR-29: A Name Ends in `_name` and an Object Has No Suffix
+* **Status:** Accepted (2026-11-17). **Renames** the fields that earlier ADRs name (ADR-17, ADR-18, ADR-20, ADR-25, ADR-26): those ADRs keep the field names they used when they were written.
+* **Context:** The same word held a text and an object. `ResolvedMappedColumn` had `source_column` (the text `"Mail"`) next to `target_column` (a `TargetColumn`), and `target_column` meant a text in the header result and an object in the schema checker. A reader had to find the line that made the value to know which it was. The gem is not published, so the public fields can change now.
+* **Decision:**
+  1. **A text that names a column, a table, a model or an association ends in `_name`; an object has no suffix.** A list of names ends in `_names`, and a Hash of objects keyed by their names is `<objects>_by_<key>_name`. `type`, `sql_type`, `code`, `message`, `origin`, `label` and `source_identifier` are texts but not names of such a thing, so they keep their names.
+  2. **The public fields follow the rule:**
+     * `Engine.new(source_io:, target_model_name:)`.
+     * The entry of `mapped_columns`: `source_column_name:` (with `value_mapping:`).
+     * The header result: `target_table_name`, `model_name`, `unmatched_source_column_names`, and in each entry of `matches` and `unmatched_target_columns` the fields `target_column_name`, `source_column_name` and `tied_source_column_names` (was `tied_with`).
+     * The entries of an error and of a failed row: `target_column_name`, `source_column_name`, `table_name` and `model_name`.
+     * The foreign key in the metadata of a target column: `{association_name:, parent_table_name:}`.
+     * `TargetSchema` has `model_name`.
+  3. **The names in the code follow the same rule.** `target_column` is always a `TargetColumn` and `target_column_name` always a text.
+* **Consequences:**
+  * A consumer who wrote the old field names changes them once; nothing is stored under the old names, because the engine persists nothing.
+  * `README.md`, `overview.md`, `protocols.md` and the specs are updated in the same change. The earlier ADRs are not edited; they are history.
+
+### ADR-30: A Failed Row Shows the Attributes of Its Model Record, as JSON Values
+* **Status:** Accepted (2026-11-17). **Supersedes** the `mapped_values` of the failed row in ADR-17 and its amendments (the row after the column mapping and the value mapping, as text), and ends `RowCandidate`.
+* **Context:** A consumer who reads a failed row wants to know why it failed. The errors are found on what the model record holds: the core checks the schema on the record's attributes, after the model's callbacks, and the model's own errors are about the same values. The text of the file after the mapping could differ from those values (a default filled an empty cell, a callback stripped a value, an integer was cast), so a failed row could disagree with its own errors. `RowCandidate` also repeated `valid?`, `errors` and `load` of the model record, which it wrapped, and kept a list of errors that it replaced twice.
+* **Decision:**
+  1. **`FailedRow(row_number:, attributes:, errors:)`.** `attributes` is what the model record held when the row failed, as plain JSON types, for the columns of the target schema in table order. It is never the raw source row.
+  2. **The model record answers `json_attributes`** next to `attributes`: the same values as plain JSON types. The core checks the schema on `attributes` (the real Ruby values) and shows `json_attributes`.
+  3. **`ChunkProcessor` works on the model record directly.** It builds the record of each row, validates it on the two levels (the record's checks and the core's `SchemaChecker`, each mistake reported once, the model's entry kept), loads it, or builds the `FailedRow`. `RowCandidate` is removed. The schema checks stay in the core.
+* **Consequences:**
+  * A consumer who read `mapped_values` reads `attributes`, with cast values: `4` and not `"4"`, a decimal as a text, a default shown where the cell was empty.
+  * The record contract is `valid?`, `errors`, `attributes`, `json_attributes` and `load`; an adapter answers `json_attributes` too.
+  * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.
+
+### ADR-31: The Run Works on the Resolved Mapped Columns
+* **Status:** Accepted (2026-11-18). **Amends** ADR-17 and its amendments about the input of the run.
+* **Context:** The column values stage takes the mapped columns after the engine has checked them and looked up the target column of each entry (`ResolvedMappedColumn`), and carries no schema. The run still took the consumer's plain Hash and the whole `TargetSchema`: the schema checker looked at every column of the table, the chunk processor took the names of the columns a failed row shows from the schema, and the engine replaced the keys of each value mapping in the Hash the consumer had given.
+* **Decision:**
+  1. **`Engine#run` makes the resolved mapped columns** as `analyze_column_values` does and gives them to the run. `RunProcessor`, `RowTransformer`, `SchemaChecker` and `ChunkProcessor` take them, and none takes a schema. The call of `run` does not change: it takes the same `mapped_columns`.
+  2. **The consumer's Hash is not changed.** The keys of a value mapping are turned into text in the resolved column, not in place.
+  3. **The core's schema check covers the mapped columns.** A required column is always mapped (the engine refuses the run otherwise), so the required check is the same. A column of the table that no entry fills is left to the model and the database: if a callback of the model fills it past its limit, the database refuses the write, and the row is a failed row with `origin: :database`.
+  4. **A failed row shows the mapped columns**, in the order of the mapping.
+* **Consequences:**
+  * The two stages take the same input, and the schema stays inside the `Engine`.
+  * `protocols.md` and the README sentence about the failed row are updated in the same change.
+
+### ADR-32: The Columns of a Polymorphic Association Are Described in the Metadata of a Target Column
+* **Status:** Accepted (2026-11-18). **Adds** a field to the metadata of a target column (ADR-18 amendments, ADR-22).
+* **Context:** A polymorphic `belongs_to` uses two columns, the id of the parent and the name of its class, and the parent can be of different classes. The schema could not describe it as a foreign key, which needs one parent table, so its two columns looked like unrelated columns (an integer and a string). A mapping screen could not tell that they belong together, or what the type column must hold, and the consumer could not decide what to change in the source file.
+* **Decision:**
+  1. **`TargetColumn` has a field `polymorphic`:** `nil`, or `PolymorphicColumn(association_name:, role:)` for the id column (`role: "id"`) and the type column (`role: "type"`) of a polymorphic association. `foreign_key` stays `nil` for both.
+  2. **The ActiveRecord adapter fills it** from the polymorphic `belongs_to` associations of the model: the foreign key column is the id and the foreign type column is the type.
+  3. **The header result shows it** in the metadata of the column: `polymorphic: nil` or `{association_name:, role:}`.
+* **Consequences:**
+  * A screen can say that a column is the type of an association and goes with its id column. The list of the classes that may be stored is not part of it, because ActiveRecord accepts any class name.
+  * `README.md` and `protocols.md` are updated in the same change.
+
+### ADR-33: The Model Record Holds One Error for Each Column, and the Target Adds the Errors of a Value It Cannot Give the Record
+* **Status:** Accepted (2026-11-19). **Supersedes** the merge of the model's errors and the schema's by code in ADR-30, and the codes `value_not_json` and, for the model, `value_not_allowed`.
+* **Context:** A value the record cannot hold (an enum label the model does not know, a text that is not JSON, a polymorphic type that names no model) was kept apart by the target and turned into an error by the record later, and the model's errors and the schema's were merged by column and code in two places. A column could still end with several errors, and a bad polymorphic type raised `NameError` out of the preload and the validation, which aborted the run.
+* **Decision:**
+  1. **The model record holds its errors in a Hash keyed by the target column name**, in the order they were added, and `add_error(origin:, code:, message:, target_column_name:)` keeps the first error of a column. The record as a whole (no column) has at most one. The model's errors (`valid?`) and the core's schema errors are added through it, so there is one rule in one place.
+  2. **`build_record` adds the errors of the values it cannot give the record**, with one code, `value_not_accepted`, and a message that says which kind it is (an enum label, a text that is not JSON, a polymorphic type that names no model). The record is built from the values it can take, so neither the preload nor the validation can raise on the others. A type names a model when `safe_constantize` gives a class below `ActiveRecord::Base`, which is how ActiveRecord reads it.
+  3. **`valid?` does not clear the errors**, and a refused `load` replaces them with the database's entry.
+  4. **A failed row has at most one error for each column**, and its `attributes` are what the record holds: a value the record was not given is not in them.
+* **Consequences:**
+  * One bad cell is one failed row. A bad polymorphic type gives two entries, one for the type (`value_not_accepted`) and one for the id column (`parent_missing`, from the model).
+  * The record contract is `valid?`, `errors` (a Hash), `add_error`, `attributes`, `json_attributes` and `load`.
+  * `protocols.md` and `target-access.md` are updated in the same change.
+
+### ADR-34: Every Error of a Row Is Built by One Catalog, a Hash of Functions Keyed by Code and Kind, with a Promised Shape
+* **Status:** Accepted (2026-11-20). Extends ADR-33.
+* **Context:** The sentences of a row's errors were written in four classes (the schema checker, the limits checker, the target and the model record), each building its own Hash, and the errors of the model and of the database carried ActiveRecord's own text. The same code had different wording at different levels, an error had no facts a screen could use, a value the record could not hold was shown nowhere but in a message, and nothing said what an error looks like.
+* **Decision:**
+  1. **One Hash, `Pipeforge::ErrorCatalog::ERRORS`, keyed by the code and its kind joined** (`:value_out_of_range_bytes`, or the code alone when it has no kind). The value of a key is a function that takes `origin:`, `target_column_name:`, the failed `value:` and the facts its sentence uses, as keywords, and returns the error as a Hash with `origin`, `code`, `kind`, `target_column_name`, `message`, `details` and `value`. Each function lists every fact it accepts, so Ruby refuses a call that misses one or names one it does not know.
+  2. **A component that finds a mistake calls the function and gives what only it knows**: where it found the mistake (`origin`) and the failed value. Nothing is added after the call. Every error of a failed row has seven keys: `origin`, `code`, `kind`, `target_column_name`, `message`, `details` and `value`.
+  3. **The message is always ours**, `"<column>: <sentence>"` (the sentence alone when there is no column). The text of the model or of the database is the fact `native_message`, and a few sentences end with it in brackets.
+  4. **The origin and the failed value are required keywords of every function and are in the error**, in JSON types (the cast value, or the value as given when it cannot be cast), and `nil` when there is none. A value the record could not hold is not in the failed row's attributes, so this is where it is shown.
+  5. **A component is verified by comparing its error with the catalog's call for the same input**, so each sentence is written once and tested once, in the catalog's own spec.
+* **Consequences:**
+  * `ColumnLimitsChecker` knows its column and returns the catalog's Hash (or nil); its `Violation` is removed.
+  * The record contract is `add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)`.
+  * The raised data errors (the mapped columns, the source file, the target) have their own fields and are not in the catalog yet.
+  * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.

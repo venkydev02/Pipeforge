@@ -9,39 +9,40 @@ module Pipeforge
   # It is a service: {.call} is given the header names of the source and the schema of the
   # target, and reads nothing itself. It sees no value of the source and no row of the target,
   # and it keeps nothing between calls. The engine reads the header (and checks it) and asks
-  # the target adapter for the schema.
+  # the target for the schema.
   #
   # @example
   #   result = Pipeforge::HeaderAnalyzer.call(
   #     source_headers: ["First Name", "Zip"], source_identifier: "users.csv", target_schema: schema
   #   )
   #   result.matches.first
-  #   # => {target_column: "first_name", source_column: "First Name", score: 100.0, tied_with: [],
+  #   # => {target_column_name: "first_name", source_column_name: "First Name", score: 100.0, tied_source_column_names: [],
   #   #     metadata: {...}}
   module HeaderAnalyzer
     # The outcome of the header stage.
     #   source_identifier            the file path of the source, or its class name
-    #   target_table, model          the table and the model the adapter read it from (nil when
+    #   target_table_name, model_name     the table and the model the adapter read it from (nil when
     #                                the adapter has no model)
-    #   matches                      [{target_column:, source_column:, score:, tied_with:,
+    #   matches                      [{target_column_name:, source_column_name:, score:, tied_source_column_names:,
     #                                metadata:}], in table order: the pairs at or above the
     #                                inclusion threshold. A source column can be in several
     #                                entries when their scores are the same; the consumer chooses
-    #                                which target to keep. +tied_with+ lists the other source
+    #                                which target to keep. +tied_source_column_names+ lists the other source
     #                                columns that had the same score for this target and were
     #                                free to take it (empty when nothing tied).
-    #   unmatched_source_columns     source columns in no match, in file order
-    #   unmatched_target_columns     [{target_column:, metadata:}] for the target columns without a match,
+    #   unmatched_source_column_names     source columns in no match, in file order
+    #   unmatched_target_columns     [{target_column_name:, metadata:}] for the target columns without a match,
     #                                in table order
     #
     # The metadata of a target column is its entry in the schema: type, sql_type, limit,
     # max_length, precision, scale, default, enum_labels (nil, or the labels),
-    # required and foreign_key (nil, or {association:, parent_table:}).
+    # required, foreign_key (nil, or {association_name:, parent_table_name:}) and polymorphic (nil, or
+    # {association_name:, role:} for the id column and the type column of a polymorphic association).
     #
     # Everything in it is a plain Hash, Array, String, number, boolean or nil, so +to_h+ gives the
     # result as plain JSON types, ready to store or send.
     Result = Data.define(
-      :source_identifier, :target_table, :model, :matches, :unmatched_source_columns,
+      :source_identifier, :target_table_name, :model_name, :matches, :unmatched_source_column_names,
       :unmatched_target_columns
     )
 
@@ -53,7 +54,7 @@ module Pipeforge
       # @return [Result]
       def call(source_headers:, source_identifier:, target_schema:)
         target_column_names = target_schema.columns.map(&:name)
-        matcher_result = build_matcher.call(source_columns: source_headers, target_columns: target_column_names)
+        matcher_result = build_matcher.call(source_column_names: source_headers, target_column_names: target_column_names)
 
         build_result(
           source_identifier: source_identifier, target_schema: target_schema, matcher_result: matcher_result
@@ -73,46 +74,46 @@ module Pipeforge
       end
 
       def build_result(source_identifier:, target_schema:, matcher_result:)
-        metadata_by_target_column = {}
+        metadata_by_target_column_name = {}
 
         target_schema.columns.each do |target_column|
-          metadata_by_target_column[target_column.name] = metadata_of(target_column: target_column)
+          metadata_by_target_column_name[target_column.name] = metadata_of(target_column: target_column)
         end
 
         Result.new(
           source_identifier: source_identifier,
-          target_table: target_schema.table_name,
-          model: target_schema.model,
-          matches: build_matches(matcher_result: matcher_result, metadata_by_target_column: metadata_by_target_column),
-          unmatched_source_columns: matcher_result.unmatched_source_columns,
+          target_table_name: target_schema.table_name,
+          model_name: target_schema.model_name,
+          matches: build_matches(matcher_result: matcher_result, metadata_by_target_column_name: metadata_by_target_column_name),
+          unmatched_source_column_names: matcher_result.unmatched_source_column_names,
           unmatched_target_columns: build_unmatched_target_entries(
-            matcher_result: matcher_result, metadata_by_target_column: metadata_by_target_column
+            matcher_result: matcher_result, metadata_by_target_column_name: metadata_by_target_column_name
           )
         )
       end
 
-      def build_matches(matcher_result:, metadata_by_target_column:)
+      def build_matches(matcher_result:, metadata_by_target_column_name:)
         matches = []
 
         matcher_result.matches.each do |match|
           matches << {
-            target_column: match.target_column,
-            source_column: match.source_column,
+            target_column_name: match.target_column_name,
+            source_column_name: match.source_column_name,
             score: match.score,
-            tied_with: match.tied_with,
-            metadata: metadata_by_target_column.fetch(match.target_column)
+            tied_source_column_names: match.tied_source_column_names,
+            metadata: metadata_by_target_column_name.fetch(match.target_column_name)
           }
         end
 
         matches
       end
 
-      def build_unmatched_target_entries(matcher_result:, metadata_by_target_column:)
+      def build_unmatched_target_entries(matcher_result:, metadata_by_target_column_name:)
         unmatched_target_entries = []
 
-        matcher_result.unmatched_target_columns.each do |target_column_name|
+        matcher_result.unmatched_target_column_names.each do |target_column_name|
           unmatched_target_entries << {
-            target_column: target_column_name, metadata: metadata_by_target_column.fetch(target_column_name)
+            target_column_name: target_column_name, metadata: metadata_by_target_column_name.fetch(target_column_name)
           }
         end
 
@@ -125,6 +126,7 @@ module Pipeforge
       def metadata_of(target_column:)
         metadata = target_column.to_h.except(:name)
         metadata[:foreign_key] = target_column.foreign_key&.to_h
+        metadata[:polymorphic] = target_column.polymorphic&.to_h
 
         metadata
       end

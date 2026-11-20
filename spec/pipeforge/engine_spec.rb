@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::Engine do
-  subject(:engine) { described_class.new(source_io: source_io, target_model: "Record") }
+  subject(:engine) { described_class.new(source_io: source_io, target_model_name: "Record") }
 
   # The settings the parts of the engine read from Configuration.
   let(:settings) { {} }
@@ -15,35 +15,24 @@ RSpec.describe Pipeforge::Engine do
       build_target_column(name: "note")
     ]
   end
-  let(:schema) { build_target_schema(table_name: "records", model: "Record", columns: target_columns) }
+  let(:schema) { build_target_schema(table_name: "records", model_name: "Record", columns: target_columns) }
 
-  # The core is tested without an adapter gem, so the check that one is installed is stubbed.
-  # and so is the model adapter that casts the texts of the column values stage: it reads a text as the type of
-  # its column and cannot read any other text.
-  before do
-    types = target_columns.to_h do |target_column|
+  # The core is tested without an adapter gem, so the engine builds a fake target from a stand-in for the target
+  # class an adapter gem installs. The target gives the schema, and it casts the texts of the column values stage:
+  # it reads a text as the type of its column and cannot read any other text.
+  let(:types) do
+    target_columns.to_h do |target_column|
       [target_column.name, target_column.enum_labels.nil? ? target_column.type : "string"]
     end
-    allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.reading(types: types))
   end
+  let(:target) { FakeTarget.reading(types: types, schema: schema) }
+  let(:target_class) { double("target class", new: target) }
 
-  before { allow(Pipeforge::TargetAdapter).to receive(:ensure_installed) }
+  before { allow(Pipeforge::Engine).to receive(:target_class).and_return(target_class) }
 
   before { use_settings(settings) }
 
   describe ".new" do
-    context "when no target adapter is installed" do
-      around { |example| without_installed_adapter { example.run } }
-
-      before { allow(Pipeforge::TargetAdapter).to receive(:ensure_installed).and_call_original }
-
-      it "stops with target_adapter_not_installed" do
-        expect { engine }.to raise_error(Pipeforge::TargetAdapterError) do |error|
-          expect(error.codes).to eq([:target_adapter_not_installed])
-        end
-      end
-    end
-
     context "when the source is missing a method" do
       let(:source_io) { Object.new }
 
@@ -59,68 +48,64 @@ RSpec.describe Pipeforge::Engine do
     let(:source_io) { csv_io("Status,Code,Note\n1,2,3\n") }
     let(:target_columns) { [build_target_column(name: "status"), build_target_column(name: "code")] }
 
-    context "with an adapter installed" do
-      before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
+    it "matches the source columns to the target columns" do
+      expect(result.matches.map { |match| [match[:target_column_name], match[:source_column_name]] }).to eq(
+        [["status", "Status"], ["code", "Code"]]
+      )
+    end
 
-      it "matches the source columns to the target columns" do
-        expect(result.matches.map { |match| [match[:target_column], match[:source_column]] }).to eq(
-          [["status", "Status"], ["code", "Code"]]
-        )
+    it "lists the source columns without a match" do
+      expect(result.unmatched_source_column_names).to eq(%w[Note])
+    end
+
+    it "builds the target of the model it was given" do
+      result
+
+      expect(target_class).to have_received(:new).with(target_model_name: "Record")
+    end
+
+    it "names the source by its class when it has no path" do
+      expect(result.source_identifier).to eq("StringIO")
+    end
+
+    context "with a higher inclusion threshold in the settings" do
+      let(:settings) { {recommendation: {inclusion_threshold: 100}} }
+      let(:source_io) { csv_io("Stat,Code\n1,2\n") }
+
+      it "leaves a weaker pair unmatched instead of a match" do
+        expect(result.matches.map { |match| match[:target_column_name] }).to eq(%w[code])
+        expect(result.unmatched_source_column_names).to eq(%w[Stat])
       end
+    end
 
-      it "lists the source columns without a match" do
-        expect(result.unmatched_source_columns).to eq(%w[Note])
+    context "when the file is empty" do
+      let(:source_io) { csv_io("") }
+
+      it "stops with source_empty, before the target is built" do
+        expect { result }.to raise_error(Pipeforge::Source::EmptySourceError)
+        expect(target_class).not_to have_received(:new)
       end
+    end
 
-      it "asks the adapter for the table it was given" do
-        result
+    context "when a header cell is blank" do
+      let(:source_io) { csv_io("Status,,Code\n1,2,3\n") }
 
-        expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_model: "Record")
-      end
-
-      it "names the source by its class when it has no path" do
-        expect(result.source_identifier).to eq("StringIO")
-      end
-
-      context "with a higher inclusion threshold in the settings" do
-        let(:settings) { {recommendation: {inclusion_threshold: 100}} }
-        let(:source_io) { csv_io("Stat,Code\n1,2\n") }
-
-        it "leaves a weaker pair unmatched instead of a match" do
-          expect(result.matches.map { |match| match[:target_column] }).to eq(%w[code])
-          expect(result.unmatched_source_columns).to eq(%w[Stat])
+      it "stops with source_header_blank, before the target is built" do
+        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+          expect(error.codes).to eq([:source_header_blank])
         end
+        expect(target_class).not_to have_received(:new)
       end
+    end
 
-      context "when the file is empty" do
-        let(:source_io) { csv_io("") }
+    context "when a name appears twice" do
+      let(:source_io) { csv_io("Status,Status,Code\n1,2,3\n") }
 
-        it "stops with source_empty, before the target schema is read" do
-          expect { result }.to raise_error(Pipeforge::Source::EmptySourceError)
-          expect(Pipeforge::TargetAdapter).not_to have_received(:schema)
+      it "stops with source_header_duplicated, before the target is built" do
+        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+          expect(error.codes).to eq([:source_header_duplicated])
         end
-      end
-
-      context "when a header cell is blank" do
-        let(:source_io) { csv_io("Status,,Code\n1,2,3\n") }
-
-        it "stops with source_header_blank, before the target schema is read" do
-          expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
-            expect(error.codes).to eq([:source_header_blank])
-          end
-          expect(Pipeforge::TargetAdapter).not_to have_received(:schema)
-        end
-      end
-
-      context "when a name appears twice" do
-        let(:source_io) { csv_io("Status,Status,Code\n1,2,3\n") }
-
-        it "stops with source_header_duplicated, before the target schema is read" do
-          expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
-            expect(error.codes).to eq([:source_header_duplicated])
-          end
-          expect(Pipeforge::TargetAdapter).not_to have_received(:schema)
-        end
+        expect(target_class).not_to have_received(:new)
       end
     end
   end
@@ -130,31 +115,30 @@ RSpec.describe Pipeforge::Engine do
 
     let(:mapped_columns) do
       {
-        "status" => {source_column: "Status"},
-        "code" => {source_column: "Code"},
-        "note" => {source_column: "Note"}
+        "status" => {source_column_name: "Status"},
+        "code" => {source_column_name: "Code"},
+        "note" => {source_column_name: "Note"}
       }
     end
-
-    before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
 
     it "names the source file" do
       expect(result.source_identifier).to eq(source_io.path)
     end
 
-    it "asks the adapter for the model adapter of the table it was given" do
+    it "builds the target of the model it was given" do
       result
 
-      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record")
+      expect(target_class).to have_received(:new).with(target_model_name: "Record")
     end
 
-    it "checks each value as the value the model adapter casts it to" do
-      cast_to_one_letter = FakeModelAdapter.new(casts: ->(column_name:, value:) { "x" })
-      allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(cast_to_one_letter)
+    it "checks each value as the value the target casts it to" do
       short_string = build_target_column(name: "status", type: "string", max_length: 1)
-      allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(build_target_schema(columns: [short_string]))
+      cast_to_one_letter = FakeTarget.new(
+        casts: ->(column_name:, value:) { "x" }, schema: build_target_schema(columns: [short_string])
+      )
+      allow(target_class).to receive(:new).and_return(cast_to_one_letter)
 
-      checked = engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
+      checked = engine.analyze_column_values(mapped_columns: {"status" => {source_column_name: "Status"}})
 
       expect(checked.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 7, incompatible_count: 0)
     end
@@ -164,21 +148,15 @@ RSpec.describe Pipeforge::Engine do
     end
 
     it "gives each summary its source column" do
-      expect(result.column_summaries["code"].source_column).to eq("Code")
+      expect(result.column_summaries["code"].source_column_name).to eq("Code")
     end
 
     it "returns the same result when it is called again" do
       expect(engine.analyze_column_values(mapped_columns: mapped_columns).to_h).to eq(result.to_h)
     end
 
-    it "asks the adapter for the table it was given" do
-      result
-
-      expect(Pipeforge::TargetAdapter).to have_received(:schema).with(target_model: "Record")
-    end
-
     context "when only some columns are mapped" do
-      let(:mapped_columns) { {"code" => {source_column: "Code"}} }
+      let(:mapped_columns) { {"code" => {source_column_name: "Code"}} }
 
       it "measures only those columns" do
         expect(result.column_summaries.keys).to eq(["code"])
@@ -186,23 +164,23 @@ RSpec.describe Pipeforge::Engine do
     end
 
     context "when a mapped column is not in the file" do
-      let(:mapped_columns) { {"status" => {source_column: "Nope"}} }
+      let(:mapped_columns) { {"status" => {source_column_name: "Nope"}} }
 
       it "stops with mapped_column_not_in_file, naming the column" do
         expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :target_column, :source_column) }).to eq(
-            [{code: :mapped_column_not_in_file, target_column: "status", source_column: "Nope"}]
+          expect(error.errors.map { |entry| entry.slice(:code, :target_column_name, :source_column_name) }).to eq(
+            [{code: :mapped_column_not_in_file, target_column_name: "status", source_column_name: "Nope"}]
           )
         end
       end
     end
 
     context "with the same source column for two target columns" do
-      let(:mapped_columns) { {"status" => {source_column: "Status"}, "code" => {source_column: "Status"}} }
+      let(:mapped_columns) { {"status" => {source_column_name: "Status"}, "code" => {source_column_name: "Status"}} }
 
       it "measures it once for each target column" do
         expect(result.column_summaries.keys).to eq(%w[status code])
-        expect(result.column_summaries.values.map(&:source_column)).to eq(%w[Status Status])
+        expect(result.column_summaries.values.map(&:source_column_name)).to eq(%w[Status Status])
       end
     end
 
@@ -216,7 +194,7 @@ RSpec.describe Pipeforge::Engine do
 
     context "with the type of the target column in the schema" do
       let(:target_columns) { [build_target_column(name: "status", type: "string", max_length: 6)] }
-      let(:mapped_columns) { {"status" => {source_column: "Status"}} }
+      let(:mapped_columns) { {"status" => {source_column_name: "Status"}} }
 
       it "measures the values against that type and size" do
         expect(result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 5, incompatible_count: 2)
@@ -228,7 +206,7 @@ RSpec.describe Pipeforge::Engine do
       let(:target_columns) do
         [build_target_column(name: "status", type: "integer", enum_labels: %w[draft placed shipped])]
       end
-      let(:mapped_columns) { {"status" => {source_column: "Status"}} }
+      let(:mapped_columns) { {"status" => {source_column_name: "Status"}} }
 
       it "counts the labels as fitting, and nothing else" do
         expect(result.column_summaries["status"].distinct_values).to have_attributes(compatible_count: 2, incompatible_count: 3)
@@ -237,7 +215,7 @@ RSpec.describe Pipeforge::Engine do
 
     context "when the caller sends a type with a column" do
       let(:target_columns) { [build_target_column(name: "code", type: "integer")] }
-      let(:mapped_columns) { {"code" => {source_column: "Code", type: "string"}} }
+      let(:mapped_columns) { {"code" => {source_column_name: "Code", type: "string"}} }
 
       it "uses the type of the schema instead" do
         expect(result.column_summaries["code"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 7)
@@ -249,25 +227,25 @@ RSpec.describe Pipeforge::Engine do
         let(:mapped_columns) { {"status" => {}} }
 
         it "raises InvalidMappedColumnsError, naming the target column" do
-          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, "status has no source_column")
+          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, "status has no source_column_name")
         end
 
         it "gives the code column_missing_source_column, with the column" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
             expect(error.errors).to eq(
-              [{code: :column_missing_source_column, message: "status has no source_column", target_column: "status"}]
+              [{code: :column_missing_source_column, message: "status has no source_column_name", target_column_name: "status"}]
             )
           end
         end
       end
 
       context "with a target column that is not in the schema" do
-        let(:mapped_columns) { {"state" => {source_column: "Status"}} }
+        let(:mapped_columns) { {"state" => {source_column_name: "Status"}} }
 
         it "gives the code target_column_not_in_schema, with the columns and the table" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
             expect(error.errors.map { |entry| entry.except(:message) }).to eq(
-              [{code: :target_column_not_in_schema, source_column: "Status", target_column: "state", table: "records"}]
+              [{code: :target_column_not_in_schema, source_column_name: "Status", target_column_name: "state", table_name: "records"}]
             )
           end
         end
@@ -279,12 +257,12 @@ RSpec.describe Pipeforge::Engine do
 
       context "with a required target column that has no entry" do
         let(:target_columns) { [build_target_column(name: "status", required: true), build_target_column(name: "code")] }
-        let(:mapped_columns) { {"code" => {source_column: "Code"}} }
+        let(:mapped_columns) { {"code" => {source_column_name: "Code"}} }
 
         it "gives the code required_column_unmapped, with the target column" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
-              [{code: :required_column_unmapped, target_column: "status"}]
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column_name) }).to eq(
+              [{code: :required_column_unmapped, target_column_name: "status"}]
             )
           end
         end
@@ -292,15 +270,15 @@ RSpec.describe Pipeforge::Engine do
 
       context "in several columns" do
         let(:mapped_columns) do
-          {"status" => {}, "nowhere" => {source_column: "Code"}, "note" => {source_column: "Note"}}
+          {"status" => {}, "nowhere" => {source_column_name: "Code"}, "note" => {source_column_name: "Note"}}
         end
 
         it "lists every error in one error, in order" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column_name) }).to eq(
               [
-                {code: :column_missing_source_column, target_column: "status"},
-                {code: :target_column_not_in_schema, target_column: "nowhere"}
+                {code: :column_missing_source_column, target_column_name: "status"},
+                {code: :target_column_not_in_schema, target_column_name: "nowhere"}
               ]
             )
           end
@@ -308,14 +286,14 @@ RSpec.describe Pipeforge::Engine do
       end
 
       context "together with a column that is not in the file" do
-        let(:mapped_columns) { {"status" => {}, "code" => {source_column: "Gone"}} }
+        let(:mapped_columns) { {"status" => {}, "code" => {source_column_name: "Gone"}} }
 
         it "reports both in one error" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
-            expect(error.errors.map { |entry| entry.slice(:code, :target_column) }).to eq(
+            expect(error.errors.map { |entry| entry.slice(:code, :target_column_name) }).to eq(
               [
-                {code: :column_missing_source_column, target_column: "status"},
-                {code: :mapped_column_not_in_file, target_column: "code"}
+                {code: :column_missing_source_column, target_column_name: "status"},
+                {code: :mapped_column_not_in_file, target_column_name: "code"}
               ]
             )
           end
@@ -338,7 +316,7 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Count\n1\n2\n") }
       let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
       let(:mapped_columns) do
-        {"count" => {source_column: "Count", value_mapping: {1 => "x", 2 => "20"}}}
+        {"count" => {source_column_name: "Count", value_mapping: {1 => "x", 2 => "20"}}}
       end
 
       it "applies the mapping, because the keys are turned into text" do
@@ -356,7 +334,7 @@ RSpec.describe Pipeforge::Engine do
 
       context "when two keys give the same text" do
         let(:mapped_columns) do
-          {"count" => {source_column: "Count", value_mapping: {1 => "x", "1" => "20"}}}
+          {"count" => {source_column_name: "Count", value_mapping: {1 => "x", "1" => "20"}}}
         end
 
         it "makes them one key, and the later one is used" do
@@ -368,7 +346,7 @@ RSpec.describe Pipeforge::Engine do
     context "with a column that has no value mapping" do
       let(:source_io) { csv_io("Count\n1\n") }
       let(:target_columns) { [build_target_column(name: "count", type: "integer")] }
-      let(:mapped_columns) { {"count" => {source_column: "Count"}} }
+      let(:mapped_columns) { {"count" => {source_column_name: "Count"}} }
 
       it "returns an empty value mapping for it" do
         expect(result.column_summaries["count"].value_mapping).to eq({})
@@ -377,7 +355,7 @@ RSpec.describe Pipeforge::Engine do
 
     context "with a value mapping on a column" do
       let(:target_columns) { [build_target_column(name: "status", type: "integer")] }
-      let(:mapped_columns) { {"status" => {source_column: "Status", value_mapping: value_mapping}} }
+      let(:mapped_columns) { {"status" => {source_column_name: "Status", value_mapping: value_mapping}} }
       let(:value_mapping) { {"Active" => "1", "A" => "x"} }
 
       it "measures the values as the values they map to" do
@@ -392,7 +370,7 @@ RSpec.describe Pipeforge::Engine do
         let(:edited_mapped_columns) do
           {
             "status" => {
-              source_column: "Status",
+              source_column_name: "Status",
               value_mapping: {"Active" => "1", "INACTIVE" => "0", "A" => "2"}
             }
           }
@@ -407,63 +385,42 @@ RSpec.describe Pipeforge::Engine do
     end
   end
 
-  describe "the schema of the target table" do
+  describe "the target of the target model" do
     let(:source_io) { csv_io("Status,Code\n1,2\n") }
     let(:target_columns) { [build_target_column(name: "status"), build_target_column(name: "code")] }
 
-    before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
-
-    it "is read from the adapter once, however many times the stages are called" do
+    it "is built once, however many times the stages use it" do
       engine.analyze_headers
-      engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
-      engine.analyze_column_values(mapped_columns: {"code" => {source_column: "Code"}})
+      engine.analyze_column_values(mapped_columns: {"status" => {source_column_name: "Status"}})
+      engine.analyze_column_values(mapped_columns: {"code" => {source_column_name: "Code"}})
+      engine.run(mode: :dry_run, mapped_columns: {"status" => {source_column_name: "Status"}})
 
-      expect(Pipeforge::TargetAdapter).to have_received(:schema).once
+      expect(target_class).to have_received(:new).with(target_model_name: "Record").once
     end
 
-    context "when reading it fails" do
-      let(:schema_error) do
-        Pipeforge::TargetSchemaError.single(code: :target_table_not_found, message: "no such table", table: "records")
-      end
+    it "gives its schema once, however many times the stages are called" do
+      allow(target).to receive(:schema).and_call_original
 
-      it "asks the adapter again on the next call" do
-        allow(Pipeforge::TargetAdapter).to receive(:schema).and_raise(schema_error)
-        expect { engine.analyze_headers }.to raise_error(Pipeforge::TargetSchemaError)
+      engine.analyze_headers
+      engine.analyze_column_values(mapped_columns: {"status" => {source_column_name: "Status"}})
+      engine.analyze_column_values(mapped_columns: {"code" => {source_column_name: "Code"}})
 
-        allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema)
-
-        expect(engine.analyze_headers.matches.map { |match| match[:target_column] }).to eq(%w[status code])
-      end
-    end
-  end
-
-  describe "the model adapter of the target table" do
-    let(:source_io) { csv_io("Status,Code\n1,2\n") }
-    let(:target_columns) { [build_target_column(name: "status"), build_target_column(name: "code")] }
-
-    before { allow(Pipeforge::TargetAdapter).to receive(:schema).and_return(schema) }
-
-    it "is asked from the adapter once, however many times the stages use it" do
-      engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}})
-      engine.analyze_column_values(mapped_columns: {"code" => {source_column: "Code"}})
-      engine.run(mode: :dry_run, mapped_columns: {"status" => {source_column: "Status"}})
-
-      expect(Pipeforge::TargetAdapter).to have_received(:model_adapter).with(target_model: "Record").once
+      expect(target).to have_received(:schema).once
     end
 
-    context "when asking for it fails" do
-      let(:model_error) do
-        Pipeforge::TargetSchemaError.single(code: :target_table_not_found, message: "no such table", table: "records")
+    context "when building it fails" do
+      let(:target_error) do
+        Pipeforge::TargetSchemaError.single(code: :target_table_not_found, message: "no such table", table_name: "records")
       end
 
-      it "asks the adapter again on the next call" do
-        allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_raise(model_error)
-        expect { engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}) }
+      it "builds it again on the next call" do
+        allow(target_class).to receive(:new).and_raise(target_error)
+        expect { engine.analyze_column_values(mapped_columns: {"status" => {source_column_name: "Status"}}) }
           .to raise_error(Pipeforge::TargetSchemaError)
 
-        allow(Pipeforge::TargetAdapter).to receive(:model_adapter).and_return(FakeModelAdapter.new)
+        allow(target_class).to receive(:new).and_return(target)
 
-        expect(engine.analyze_column_values(mapped_columns: {"status" => {source_column: "Status"}}).column_summaries.keys).to eq(["status"])
+        expect(engine.analyze_column_values(mapped_columns: {"status" => {source_column_name: "Status"}}).column_summaries.keys).to eq(["status"])
       end
     end
   end

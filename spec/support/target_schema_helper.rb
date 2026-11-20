@@ -9,18 +9,22 @@ module TargetSchemaHelper
   def build_target_column(name:, **overrides)
     defaults = {
       type: "string", sql_type: "varchar", limit: nil, is_signed: nil, max_length: nil, precision: nil, scale: nil,
-      default: nil, enum_labels: nil, required: false, foreign_key: nil
+      default: nil, enum_labels: nil, required: false, foreign_key: nil, polymorphic: nil
     }
 
     Pipeforge::TargetColumn.new(name: name, **defaults.merge(overrides))
   end
 
-  def build_target_schema(columns:, table_name: "users", model: "User")
-    Pipeforge::TargetSchema.new(table_name: table_name, model: model, columns: columns)
+  def build_target_schema(columns:, table_name: "users", model_name: "User")
+    Pipeforge::TargetSchema.new(table_name: table_name, model_name: model_name, columns: columns)
   end
 
-  def build_foreign_key(association:, parent_table:)
-    Pipeforge::ForeignKey.new(association: association, parent_table: parent_table)
+  def build_polymorphic_column(association_name:, role:)
+    Pipeforge::PolymorphicColumn.new(association_name: association_name, role: role)
+  end
+
+  def build_foreign_key(association_name:, parent_table_name:)
+    Pipeforge::ForeignKey.new(association_name: association_name, parent_table_name: parent_table_name)
   end
 end
 

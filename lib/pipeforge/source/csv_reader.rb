@@ -230,7 +230,7 @@ module Pipeforge
           errors << {
             code: :source_header_duplicated,
             message: "column name #{header_name} appears #{count} times",
-            source_column: header_name
+            source_column_name: header_name
           }
         end
 

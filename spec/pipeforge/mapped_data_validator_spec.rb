@@ -6,18 +6,18 @@ RSpec.describe Pipeforge::MappedDataValidator do
       source_header_names: %w[Mail Age Zip],
       target_column_names: %w[email age name],
       required_target_column_names: required_target_column_names,
-      target_table: "users"
+      target_table_name: "users"
     )
   end
 
   let(:required_target_column_names) { %w[email] }
-  let(:mapped_columns) { {"email" => {source_column: "Mail"}, "age" => {source_column: "Age"}} }
+  let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "age" => {source_column_name: "Age"}} }
 
   # The codes and the columns of the entries the validator raises with.
   def raised_entries
     validator.call(mapped_columns: mapped_columns)
   rescue Pipeforge::InvalidMappedColumnsError => error
-    error.errors.map { |entry| entry.slice(:code, :target_column, :source_column) }
+    error.errors.map { |entry| entry.slice(:code, :target_column_name, :source_column_name) }
   end
 
   describe "#call" do
@@ -28,7 +28,7 @@ RSpec.describe Pipeforge::MappedDataValidator do
     end
 
     context "when a mapped column carries a value mapping" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail", value_mapping: {"N/A" => nil}}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail", value_mapping: {"N/A" => nil}}} }
 
       it "raises nothing" do
         expect { validator.call(mapped_columns: mapped_columns) }.not_to raise_error
@@ -36,11 +36,11 @@ RSpec.describe Pipeforge::MappedDataValidator do
     end
 
     context "when a target column is not in the schema" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail"}, "nowhere" => {source_column: "Zip"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "nowhere" => {source_column_name: "Zip"}} }
 
       it "gives target_column_not_in_schema with the target and source columns" do
         expect(raised_entries).to eq(
-          [{code: :target_column_not_in_schema, target_column: "nowhere", source_column: "Zip"}]
+          [{code: :target_column_not_in_schema, target_column_name: "nowhere", source_column_name: "Zip"}]
         )
       end
 
@@ -48,7 +48,7 @@ RSpec.describe Pipeforge::MappedDataValidator do
         expect { validator.call(mapped_columns: mapped_columns) }.to raise_error(
           Pipeforge::InvalidMappedColumnsError
         ) do |error|
-          expect(error.errors.first).to include(table: "users")
+          expect(error.errors.first).to include(table_name: "users")
         end
       end
     end
@@ -57,37 +57,37 @@ RSpec.describe Pipeforge::MappedDataValidator do
       let(:mapped_columns) { {"email" => {value_mapping: {}}} }
 
       it "gives column_missing_source_column with the target column" do
-        expect(raised_entries).to eq([{code: :column_missing_source_column, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :column_missing_source_column, target_column_name: "email"}])
       end
     end
 
     context "when the source column is not in the file" do
-      let(:mapped_columns) { {"email" => {source_column: "Nope"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Nope"}} }
 
       it "gives mapped_column_not_in_file with the target and source columns" do
         expect(raised_entries).to eq(
-          [{code: :mapped_column_not_in_file, target_column: "email", source_column: "Nope"}]
+          [{code: :mapped_column_not_in_file, target_column_name: "email", source_column_name: "Nope"}]
         )
       end
     end
 
     context "when a required target column has no entry" do
-      let(:mapped_columns) { {"age" => {source_column: "Age"}} }
+      let(:mapped_columns) { {"age" => {source_column_name: "Age"}} }
 
       it "gives required_column_unmapped with the target column" do
-        expect(raised_entries).to eq([{code: :required_column_unmapped, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :required_column_unmapped, target_column_name: "email"}])
       end
     end
 
     context "when several required target columns have no entry" do
       let(:required_target_column_names) { %w[email name] }
-      let(:mapped_columns) { {"age" => {source_column: "Age"}} }
+      let(:mapped_columns) { {"age" => {source_column_name: "Age"}} }
 
       it "gives one entry for each, in the order of the required columns" do
         expect(raised_entries).to eq(
           [
-            {code: :required_column_unmapped, target_column: "email"},
-            {code: :required_column_unmapped, target_column: "name"}
+            {code: :required_column_unmapped, target_column_name: "email"},
+            {code: :required_column_unmapped, target_column_name: "name"}
           ]
         )
       end
@@ -97,12 +97,12 @@ RSpec.describe Pipeforge::MappedDataValidator do
       let(:mapped_columns) { {"email" => {}} }
 
       it "reports the missing source column only, not also an unmapped column" do
-        expect(raised_entries).to eq([{code: :column_missing_source_column, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :column_missing_source_column, target_column_name: "email"}])
       end
     end
 
     context "when the mapped columns are not a Hash" do
-      let(:mapped_columns) { [["email", {source_column: "Mail"}]] }
+      let(:mapped_columns) { [["email", {source_column_name: "Mail"}]] }
 
       it "gives mapped_columns_not_name_value_entries alone" do
         expect(raised_entries).to eq([{code: :mapped_columns_not_name_value_entries}])
@@ -110,10 +110,10 @@ RSpec.describe Pipeforge::MappedDataValidator do
     end
 
     context "when an entry is nil" do
-      let(:mapped_columns) { {"email" => nil, "age" => {source_column: "Age"}} }
+      let(:mapped_columns) { {"email" => nil, "age" => {source_column_name: "Age"}} }
 
       it "gives mapped_column_not_name_value_entries with the target column" do
-        expect(raised_entries).to eq([{code: :mapped_column_not_name_value_entries, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :mapped_column_not_name_value_entries, target_column_name: "email"}])
       end
     end
 
@@ -121,49 +121,49 @@ RSpec.describe Pipeforge::MappedDataValidator do
       let(:mapped_columns) { {"email" => "Mail"} }
 
       it "gives mapped_column_not_name_value_entries, and no follow-on error for that entry" do
-        expect(raised_entries).to eq([{code: :mapped_column_not_name_value_entries, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :mapped_column_not_name_value_entries, target_column_name: "email"}])
       end
     end
 
     context "when a bad entry sits next to other mistakes" do
-      let(:mapped_columns) { {"email" => nil, "age" => {source_column: "Nope"}} }
+      let(:mapped_columns) { {"email" => nil, "age" => {source_column_name: "Nope"}} }
 
       it "still reports the other mistakes" do
         expect(raised_entries).to eq(
           [
-            {code: :mapped_column_not_name_value_entries, target_column: "email"},
-            {code: :mapped_column_not_in_file, target_column: "age", source_column: "Nope"}
+            {code: :mapped_column_not_name_value_entries, target_column_name: "email"},
+            {code: :mapped_column_not_in_file, target_column_name: "age", source_column_name: "Nope"}
           ]
         )
       end
     end
 
     context "when the value mapping is a list" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail", value_mapping: ["yes"]}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail", value_mapping: ["yes"]}} }
 
       it "gives value_mapping_not_name_value_entries with the target column" do
-        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column_name: "email"}])
       end
     end
 
     context "when the value mapping is a string" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail", value_mapping: "yes"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail", value_mapping: "yes"}} }
 
       it "gives value_mapping_not_name_value_entries with the target column" do
-        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column_name: "email"}])
       end
     end
 
     context "when the value mapping is nil" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail", value_mapping: nil}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail", value_mapping: nil}} }
 
       it "gives value_mapping_not_name_value_entries with the target column" do
-        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column: "email"}])
+        expect(raised_entries).to eq([{code: :value_mapping_not_name_value_entries, target_column_name: "email"}])
       end
     end
 
     context "when the value mapping is left out" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail"}} }
 
       it "raises nothing, because the value mapping is optional" do
         expect { validator.call(mapped_columns: mapped_columns) }.not_to raise_error
@@ -172,7 +172,7 @@ RSpec.describe Pipeforge::MappedDataValidator do
 
     context "when the value mapping maps to nil, a blank, false and a number" do
       let(:mapped_columns) do
-        {"email" => {source_column: "Mail", value_mapping: {"N/A" => nil, "-" => "", "no" => false, "one" => 1}}}
+        {"email" => {source_column_name: "Mail", value_mapping: {"N/A" => nil, "-" => "", "no" => false, "one" => 1}}}
       end
 
       it "raises nothing, because its keys and values are not checked" do
@@ -190,7 +190,7 @@ RSpec.describe Pipeforge::MappedDataValidator do
     end
 
     context "when one source column is mapped to two target columns" do
-      let(:mapped_columns) { {"email" => {source_column: "Mail"}, "name" => {source_column: "Mail"}} }
+      let(:mapped_columns) { {"email" => {source_column_name: "Mail"}, "name" => {source_column_name: "Mail"}} }
 
       it "raises nothing, because the consumer may do that on purpose" do
         expect { validator.call(mapped_columns: mapped_columns) }.not_to raise_error
@@ -198,15 +198,15 @@ RSpec.describe Pipeforge::MappedDataValidator do
     end
 
     context "when several things are wrong at once" do
-      let(:mapped_columns) { {"nowhere" => {source_column: "Nope"}, "age" => {}} }
+      let(:mapped_columns) { {"nowhere" => {source_column_name: "Nope"}, "age" => {}} }
 
       it "lists every mistake in order: each entry first, then the required columns" do
         expect(raised_entries).to eq(
           [
-            {code: :target_column_not_in_schema, target_column: "nowhere", source_column: "Nope"},
-            {code: :mapped_column_not_in_file, target_column: "nowhere", source_column: "Nope"},
-            {code: :column_missing_source_column, target_column: "age"},
-            {code: :required_column_unmapped, target_column: "email"}
+            {code: :target_column_not_in_schema, target_column_name: "nowhere", source_column_name: "Nope"},
+            {code: :mapped_column_not_in_file, target_column_name: "nowhere", source_column_name: "Nope"},
+            {code: :column_missing_source_column, target_column_name: "age"},
+            {code: :required_column_unmapped, target_column_name: "email"}
           ]
         )
       end

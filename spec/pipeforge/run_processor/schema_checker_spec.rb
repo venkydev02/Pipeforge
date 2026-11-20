@@ -1,17 +1,34 @@
 # frozen_string_literal: true
 
 RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
-  subject(:checker) { described_class.new(target_schema: build_target_schema(columns: target_columns)) }
+  subject(:checker) { described_class.new(resolved_mapped_columns: resolved_mapped_columns) }
 
   let(:target_columns) { [build_target_column(name: "email")] }
+  # The columns of the table that an entry fills; the others are not mapped.
+  let(:mapped_target_columns) { target_columns }
+  let(:resolved_mapped_columns) do
+    mapped_target_columns.to_h do |target_column|
+      [
+        target_column.name,
+        Pipeforge::ResolvedMappedColumn.new(
+          source_column_name: target_column.name, value_mapping: {}, target_column: target_column
+        )
+      ]
+    end
+  end
 
   # The limits themselves are tested once, in the spec of ColumnLimitsChecker; here a column of each kind
-  # shows that the checker asks it and turns what it finds into an entry.
+  # shows that the checker asks it and gives what it finds as an entry with the origin and the value. The entry is
+  # compared with the one the ErrorCatalog builds for the same mistake.
   describe "#call" do
     subject(:errors) { checker.call(attributes: attributes) }
 
     let(:attributes) { {"email" => "ann@example.com"} }
     let(:codes) { errors.map { |error| error[:code] } }
+
+    def catalog_error(key, **facts)
+      Pipeforge::ErrorCatalog::ERRORS.fetch(key).call(**facts)
+    end
 
     it "gives no error for a record that passes" do
       expect(errors).to eq([])
@@ -23,16 +40,10 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       context "when its value is empty" do
         let(:attributes) { {"email" => nil} }
 
-        it "gives value_missing for that column" do
-          expect(errors).to contain_exactly(include(code: :value_missing, target_column: "email"))
-        end
-
-        it "gives a message that a person can read" do
-          expect(errors.first[:message]).to include("email")
-        end
-
-        it "gives the origin schema" do
-          expect(errors.first[:origin]).to eq(:schema)
+        it "gives value_missing for that column, with the origin schema and no value" do
+          expect(errors).to eq(
+            [catalog_error(:value_missing, origin: :schema, target_column_name: "email", value: nil)]
+          )
         end
       end
 
@@ -65,8 +76,14 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       context "when the value is longer" do
         let(:attributes) { {"code" => "abcd"} }
 
-        it "gives value_too_long for that column, with a message that names it" do
-          expect(errors).to contain_exactly(include(origin: :schema, code: :value_too_long, target_column: "code", message: /\Acode: /))
+        it "gives value_too_long for that column, with the origin schema and the value that failed" do
+          expect(errors).to eq(
+            [
+              catalog_error(
+                :value_too_long, origin: :schema, target_column_name: "code", value: "abcd", length: 4, max_length: 3
+              )
+            ]
+          )
         end
       end
 
@@ -86,7 +103,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"age" => 32_768} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "age"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "age"))
         end
       end
 
@@ -118,7 +135,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"fee" => BigDecimal("1000.00")} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "fee"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "fee"))
         end
       end
 
@@ -146,7 +163,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"ratio" => 3.5e38} }
 
         it "gives value_out_of_range for that column" do
-          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column: "ratio"))
+          expect(errors).to contain_exactly(include(code: :value_out_of_range, target_column_name: "ratio"))
         end
       end
 
@@ -176,7 +193,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         let(:attributes) { {"status" => "shipped"} }
 
         it "gives value_not_allowed for that column" do
-          expect(errors).to contain_exactly(include(code: :value_not_allowed, target_column: "status"))
+          expect(errors).to contain_exactly(include(code: :value_not_allowed, target_column_name: "status"))
         end
       end
     end
@@ -201,10 +218,21 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       let(:attributes) { {"email" => nil, "code" => "ab", "age" => 200} }
 
       it "gives one entry for each, in column order" do
-        expect(errors.map { |error| [error[:target_column], error[:code]] }).to eq(
+        expect(errors.map { |error| [error[:target_column_name], error[:code]] }).to eq(
           [["email", :value_missing], ["code", :value_too_long], ["age", :value_out_of_range]]
         )
       end
+    end
+  end
+
+  describe "a column of the table that is not mapped" do
+    subject(:errors) { checker.call(attributes: {"email" => "ann@example.com", "note" => nil}) }
+
+    let(:target_columns) { [build_target_column(name: "email"), build_target_column(name: "note", required: true)] }
+    let(:mapped_target_columns) { [target_columns.first] }
+
+    it "is not checked: the model and the database check it" do
+      expect(errors).to eq([])
     end
   end
 end
