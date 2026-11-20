@@ -916,6 +916,17 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
 
         expect(seen).to eq(["ann@example.com"])
       end
+
+      context "when a transaction of the consumer is already open" do
+        it "undoes what the block wrote and keeps what the consumer wrote before it" do
+          model.transaction do
+            save_account(email: "before@example.com")
+            target.transaction(rollback_at_end: true) { save_account(email: "dry@example.com") }
+
+            expect(model.pluck(:email)).to eq(["before@example.com"])
+          end
+        end
+      end
     end
   end
 

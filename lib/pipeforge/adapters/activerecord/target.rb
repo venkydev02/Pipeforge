@@ -120,7 +120,9 @@ module Pipeforge
       result = nil
 
       # The model's own connection, so a model kept in another database is written to that database.
-      @model.transaction do
+      # requires_new: inside a transaction that the consumer already opened, the block would only join it, and
+      # ActiveRecord swallows the Rollback without undoing anything; a savepoint makes the undo real.
+      @model.transaction(requires_new: true) do
         result = block.call
         raise ActiveRecord::Rollback if rollback_at_end
       end
@@ -192,11 +194,12 @@ module Pipeforge
     end
 
     # Whether the text names a model, as ActiveRecord reads the type of a polymorphic association: a constant that
-    # is a class below ActiveRecord::Base. A model that is not loaded yet is found by the autoload.
+    # is a class below ActiveRecord::Base. A model that is not loaded yet is found by the autoload. An abstract class
+    # has no table to hold a parent, so it is not a model.
     def model_named?(name:)
       model_class = name.safe_constantize
 
-      model_class.is_a?(Class) && model_class < ActiveRecord::Base
+      model_class.is_a?(Class) && model_class < ActiveRecord::Base && !model_class.abstract_class?
     end
 
     # The loaded model with that name. An abstract class is not a model of a table, so it is not found.

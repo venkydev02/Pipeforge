@@ -254,6 +254,11 @@ module AdapterSpecModels
     end
   end
 
+  # A class with no table of its own, as ApplicationRecord is in an application.
+  class AbstractRecord < ActiveRecord::Base
+    self.abstract_class = true
+  end
+
   class Account < ActiveRecord::Base
     self.table_name = "accounts"
     before_save { throw :abort if nickname == "halt" }

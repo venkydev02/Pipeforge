@@ -142,6 +142,19 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       )
     end
 
+    context "when the type names an abstract class, which has no table to hold a parent" do
+      let(:attributes) { {"commentable_id" => 1, "commentable_type" => "AdapterSpecModels::AbstractRecord"} }
+
+      it "has the error of the type column, as for a name that is no model" do
+        expect(model_record.errors["commentable_type"]).to eq(
+          catalog_error(
+            :value_not_accepted_polymorphic_type, target_column_name: "commentable_type", origin: :model,
+            value: "AdapterSpecModels::AbstractRecord"
+          )
+        )
+      end
+    end
+
     context "when the type names a model whose parent does not exist" do
       let(:attributes) { {"commentable_id" => 999_999, "commentable_type" => "AdapterSpecModels::Company"} }
 
