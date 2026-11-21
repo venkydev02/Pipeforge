@@ -65,6 +65,36 @@ RSpec.describe DefineModelHelper do
       end
     end
 
+    context "with table false" do
+      it "gives a model whose table does not exist" do
+        model = define_model(name: "ModelWithoutAnyTable", table: false)
+
+        expect([model.table_name, model.table_exists?]).to eq(["model_without_any_table", false])
+      end
+    end
+
+    # The examples of this context run in the order written: the second looks at the model of the first, after its
+    # table and its name were taken away.
+    context "after the example that defined a model", order: :defined do
+      defined_models = []
+
+      it "has defined a model of this name" do
+        defined_models << define_model(name: "ModelWithStaleName", columns: ->(table) { table.string :label })
+
+        expect(defined_models.first.name).to eq("AdapterSpecModels::ModelWithStaleName")
+      end
+
+      it "gives the model no name, so a search of the loaded classes by name cannot find it" do
+        names = ActiveRecord::Base.descendants.map(&:name)
+
+        expect([defined_models.first.name, names.include?("AdapterSpecModels::ModelWithStaleName")]).to eq([nil, false])
+      end
+
+      it "has dropped the table" do
+        expect(ActiveRecord::Base.connection.data_source_exists?("model_with_stale_name")).to be(false)
+      end
+    end
+
     context "when no columns are given" do
       it "gives a table with only the usual id" do
         model = define_model(name: "ModelWithNoColumns")

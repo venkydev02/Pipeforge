@@ -130,13 +130,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
   end
 
   it "asks for the parents once for each chunk" do
-    queries = []
-    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _start, _finish, _id, payload|
-      queries << payload[:sql] if payload[:name] != "SCHEMA" && payload[:sql].include?('FROM "companies"')
-    end
-
-    run_result
-    ActiveSupport::Notifications.unsubscribe(subscriber)
+    queries = queries_on("companies") { run_result }
 
     expect(queries.size).to eq(2)
   end
