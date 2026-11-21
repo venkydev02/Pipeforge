@@ -255,7 +255,7 @@ module AdapterSpecModels
   end
 
   # A class with no table of its own, as ApplicationRecord is in an application.
-  class AbstractRecord < ActiveRecord::Base
+  class AbstractModel < ActiveRecord::Base
     self.abstract_class = true
   end
 
@@ -279,15 +279,6 @@ module AdapterSpecModels
     validates :name, :settings, presence: true
   end
 
-  # A model whose table is never created, and a class that is no model of a table.
-  class Ghost < ActiveRecord::Base
-    self.table_name = "ghosts"
-  end
-
-  class AbstractRecord < ActiveRecord::Base
-    self.abstract_class = true
-  end
-
   # Models that use another database than ActiveRecord::Base: the secondary database. Its only
   # table is readings.
   class SecondaryDatabaseRecord < ActiveRecord::Base
@@ -295,12 +286,12 @@ module AdapterSpecModels
     establish_connection(AdapterSpecDatabase::SECONDARY_CONNECTION_OPTIONS)
   end
 
-  class Reading < SecondaryDatabaseRecord
+  class ModelInSecondaryDatabase < SecondaryDatabaseRecord
     self.table_name = "readings"
   end
 
-  # Named like a table of the default database, which the secondary database does not have.
-  class UserInSecondaryDatabase < SecondaryDatabaseRecord
+  # A model of the secondary database whose table is named like one of the default database, which the secondary database does not have.
+  class ModelWithTableOnlyInDefaultDatabase < SecondaryDatabaseRecord
     self.table_name = "users"
   end
 end

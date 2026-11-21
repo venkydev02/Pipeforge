@@ -76,8 +76,8 @@ module Pipeforge
     end
 
     # The values the record holds now: cast to the types of the columns, and after the model's validation
-    # has run, so after its callbacks. They are what would be loaded. A value the target did not give the
-    # record is not in them.
+    # has run, so after its callbacks. They are what would be loaded. A column that was not given holds its
+    # default, or nil.
     #
     # @return [Hash{String => Object}] column => value
     def attributes
@@ -170,19 +170,19 @@ module Pipeforge
     # The key of a blank error: +parent_missing+ for a +belongs_to+ association whose foreign key holds
     # a value, and +value_missing+ otherwise.
     def blank_key_of(model_error:)
-      reflection = parent_association_of(model_error: model_error)
-      return :value_missing if reflection.nil? || @record[reflection.foreign_key].nil?
+      parent_reflection = parent_association_of(model_error: model_error)
+      return :value_missing if parent_reflection.nil? || @record[parent_reflection.foreign_key].nil?
 
       :parent_missing
     end
 
-    # The column the error is about: the foreign key column for an error on a +belongs_to+
-    # association, nil for an error on the record as a whole.
+    # The column the error is about: nil for an error on the record as a whole (+:base+), the foreign key column for
+    # an error on a +belongs_to+ association, and the name of the attribute for any other error.
     def target_column_name_of(model_error:)
       return nil if model_error.attribute == :base
 
-      reflection = parent_association_of(model_error: model_error)
-      return reflection.foreign_key unless reflection.nil?
+      parent_reflection = parent_association_of(model_error: model_error)
+      return parent_reflection.foreign_key unless parent_reflection.nil?
 
       model_error.attribute.to_s
     end

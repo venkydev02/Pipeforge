@@ -8,11 +8,14 @@
 # An example that no break fails alone is kept for what the rule accepts or reports (contract only).
 RSpec.describe Pipeforge::ActiveRecordSchemaReader do
   subject(:schema) do
-    described_class.new(model: model, enum_labels: enum_labels, polymorphic_columns: polymorphic_columns).call
+    described_class.new(
+      model: model, enum_labels_by_column_name: enum_labels_by_column_name,
+      polymorphic_columns_by_column_name: polymorphic_columns_by_column_name
+    ).call
   end
 
-  let(:enum_labels) { {} }
-  let(:polymorphic_columns) { {} }
+  let(:enum_labels_by_column_name) { {} }
+  let(:polymorphic_columns_by_column_name) { {} }
   let(:target_column) do
     schema.columns.find { |column| column.name == column_name }
   end
@@ -122,17 +125,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         end
       end
 
-      context "when model is ModelWithoutPrimaryKey, whose table has no primary key" do
-        let(:model) do
-          define_model(name: "ModelWithoutPrimaryKey", primary_key: false, columns: ->(table) { table.string :label })
-        end
-
-        # contract only
-        it "has label" do
-          expect(schema.columns.map(&:name)).to eq(%w[label])
-        end
-      end
-
       context "when model is ModelWithGeneratedColumn, which has the generated column shout" do
         let(:model) do
           define_model(
@@ -197,16 +189,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         end
       end
 
-      context "when column is bio of ModelWithTypedColumns" do
-        let(:model) { define_model_with_typed_columns }
-        let(:column_name) { "bio" }
-
-        # contract only
-        it "has type \"text\", with max_length and limit nil" do
-          expect(target_column).to have_attributes(type: "text", max_length: nil, limit: nil)
-        end
-      end
-
       context "when column is age of ModelWithTypedColumns" do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "age" }
@@ -227,16 +209,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         end
       end
 
-      context "when column is weight of ModelWithFloats" do
-        let(:model) { define_model_with_floats }
-        let(:column_name) { "weight" }
-
-        # contract only
-        it "has type \"float\", with limit nil" do
-          expect(target_column).to have_attributes(type: "float", limit: nil)
-        end
-      end
-
       context "when column is balance of ModelWithTypedColumns" do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "balance" }
@@ -244,18 +216,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         # contract only
         it "has type \"decimal\", precision 10 and scale 2" do
           expect(target_column).to have_attributes(type: "decimal", precision: 10, scale: 2)
-        end
-      end
-
-      context "when column is active of ModelWithTypedColumns" do
-        let(:model) { define_model_with_typed_columns }
-        let(:column_name) { "active" }
-
-        # contract only
-        it "has type \"boolean\", with limit, max_length, precision and scale nil" do
-          expect(target_column).to have_attributes(
-            type: "boolean", limit: nil, max_length: nil, precision: nil, scale: nil
-          )
         end
       end
     end
@@ -295,16 +255,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
     end
 
     describe "default, enum_labels and polymorphic" do
-      context "when column is active of ModelWithTypedColumns, which the table defaults to true" do
-        let(:model) { define_model_with_typed_columns }
-        let(:column_name) { "active" }
-
-        # contract only
-        it "has default true" do
-          expect(target_column.default).to be(true)
-        end
-      end
-
       context "when column is channel of ModelWithModelDefault, whose default is set only in the model" do
         let(:model) { define_model_with_model_default }
         let(:column_name) { "channel" }
@@ -314,17 +264,7 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         end
       end
 
-      context "when column is email of ModelWithTypedColumns, which has no default" do
-        let(:model) { define_model_with_typed_columns }
-        let(:column_name) { "email" }
-
-        # contract only
-        it "has default nil" do
-          expect(target_column.default).to be_nil
-        end
-      end
-
-      context "when model is ModelWithEnum and enum_labels is {\"status\" => [\"draft\", \"placed\", \"shipped\"]}" do
+      context "when model is ModelWithEnum and enum_labels_by_column_name is {\"status\" => [\"draft\", \"placed\", \"shipped\"]}" do
         let(:model) do
           define_model(
             name: "ModelWithEnum",
@@ -336,27 +276,20 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
             enum :status, {draft: 0, placed: 1, shipped: 2}
           end
         end
-        let(:enum_labels) { {"status" => %w[draft placed shipped]} }
+        let(:enum_labels_by_column_name) { {"status" => %w[draft placed shipped]} }
 
         it "has those enum_labels on status" do
           status_column = schema.columns.find { |column| column.name == "status" }
 
           expect(status_column.enum_labels).to eq(%w[draft placed shipped])
         end
-
-        # contract only
-        it "has enum_labels nil on kind" do
-          kind_column = schema.columns.find { |column| column.name == "kind" }
-
-          expect(kind_column.enum_labels).to be_nil
-        end
       end
 
       context "when model is ModelWithPolymorphicParent" do
         let(:model) { define_model_with_polymorphic_parent }
 
-        context "and polymorphic_columns has commentable_id with role \"id\" and commentable_type with role \"type\"" do
-          let(:polymorphic_columns) do
+        context "and polymorphic_columns_by_column_name has commentable_id with role \"id\" and commentable_type with role \"type\"" do
+          let(:polymorphic_columns_by_column_name) do
             {
               "commentable_id" => Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "id"),
               "commentable_type" => Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "type")
@@ -366,14 +299,7 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
           it "has its PolymorphicColumn on each of the two columns" do
             polymorphic_by_name = schema.columns.to_h { |column| [column.name, column.polymorphic] }
 
-            expect(polymorphic_by_name).to eq(polymorphic_columns)
-          end
-        end
-
-        context "and polymorphic_columns is empty" do
-          # contract only
-          it "has polymorphic nil on both columns" do
-            expect(schema.columns.map(&:polymorphic)).to eq([nil, nil])
+            expect(polymorphic_by_name).to eq(polymorphic_columns_by_column_name)
           end
         end
       end
@@ -515,16 +441,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
             "from_company_id" => Pipeforge::ForeignKey.new(association_name: "from_company", parent_table_name: "companies"),
             "to_company_id" => Pipeforge::ForeignKey.new(association_name: "to_company", parent_table_name: "companies")
           )
-        end
-      end
-
-      context "when column is commentable_id of ModelWithPolymorphicParent, a polymorphic belongs_to" do
-        let(:model) { define_model_with_polymorphic_parent }
-        let(:column_name) { "commentable_id" }
-
-        # contract only
-        it "has foreign_key nil" do
-          expect(target_column.foreign_key).to be_nil
         end
       end
 

@@ -9,21 +9,23 @@ module Pipeforge
   # are left out, so the rest of the engine never hears of them.
   #
   # @example
-  #   schema = Pipeforge::ActiveRecordSchemaReader.new(model: User, enum_labels: {}).call
+  #   schema = Pipeforge::ActiveRecordSchemaReader.new(
+  #     model: User, enum_labels_by_column_name: {}, polymorphic_columns_by_column_name: {}
+  #   ).call
   #   schema.columns.map(&:name)  # => ["email", "company_id"]
   class ActiveRecordSchemaReader
     # The column types whose size is a number of characters; for the others it is a number of bytes.
     TEXT_TYPES = %w[string text].freeze
 
     # @param model [Class] the ActiveRecord model of the target table
-    # @param enum_labels [Hash{String => Array<String>}] column name => the labels of its enum, for the enum
+    # @param enum_labels_by_column_name [Hash{String => Array<String>}] column name => the labels of its enum, for the enum
     #   columns of the model
-    # @param polymorphic_columns [Hash{String => PolymorphicColumn}] column name => the polymorphic association it
+    # @param polymorphic_columns_by_column_name [Hash{String => PolymorphicColumn}] column name => the polymorphic association it
     #   belongs to, for the id column and the type column of each polymorphic association of the model
-    def initialize(model:, enum_labels:, polymorphic_columns:)
+    def initialize(model:, enum_labels_by_column_name:, polymorphic_columns_by_column_name:)
       @model = model
-      @enum_labels = enum_labels
-      @polymorphic_columns = polymorphic_columns
+      @enum_labels_by_column_name = enum_labels_by_column_name
+      @polymorphic_columns_by_column_name = polymorphic_columns_by_column_name
     end
 
     # @return [TargetSchema] the table name, the model name and the columns that can be given a source column
@@ -43,7 +45,7 @@ module Pipeforge
 
         target_columns << build_column(
           model_column: model_column, foreign_key: foreign_keys[model_column.name],
-          polymorphic: @polymorphic_columns[model_column.name]
+          polymorphic: @polymorphic_columns_by_column_name[model_column.name]
         )
       end
 
@@ -103,7 +105,7 @@ module Pipeforge
         precision: attribute_type.precision,
         scale: attribute_type.scale,
         default: @model.column_defaults[model_column.name],
-        enum_labels: @enum_labels[model_column.name],
+        enum_labels: @enum_labels_by_column_name[model_column.name],
         required: required?(model_column: model_column),
         foreign_key: foreign_key,
         polymorphic: polymorphic
