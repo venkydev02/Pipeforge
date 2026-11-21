@@ -92,7 +92,7 @@ module Pipeforge
             failed_rows << FailedRow.new(
               row_number: first_row_number + position,
               attributes: model_record.json_attributes.slice(*target_column_names),
-              errors: model_record.errors.values
+              errors: model_record.errors.values.map(&:to_h)
             )
           end
 
@@ -106,8 +106,8 @@ module Pipeforge
 
           # The schema is checked on what the model record holds after its validation, because the model's
           # callbacks can change a value.
-          schema_checker.call(attributes: model_record.attributes).each do |entry|
-            model_record.add_error(**entry)
+          schema_checker.call(attributes: model_record.attributes).each do |error|
+            model_record.add_error(error: error)
           end
         end
       end

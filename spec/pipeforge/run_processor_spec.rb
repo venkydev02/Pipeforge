@@ -143,7 +143,7 @@ RSpec.describe Pipeforge::RunProcessor do
         FakeTarget.new(
           load_errors_of: lambda do |attributes:|
             if attributes["email"] == "b@example.com"
-              [{origin: :database, kind: nil, details: {}, value: nil, code: :value_not_unique, message: "taken", target_column_name: "email"}]
+              [Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_unique).call(origin: :database, target_column_name: "email", value: nil)]
             else
               []
             end

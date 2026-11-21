@@ -36,7 +36,7 @@ module Pipeforge
       end
 
       # @param attributes [Hash{String => Object}] target column => value to load
-      # @return [Array<Hash>] one entry for each mistake, as the {ErrorCatalog} builds it, with +origin: :schema+
+      # @return [Array<ErrorCatalog::ColumnError>] one error for each mistake, as the {ErrorCatalog} builds it, with +origin: :schema+
       #   (its +value+ is the value that failed, nil for an empty required value); empty when the record passes
       def call(attributes:)
         errors = []

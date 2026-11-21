@@ -4,8 +4,13 @@
 # the specs: the specs of the components that build an error compare it with the catalog's own call.
 RSpec.describe Pipeforge::ErrorCatalog do
   # The origin and the value that failed are facts of every error; :model and "failed" stand for them.
-  def build(key, **facts)
+  def build_error(key, **facts)
     described_class::ERRORS.fetch(key).call(origin: :model, target_column_name: "status", value: "failed", **facts)
+  end
+
+  # The same error as the Hash of its seven fields, which is what a failed row shows.
+  def build(key, **facts)
+    build_error(key, **facts).to_h
   end
 
   describe "ERRORS" do
@@ -21,9 +26,45 @@ RSpec.describe Pipeforge::ErrorCatalog do
     end
   end
 
+  describe "the error object" do
+    it "gives the fields of the error as methods" do
+      error = build_error(:value_missing)
+
+      expect([error.origin, error.code, error.target_column_name, error.message]).to eq(
+        [:model, :value_missing, "status", "status: the value is required but empty"]
+      )
+    end
+
+    it "gives equal objects for the same input" do
+      expect(build_error(:value_too_long, length: 4, max_length: 3)).to eq(build_error(:value_too_long, length: 4, max_length: 3))
+    end
+
+    it "cannot be built outside the module, even from an object it gave" do
+      expect { build_error(:value_missing).class.new }.to raise_error(NoMethodError, /private method 'new'/)
+    end
+
+    it "has a class that cannot be named outside the module" do
+      expect { described_class::ColumnError }.to raise_error(NameError)
+    end
+  end
+
+  describe ".error?" do
+    it "is true for an error that a function of ERRORS built" do
+      expect(described_class.error?(candidate: build_error(:value_missing))).to be(true)
+    end
+
+    it "is false for the Hash with the seven fields of such an error" do
+      expect(described_class.error?(candidate: build(:value_missing))).to be(false)
+    end
+
+    it "is false for nil" do
+      expect(described_class.error?(candidate: nil)).to be(false)
+    end
+  end
+
   describe "the shape of an error" do
     context "when the error has a column" do
-      it "is a Hash of origin, code, kind, target_column_name, message, details and value, with the column before the sentence" do
+      it "has the fields origin, code, kind, target_column_name, message, details and value, with the column before the sentence" do
         expect(build(:value_missing)).to eq(
           origin: :model, code: :value_missing, kind: nil, target_column_name: "status",
           message: "status: the value is required but empty", details: {}, value: "failed"
@@ -35,7 +76,7 @@ RSpec.describe Pipeforge::ErrorCatalog do
       it "has no column and its message is the sentence" do
         error = described_class::ERRORS.fetch(:value_missing).call(origin: :model, target_column_name: nil, value: nil)
 
-        expect(error).to eq(
+        expect(error.to_h).to eq(
           origin: :model, code: :value_missing, kind: nil, target_column_name: nil, message: "the value is required but empty",
           details: {}, value: nil
         )

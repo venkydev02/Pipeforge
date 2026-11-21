@@ -96,7 +96,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
 
     expect(error).to eq(
       Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_enum_label)
-        .call(origin: :model, target_column_name: error[:target_column_name], value: error[:value])
+        .call(origin: :model, target_column_name: error[:target_column_name], value: error[:value]).to_h
     )
     expect(error[:value]).to be_a(String)
   end

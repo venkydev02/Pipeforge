@@ -536,7 +536,8 @@
   4. **The origin and the failed value are required keywords of every function and are in the error**, in JSON types (the cast value, or the value as given when it cannot be cast), and `nil` when there is none. A value the record could not hold is not in the failed row's attributes, so this is where it is shown.
   5. **A component is verified by comparing its error with the catalog's call for the same input**, so each sentence is written once and tested once, in the catalog's own spec.
 * **Consequences:**
-  * `ColumnLimitsChecker` knows its column and returns the catalog's Hash (or nil); its `Violation` is removed.
-  * The record contract is `add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)`.
+  * `ColumnLimitsChecker` knows its column and returns the catalog's error (or nil); its `Violation` is removed.
+  * The record contract is `add_error(error:)`, with an error built by the catalog.
   * The raised data errors (the mapped columns, the source file, the target) have their own fields and are not in the catalog yet.
   * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.
+* **Amendment (2026-11-21): the catalog gives an object, and only the catalog can make it.** *Supersedes "returns the error as a Hash" in item 1.* The functions of `ERRORS` return an `ErrorCatalog::ColumnError`, a Data object with the same seven fields (it is about a column, whose name is nil for the record as a whole). The class cannot be named or built outside the module (`private_constant` and a private `new`), and `ErrorCatalog.error?(candidate:)` is how another class asks whether an object is one. `add_error(error:)` takes only that object and raises an `ArgumentError` for anything else. A failed row still shows the seven-key Hash that `to_h` gives, so the consumer's errors do not change. Ruby's reflection can get around the privacy, so it stops what ordinary code can do and no more.

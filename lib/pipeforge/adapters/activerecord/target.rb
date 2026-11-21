@@ -82,7 +82,7 @@ module Pipeforge
 
       rejections.each do |column_name, rejection|
         model_record.add_error(
-          **ErrorCatalog::ERRORS.fetch(rejection[:key])
+          error: ErrorCatalog::ERRORS.fetch(rejection[:key])
             .call(origin: :model, target_column_name: column_name, value: rejection[:value])
         )
       end

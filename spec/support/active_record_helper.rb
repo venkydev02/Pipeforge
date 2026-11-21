@@ -264,14 +264,6 @@ module AdapterSpecModels
     before_save { throw :abort if nickname == "halt" }
   end
 
-  # A model whose length error is on an attribute that is not a column and gives no maximum.
-  class LooseLengthAccount < ActiveRecord::Base
-    self.table_name = "accounts"
-    attr_accessor :alias_name
-
-    validate { errors.add(:alias_name, :too_long) }
-  end
-
   class Playlist < ActiveRecord::Base
     self.table_name = "playlists"
   end

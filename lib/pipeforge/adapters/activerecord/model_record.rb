@@ -13,9 +13,8 @@ module Pipeforge
     # database they are its entry instead, with +origin: :database+, the same codes, +value_out_of_range+ and
     # +database_error+; a callback that stopped the save is +value_invalid+ with +origin: :model+.
     #
-    # @return [Hash{String, nil => Hash}] target column name => its entry {origin:, code:, kind:,
-    #   target_column_name:, message:, details:, value:} (built by the {ErrorCatalog}), in the order the entries were
-    #   added; the key nil is the record as a whole. Empty when there is none
+    # @return [Hash{String, nil => ErrorCatalog::ColumnError}] target column name => its error, in the order the errors
+    #   were added; the key nil is the record as a whole. Empty when there is none
     attr_reader :errors
 
     # @param record [ActiveRecord::Base] the unsaved record
@@ -27,21 +26,14 @@ module Pipeforge
     # Adds an error to the record, unless its column already has one: the first error found for a column is the
     # one kept.
     #
-    # @param origin [Symbol] where the mistake was found: +:model+, +:schema+ or +:database+
-    # @param code [Symbol] the shared code of the mistake
-    # @param kind [Symbol, nil] which case of the code, or nil
-    # @param target_column_name [String, nil] the column it is about; nil for the record as a whole
-    # @param message [String]
-    # @param details [Hash] the facts of the mistake
-    # @param value [Object, nil] the value that failed, in JSON types; nil when there is none
+    # @param error [ErrorCatalog::ColumnError] an error built by the {ErrorCatalog}
+    # @raise [ArgumentError] the object was not built by the {ErrorCatalog}
     # @return [void]
-    def add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)
-      return if @errors.key?(target_column_name)
+    def add_error(error:)
+      raise ArgumentError, "add_error takes an error built by ErrorCatalog, not #{error.class}" unless ErrorCatalog.error?(candidate: error)
+      return if @errors.key?(error.target_column_name)
 
-      @errors[target_column_name] = {
-        origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
-        details: details, value: value
-      }
+      @errors[error.target_column_name] = error
     end
 
     # Runs the model's validations on the record and adds what they report, so a column that already has an
@@ -70,13 +62,13 @@ module Pipeforge
 
       true
     rescue ActiveRecord::StatementInvalid => database_error
-      add_error(**database_error_entry(database_error: database_error))
+      add_error(error: database_error_entry(database_error: database_error))
 
       false
     rescue ActiveRecord::RecordNotSaved => not_saved_error
       # A callback of the model stopped the save.
       add_error(
-        **ErrorCatalog::ERRORS.fetch(:value_invalid_save_stopped)
+        error: ErrorCatalog::ERRORS.fetch(:value_invalid_save_stopped)
           .call(origin: :model, target_column_name: nil, value: nil, native_message: not_saved_error.message)
       )
 
@@ -126,7 +118,7 @@ module Pipeforge
 
     def add_model_errors
       @record.errors.each do |model_error|
-        add_error(**model_error_entry(model_error: model_error))
+        add_error(error: model_error_entry(model_error: model_error))
       end
     end
 
@@ -151,16 +143,17 @@ module Pipeforge
       @record[target_column_name]
     end
 
-    # The facts the sentence of the error uses. A validation that has no code of its own gives the text of the model
-    # as +native_message+.
+    # The facts of the error: the text of the model as +native_message+, for every error of the model, and the facts
+    # that its sentence uses.
     def facts_of(model_error:, key:, failed_value:)
       case key
       when :value_too_long
-        facts = {max_length: model_error.options[:count]}.compact
-        facts[:length] = failed_value.to_s.length unless failed_value.nil?
-        facts
+        {
+          native_message: model_error.message, max_length: model_error.options[:count],
+          length: failed_value.to_s.length
+        }.compact
       when :value_invalid then {native_message: model_error.message, error_type: model_error.type}
-      else {}
+      else {native_message: model_error.message}
       end
     end
 
