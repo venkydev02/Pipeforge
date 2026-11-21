@@ -4,7 +4,11 @@ module Pipeforge
   # The kinds of error of a row, each written once. {ERRORS} is keyed by the code and its kind joined
   # (+:value_out_of_range_bytes+, or the code alone when it has no kind). The value of a key is a function that takes
   # +origin:+ (where the mistake was found), +target_column_name:+, the failed +value+ (in JSON types, or nil when there
-  # is none) and the facts its sentence uses, and returns the error as a Hash with seven keys.
+  # is none) and the facts its sentence uses, and returns the error as a {ColumnError}.
+  #
+  # Only these functions can make a {ColumnError}: the class cannot be named or built outside the module, so
+  # {.error?} is how another class asks whether an object is one. A failed row holds the error objects, and
+  # +FailedRow#to_h+ gives each of them as the Hash that +ColumnError#to_h+ gives, with the seven keys.
   #
   # A function lists every fact it accepts as a keyword, so a fact it does not know is refused. The kinds that the
   # database can also report take +native_message+ as an optional fact.
@@ -16,10 +20,33 @@ module Pipeforge
   #   error = Pipeforge::ErrorCatalog::ERRORS[:value_too_long].call(
   #     origin: :schema, target_column_name: "status", value: "x" * 34, length: 34, max_length: 20
   #   )
-  #   # => {origin: :schema, code: :value_too_long, kind: nil, target_column_name: "status",
-  #   #     message: "status: the value has 34 characters, more than the 20 allowed",
-  #   #     details: {length: 34, max_length: 20}, value: "xxxxxxxx..."}
+  #   error.to_h  # => {origin: :schema, code: :value_too_long, kind: nil, target_column_name: "status",
+  #               #     message: "status: the value has 34 characters, more than the 20 allowed",
+  #               #     details: {length: 34, max_length: 20}, value: "xxxxxxxx..."}
   module ErrorCatalog
+    # One error of a row, as a function of {ERRORS} builds it.
+    #   origin              where the mistake was found: +:schema+, +:model+ or +:database+
+    #   code                the stable code of the mistake
+    #   kind                which case of the code, or nil
+    #   target_column_name  the column it is about; nil for the record as a whole
+    #   message             what is wrong, always ours, with the column first
+    #   details             the facts of the mistake, as a frozen Hash
+    #   value               the value that failed, in JSON types; nil when there is none
+    ColumnError = Data.define(:origin, :code, :kind, :target_column_name, :message, :details, :value) do
+      private_class_method :new
+
+      # The one way to make an error, used by {ErrorCatalog.error}.
+      #
+      # @return [ColumnError]
+      def self.build(origin:, code:, kind:, target_column_name:, message:, details:, value:)
+        new(
+          origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
+          details: details.freeze, value: value
+        )
+      end
+    end
+    private_constant :ColumnError
+
     ERRORS = {
       value_missing: ->(origin:, target_column_name:, value:, native_message: nil) {
         ErrorCatalog.error(
@@ -127,7 +154,7 @@ module Pipeforge
     }.freeze
 
     class << self
-      # The error with its five keys; the one place that joins the column and the sentence.
+      # The error with its message; the one place that joins the column and the sentence.
       #
       # @param origin [Symbol] where the mistake was found: +:schema+, +:model+ or +:database+
       # @param code [Symbol] the stable code of the mistake
@@ -136,15 +163,21 @@ module Pipeforge
       # @param target_column_name [String, nil] the column it is about; nil for the record as a whole
       # @param value [Object, nil] the value that failed, in JSON types; nil when there is none
       # @param details [Hash] the facts of the mistake
-      # @return [Hash] {origin:, code:, kind:, target_column_name:, message:, details:, value:}
+      # @return [ColumnError]
       def error(origin:, code:, kind:, sentence:, target_column_name:, value:, details:)
         message = sentence
         message = "#{target_column_name}: #{sentence}" unless target_column_name.nil?
 
-        {
+        ColumnError.build(
           origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
           details: details, value: value
-        }
+        )
+      end
+
+      # @param candidate [Object] anything
+      # @return [Boolean] true when the object is an error built by this module
+      def error?(candidate:)
+        candidate.is_a?(ColumnError)
       end
     end
   end

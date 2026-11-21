@@ -23,8 +23,8 @@ module Pipeforge
     def initialize(target_model_name:)
       @model = find_model(target_model_name: target_model_name)
       reject_missing_table
-      @enum_labels = read_enum_labels
-      @polymorphic_columns = read_polymorphic_columns
+      @enum_labels_by_column_name = read_enum_labels_by_column_name
+      @polymorphic_columns_by_column_name = read_polymorphic_columns_by_column_name
     end
 
     # The labels of the model's enum for a column.
@@ -32,7 +32,7 @@ module Pipeforge
     # @param column_name [String] a column of the table
     # @return [Array<String>, nil] the labels as text; nil when the model declares no enum for the column
     def enum_labels(column_name:)
-      @enum_labels[column_name]
+      @enum_labels_by_column_name[column_name]
     end
 
     # The structure of the model's table: its columns that can be given a source column.
@@ -40,7 +40,8 @@ module Pipeforge
     # @return [TargetSchema]
     def schema
       ActiveRecordSchemaReader.new(
-        model: @model, enum_labels: @enum_labels, polymorphic_columns: @polymorphic_columns
+        model: @model, enum_labels_by_column_name: @enum_labels_by_column_name,
+        polymorphic_columns_by_column_name: @polymorphic_columns_by_column_name
       ).call
     end
 
@@ -55,7 +56,7 @@ module Pipeforge
     # @return [ActiveRecordModelRecord] the unsaved record, wrapped
     def build_record(attributes:)
       assigned_values = {}
-      rejections = {}
+      rejections_by_column_name = {}
 
       attributes.each do |column_name, value|
         if value.nil?
@@ -68,11 +69,11 @@ module Pipeforge
 
         if !cast_result.castable
           # There is no cast value, so the error shows the value as it was given.
-          rejections[column_name] = {key: :value_not_accepted_not_castable, value: value.as_json}
+          rejections_by_column_name[column_name] = {key: :value_not_accepted_not_castable, value: value.as_json}
         elsif not_an_enum_label?(column_name: column_name, casted_value: casted_value)
-          rejections[column_name] = {key: :value_not_accepted_enum_label, value: casted_value.as_json}
+          rejections_by_column_name[column_name] = {key: :value_not_accepted_enum_label, value: casted_value.as_json}
         elsif polymorphic_type_unknown?(column_name: column_name, casted_value: casted_value)
-          rejections[column_name] = {key: :value_not_accepted_polymorphic_type, value: casted_value.as_json}
+          rejections_by_column_name[column_name] = {key: :value_not_accepted_polymorphic_type, value: casted_value.as_json}
         else
           assigned_values[column_name] = casted_value
         end
@@ -80,9 +81,9 @@ module Pipeforge
 
       model_record = ActiveRecordModelRecord.new(record: @model.new(assigned_values))
 
-      rejections.each do |column_name, rejection|
+      rejections_by_column_name.each do |column_name, rejection|
         model_record.add_error(
-          **ErrorCatalog::ERRORS.fetch(rejection[:key])
+          error: ErrorCatalog::ERRORS.fetch(rejection[:key])
             .call(origin: :model, target_column_name: column_name, value: rejection[:value])
         )
       end
@@ -150,7 +151,7 @@ module Pipeforge
 
     # The labels of every enum the model declares, by column name. The model's enums do not change, so they are
     # read once.
-    def read_enum_labels
+    def read_enum_labels_by_column_name
       labels_by_column_name = {}
 
       @model.defined_enums.each do |column_name, enum_mapping|
@@ -163,7 +164,7 @@ module Pipeforge
 
     # The id column and the type column of each polymorphic +belongs_to+ association of the model, by column
     # name. The associations of the model do not change, so they are read once.
-    def read_polymorphic_columns
+    def read_polymorphic_columns_by_column_name
       polymorphic_columns = {}
 
       @model.reflect_on_all_associations(:belongs_to).each do |reflection|
@@ -187,7 +188,7 @@ module Pipeforge
     # Whether the column is the type column of a polymorphic association and the cast value names no model.
     # ActiveRecord raises NameError when it reads the parent of such a type.
     def polymorphic_type_unknown?(column_name:, casted_value:)
-      polymorphic_column = @polymorphic_columns[column_name]
+      polymorphic_column = @polymorphic_columns_by_column_name[column_name]
       return false if polymorphic_column.nil? || polymorphic_column.role != "type"
 
       !model_named?(name: casted_value.to_s)

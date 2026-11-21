@@ -67,8 +67,8 @@ module Pipeforge
     end
 
     # @param value [Object] the value the adapter cast for the column
-    # @return [Hash, nil] the error that the {ErrorCatalog} gives for the mistake, with +origin: :schema+ and the value in
-    #   JSON types; nil when the value is within the limits, or when the type has no limit
+    # @return [ErrorCatalog::ColumnError, nil] the error that the {ErrorCatalog} gives for the mistake, with +origin: :schema+
+    #   and the value in JSON types; nil when the value is within the limits, or when the type has no limit
     def violation_of(value:)
       return enum_violation(value: value) unless @enum_labels.nil?
 

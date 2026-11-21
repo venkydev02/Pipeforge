@@ -10,12 +10,11 @@ module Pipeforge
     # The mistakes of the record, one for each column, with the shared codes: +value_missing+, +value_too_long+,
     # +value_not_unique+, +parent_missing+, +value_not_accepted+ (the target could not give the record the value),
     # +value_not_allowed+ and, for any other validation, +value_invalid+. After {#load} was refused by the
-    # database they are its entry instead, with +origin: :database+, the same codes, +value_out_of_range+ and
+    # database they are its error instead, with +origin: :database+, the same codes, +value_out_of_range+ and
     # +database_error+; a callback that stopped the save is +value_invalid+ with +origin: :model+.
     #
-    # @return [Hash{String, nil => Hash}] target column name => its entry {origin:, code:, kind:,
-    #   target_column_name:, message:, details:, value:} (built by the {ErrorCatalog}), in the order the entries were
-    #   added; the key nil is the record as a whole. Empty when there is none
+    # @return [Hash{String, nil => ErrorCatalog::ColumnError}] target column name => its error, in the order the errors
+    #   were added; the key nil is the record as a whole. Empty when there is none
     attr_reader :errors
 
     # @param record [ActiveRecord::Base] the unsaved record
@@ -27,21 +26,18 @@ module Pipeforge
     # Adds an error to the record, unless its column already has one: the first error found for a column is the
     # one kept.
     #
-    # @param origin [Symbol] where the mistake was found: +:model+, +:schema+ or +:database+
-    # @param code [Symbol] the shared code of the mistake
-    # @param kind [Symbol, nil] which case of the code, or nil
-    # @param target_column_name [String, nil] the column it is about; nil for the record as a whole
-    # @param message [String]
-    # @param details [Hash] the facts of the mistake
-    # @param value [Object, nil] the value that failed, in JSON types; nil when there is none
+    # @param error [ErrorCatalog::ColumnError] an error built by the {ErrorCatalog}
+    # @raise [ArgumentError] the object was not built by the {ErrorCatalog}
     # @return [void]
-    def add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)
-      return if @errors.key?(target_column_name)
+    def add_error(error:)
+      unless ErrorCatalog.error?(candidate: error)
+        raise ArgumentError,
+          "add_error takes an error built by ErrorCatalog (ErrorCatalog::ERRORS.fetch(key).call(...)), not #{error.class}"
+      end
 
-      @errors[target_column_name] = {
-        origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
-        details: details, value: value
-      }
+      return if @errors.key?(error.target_column_name)
+
+      @errors[error.target_column_name] = error
     end
 
     # Runs the model's validations on the record and adds what they report, so a column that already has an
@@ -70,13 +66,13 @@ module Pipeforge
 
       true
     rescue ActiveRecord::StatementInvalid => database_error
-      add_error(**database_error_entry(database_error: database_error))
+      add_error(error: database_error_for(database_error: database_error))
 
       false
     rescue ActiveRecord::RecordNotSaved => not_saved_error
       # A callback of the model stopped the save.
       add_error(
-        **ErrorCatalog::ERRORS.fetch(:value_invalid_save_stopped)
+        error: ErrorCatalog::ERRORS.fetch(:value_invalid_save_stopped)
           .call(origin: :model, target_column_name: nil, value: nil, native_message: not_saved_error.message)
       )
 
@@ -84,8 +80,8 @@ module Pipeforge
     end
 
     # The values the record holds now: cast to the types of the columns, and after the model's validation
-    # has run, so after its callbacks. They are what would be loaded. A value the target did not give the
-    # record is not in them.
+    # has run, so after its callbacks. They are what would be loaded. A column that was not given holds its
+    # default, or nil.
     #
     # @return [Hash{String => Object}] column => value
     def attributes
@@ -102,9 +98,9 @@ module Pipeforge
 
     private
 
-    # The entry of the {ErrorCatalog} for one database exception, as the database found it (no column, no value),
+    # The error of the {ErrorCatalog} for one database exception, as the database found it (no column, no value),
     # with the text of the database as +native_message+.
-    def database_error_entry(database_error:)
+    def database_error_for(database_error:)
       ErrorCatalog::ERRORS.fetch(database_key_of(database_error: database_error))
         # The column is not worked out from the message: the wording differs between databases.
         .call(origin: :database, target_column_name: nil, value: nil, native_message: database_error.message)
@@ -126,13 +122,13 @@ module Pipeforge
 
     def add_model_errors
       @record.errors.each do |model_error|
-        add_error(**model_error_entry(model_error: model_error))
+        add_error(error: model_error_for(model_error: model_error))
       end
     end
 
-    # The entry of the {ErrorCatalog} for one error of the model's validations, with the value the record holds for
+    # The error of the {ErrorCatalog} for one error of the model's validations, with the value the record holds for
     # the column.
-    def model_error_entry(model_error:)
+    def model_error_for(model_error:)
       key = key_of(model_error: model_error)
       target_column_name = target_column_name_of(model_error: model_error)
       failed_value = value_of(target_column_name: target_column_name)
@@ -151,16 +147,17 @@ module Pipeforge
       @record[target_column_name]
     end
 
-    # The facts the sentence of the error uses. A validation that has no code of its own gives the text of the model
-    # as +native_message+.
+    # The facts of the error: the text of the model as +native_message+, for every error of the model, and the facts
+    # that its sentence uses.
     def facts_of(model_error:, key:, failed_value:)
       case key
       when :value_too_long
-        facts = {max_length: model_error.options[:count]}.compact
-        facts[:length] = failed_value.to_s.length unless failed_value.nil?
-        facts
+        {
+          native_message: model_error.message, max_length: model_error.options[:count],
+          length: failed_value.to_s.length
+        }.compact
       when :value_invalid then {native_message: model_error.message, error_type: model_error.type}
-      else {}
+      else {native_message: model_error.message}
       end
     end
 
@@ -177,19 +174,19 @@ module Pipeforge
     # The key of a blank error: +parent_missing+ for a +belongs_to+ association whose foreign key holds
     # a value, and +value_missing+ otherwise.
     def blank_key_of(model_error:)
-      reflection = parent_association_of(model_error: model_error)
-      return :value_missing if reflection.nil? || @record[reflection.foreign_key].nil?
+      parent_reflection = parent_association_of(model_error: model_error)
+      return :value_missing if parent_reflection.nil? || @record[parent_reflection.foreign_key].nil?
 
       :parent_missing
     end
 
-    # The column the error is about: the foreign key column for an error on a +belongs_to+
-    # association, nil for an error on the record as a whole.
+    # The column the error is about: nil for an error on the record as a whole (+:base+), the foreign key column for
+    # an error on a +belongs_to+ association, and the name of the attribute for any other error.
     def target_column_name_of(model_error:)
       return nil if model_error.attribute == :base
 
-      reflection = parent_association_of(model_error: model_error)
-      return reflection.foreign_key unless reflection.nil?
+      parent_reflection = parent_association_of(model_error: model_error)
+      return parent_reflection.foreign_key unless parent_reflection.nil?
 
       model_error.attribute.to_s
     end

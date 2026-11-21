@@ -11,7 +11,7 @@ require "date"
 # The errors of a record come from the +errors_of+ lambda, which is given the attributes the record
 # was built from. The +changes_on_validation+ lambda stands for the model's callbacks: it is given the
 # attributes when +valid?+ runs, and what it returns is what +attributes+ answers afterwards. The
-# +load_errors_of+ lambda is given the attributes of a record when it is written: the entries it returns
+# +load_errors_of+ lambda is given the attributes of a record when it is written: the errors it returns
 # are the database's refusal (the write fails and +errors+ holds them), and an empty list is a write that
 # works. The +casts+ lambda stands for the cast of the model: by default a value is cast to itself, and
 # {.reading} and {.lenient} build targets that cast by the type of the column. The target remembers
@@ -91,8 +91,8 @@ class FakeTarget
     nil
   end
 
-  # The record that +build_record+ returns. Its errors are a Hash, target column name => entry, and +add_error+ keeps
-  # the first entry of a column, as the record of an adapter does.
+  # The record that +build_record+ returns. Its errors are a Hash, target column name => error, and +add_error+ keeps
+  # the first error of a column and takes only an error built by the ErrorCatalog, as the record of an adapter does.
   class FakeModelRecord
     attr_reader :attributes, :errors
 
@@ -110,20 +110,18 @@ class FakeTarget
       attributes
     end
 
-    def add_error(origin:, code:, kind:, target_column_name:, message:, details:, value:)
-      return if @errors.key?(target_column_name)
+    def add_error(error:)
+      raise ArgumentError, "add_error takes an error built by ErrorCatalog" unless Pipeforge::ErrorCatalog.error?(candidate: error)
+      return if @errors.key?(error.target_column_name)
 
-      @errors[target_column_name] = {
-        origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
-        details: details, value: value
-      }
+      @errors[error.target_column_name] = error
     end
 
     # Adds the errors of the model (the +errors_of+ lambda of the target) and says whether the record has none.
     def valid?
       @events << [:valid, @attributes]
       @attributes = @changes_on_validation.call(attributes: @attributes)
-      @model_errors.each { |entry| add_error(**entry) }
+      @model_errors.each { |error| add_error(error: error) }
 
       @errors.empty?
     end
@@ -132,7 +130,7 @@ class FakeTarget
     def load
       @events << [:load, @attributes]
       @errors = {}
-      @load_errors.each { |entry| add_error(**entry) }
+      @load_errors.each { |error| add_error(error: error) }
 
       @load_errors.empty?
     end

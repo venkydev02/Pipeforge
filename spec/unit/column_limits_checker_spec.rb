@@ -80,7 +80,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "Draft" }
 
           it "refuses it with value_not_allowed, because a label is matched as it is written" do
-            expect(answer[:code]).to eq(:value_not_allowed)
+            expect(answer.code).to eq(:value_not_allowed)
           end
         end
       end
@@ -104,7 +104,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 12_345 }
 
           it "refuses it with value_too_long, because the text of the value is counted" do
-            expect(answer[:code]).to eq(:value_too_long)
+            expect(answer.code).to eq(:value_too_long)
           end
         end
 
@@ -140,7 +140,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "abcd" }
 
           it "refuses it with value_too_long" do
-            expect(answer[:code]).to eq(:value_too_long)
+            expect(answer.code).to eq(:value_too_long)
           end
         end
       end
@@ -184,7 +184,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 65_536 }
 
           it "refuses it with value_out_of_range" do
-            expect(answer[:code]).to eq(:value_out_of_range)
+            expect(answer.code).to eq(:value_out_of_range)
           end
         end
 
@@ -192,7 +192,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { -1 }
 
           it "refuses it with value_out_of_range" do
-            expect(answer[:code]).to eq(:value_out_of_range)
+            expect(answer.code).to eq(:value_out_of_range)
           end
         end
       end
@@ -212,7 +212,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { 2_147_483_648 }
 
           it "refuses it with value_out_of_range, reading limit as 4 bytes" do
-            expect(answer[:code]).to eq(:value_out_of_range)
+            expect(answer.code).to eq(:value_out_of_range)
           end
         end
       end
@@ -245,7 +245,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
 
           # The database stores it rounded to scale 2, as 1000.00.
           it "refuses it with value_out_of_range" do
-            expect(answer[:code]).to eq(:value_out_of_range)
+            expect(answer.code).to eq(:value_out_of_range)
           end
         end
 
@@ -359,7 +359,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { -3.5e38 }
 
           it "refuses it with value_out_of_range, on the negative side as on the positive" do
-            expect(answer[:code]).to eq(:value_out_of_range)
+            expect(answer.code).to eq(:value_out_of_range)
           end
         end
       end
@@ -396,7 +396,7 @@ RSpec.describe Pipeforge::ColumnLimitsChecker do
           let(:value) { "ab" }
 
           it "refuses it with value_too_long, reading the type as the text \"string\"" do
-            expect(answer[:code]).to eq(:value_too_long)
+            expect(answer.code).to eq(:value_too_long)
           end
         end
       end

@@ -107,7 +107,7 @@ The keys are texts as they appear in the file. A value that maps to `nil` or to 
 ```ruby
 totals = engine.run(mode: :dry_run, mapped_columns: mapped_columns) do |chunk_result|
   chunk_result.failed_rows.each do |failed_row|
-    puts "row #{failed_row.row_number}: #{failed_row.errors.map { |error| error[:code] }.inspect}"
+    puts "row #{failed_row.row_number}: #{failed_row.errors.map(&:code).inspect}"
   end
 end
 # row 4: [:value_too_long]
@@ -188,7 +188,7 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
 }
 ```
 
-And one failed row from a run, with the attributes the record held (the columns you mapped, in the order of your mapping, cast to their types, as JSON values), never the raw line:
+And one failed row from a run, as `failed_row.to_h` gives it, with the attributes the record held (the columns you mapped, in the order of your mapping, cast to their types, as JSON values), never the raw line:
 
 ```json
 {
@@ -208,7 +208,7 @@ And one failed row from a run, with the attributes the record held (the columns 
 }
 ```
 
-Every error of a row has these seven keys: who found it (`origin`: `schema`, `model` or `database`), what is wrong (`code`), which case of the code (`kind`, or `null`), the column (`target_column_name`, `null` for the whole row), a `message` that is always ours (the text of the model or of the database is kept in `details` as `native_message`), the facts of the mistake (`details`), and the value that failed (`value`, in JSON types; `null` when there is none, as for a refusal of the database). A row has at most one error for each column.
+A failed row holds its errors as objects (`failed_row.errors.first.code`, `.message`, `.details` and so on), and `failed_row.to_h` gives the Hashes shown above. Every error of a row has these seven fields: who found it (`origin`: `schema`, `model` or `database`), what is wrong (`code`), which case of the code (`kind`, or `null`), the column (`target_column_name`, `null` for the whole row), a `message` that is always ours (the text of the model or of the database is kept in `details` as `native_message`), the facts of the mistake (`details`), and the value that failed (`value`, in JSON types; `null` when there is none, as for a refusal of the database). A row has at most one error for each column. Read the facts that belong to a code (`length` and `max_length` of `value_too_long`) by the code, and treat `native_message` as extra text for a person: it is the text of your own model or of the database, so its wording and its language are theirs, and the same code can come with or without it depending on who found the mistake (the schema check gives none).
 
 Write your screens against the `code` and the `kind`, never against the message text. The codes are stable; the wording is not.
 

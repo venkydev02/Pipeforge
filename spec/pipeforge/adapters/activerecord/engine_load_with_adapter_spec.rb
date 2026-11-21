@@ -45,12 +45,12 @@ RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter in
     end
 
     it "reports the rows the table refused, with the origin database" do
-      expect(errors_of_row(3)).to match([a_hash_including(origin: :database, code: :value_not_unique, target_column_name: nil)])
-      expect(errors_of_row(4)).to match([a_hash_including(origin: :database, code: :parent_missing)])
+      expect(errors_of_row(3)).to match([have_attributes(origin: :database, code: :value_not_unique, target_column_name: nil)])
+      expect(errors_of_row(4)).to match([have_attributes(origin: :database, code: :parent_missing)])
     end
 
     it "reports a row the schema refused with the origin schema, and does not write it" do
-      expect(errors_of_row(5).map { |error| [error[:origin], error[:code]] }).to eq([[:schema, :value_missing]])
+      expect(errors_of_row(5).map { |error| [error.origin, error.code] }).to eq([[:schema, :value_missing]])
     end
 
     it "goes on after a refused row, so the rows after it are written" do
@@ -72,11 +72,11 @@ RSpec.describe Pipeforge::Engine, "#run writing with the ActiveRecord adapter in
 
     it "reports the same failed rows as a run" do
       run_in(mode: :dry_run)
-      dry_run_failures = failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error[:code] }] }
+      dry_run_failures = failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error.code }] }
 
       chunk_results.clear
       run_in(mode: :run)
-      run_failures = failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error[:code] }] }
+      run_failures = failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error.code }] }
 
       expect(dry_run_failures).to eq(run_failures)
     end
