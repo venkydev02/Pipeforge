@@ -7,8 +7,8 @@ module Pipeforge
   # is none) and the facts its sentence uses, and returns the error as a {ColumnError}.
   #
   # Only these functions can make a {ColumnError}: the class cannot be named or built outside the module, so
-  # {.error?} is how another class asks whether an object is one. A failed row shows an error as the Hash that
-  # +ColumnError#to_h+ gives, with the seven keys.
+  # {.error?} is how another class asks whether an object is one. A failed row holds the error objects, and
+  # +FailedRow#to_h+ gives each of them as the Hash that +ColumnError#to_h+ gives, with the seven keys.
   #
   # A function lists every fact it accepts as a keyword, so a fact it does not know is refused. The kinds that the
   # database can also report take +native_message+ as an optional fact.
@@ -30,7 +30,7 @@ module Pipeforge
     #   kind                which case of the code, or nil
     #   target_column_name  the column it is about; nil for the record as a whole
     #   message             what is wrong, always ours, with the column first
-    #   details             the facts of the mistake
+    #   details             the facts of the mistake, as a frozen Hash
     #   value               the value that failed, in JSON types; nil when there is none
     ColumnError = Data.define(:origin, :code, :kind, :target_column_name, :message, :details, :value) do
       private_class_method :new
@@ -41,7 +41,7 @@ module Pipeforge
       def self.build(origin:, code:, kind:, target_column_name:, message:, details:, value:)
         new(
           origin: origin, code: code, kind: kind, target_column_name: target_column_name, message: message,
-          details: details, value: value
+          details: details.freeze, value: value
         )
       end
     end

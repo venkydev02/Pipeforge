@@ -39,6 +39,22 @@ RSpec.describe Pipeforge::ErrorCatalog do
       expect(build_error(:value_too_long, length: 4, max_length: 3)).to eq(build_error(:value_too_long, length: 4, max_length: 3))
     end
 
+    it "has frozen details" do
+      expect(build_error(:value_too_long, length: 4, max_length: 3).details).to be_frozen
+    end
+
+    it "refuses a change of its details" do
+      error = build_error(:value_too_long, length: 4, max_length: 3)
+
+      expect { error.details[:length] = 5 }.to raise_error(FrozenError)
+    end
+
+    it "gives the same frozen details as the Hash of to_h" do
+      error = build_error(:value_too_long, length: 4, max_length: 3)
+
+      expect(error.to_h[:details]).to be_frozen
+    end
+
     it "cannot be built outside the module, even from an object it gave" do
       expect { build_error(:value_missing).class.new }.to raise_error(NoMethodError, /private method 'new'/)
     end

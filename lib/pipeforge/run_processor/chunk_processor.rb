@@ -19,10 +19,21 @@ module Pipeforge
     #   attributes  what the model record held when the row failed, as plain JSON types: column => value for the
     #               mapped columns, in the order of the mapping, cast to the type of the column and after the
     #               model's callbacks. It is never the raw source row.
-    #   errors      one entry for each mistake: {origin:, target_column_name:, code:, message:}. +origin+ is where it
-    #               was found: +:schema+ (the core's checks of the target schema), +:model+ (the application
-    #               model's validations and callbacks) or +:database+ (the database refused the row).
-    FailedRow = Data.define(:row_number, :attributes, :errors)
+    #   errors      one error for each mistake, as an {ErrorCatalog} error object with the fields +origin+, +code+,
+    #               +kind+, +target_column_name+, +message+, +details+ and +value+. +origin+ is where it was found:
+    #               +:schema+ (the core's checks of the target schema), +:model+ (the application model's
+    #               validations and callbacks) or +:database+ (the database refused the row).
+    FailedRow = Data.define(:row_number, :attributes, :errors) do
+      # @return [Hash] the failed row as plain JSON types, ready to store or send: its errors are the Hashes of their
+      #   seven fields
+      def to_h
+        error_hashes = []
+
+        errors.each { |error| error_hashes << error.to_h }
+
+        {row_number: row_number, attributes: attributes, errors: error_hashes}
+      end
+    end
 
     # Processes one chunk of rows: each row gets a model record, which is validated on two levels, the
     # model's and the schema's, and, when valid, written before the next row is looked at. A row that is not
@@ -92,7 +103,7 @@ module Pipeforge
             failed_rows << FailedRow.new(
               row_number: first_row_number + position,
               attributes: model_record.json_attributes.slice(*target_column_names),
-              errors: model_record.errors.values.map(&:to_h)
+              errors: model_record.errors.values
             )
           end
 

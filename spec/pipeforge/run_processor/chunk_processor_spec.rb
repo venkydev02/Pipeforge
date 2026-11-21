@@ -61,7 +61,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     end
 
     it "gives each failed row its errors with the origin" do
-      expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.map { |error| [error[:code], error[:origin]] } }).to eq(
+      expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.map { |error| [error.code, error.origin] } }).to eq(
         [[[:value_missing, :schema]], [[:value_too_long, :schema]]]
       )
     end
@@ -100,7 +100,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
       end
 
       it "reports that row as failed with the model's code" do
-        expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.first[:code] }).to eq([:value_not_unique])
+        expect(chunk_result.failed_rows.map { |failed_row| failed_row.errors.first.code }).to eq([:value_not_unique])
       end
     end
 
@@ -122,13 +122,13 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         end
 
         it "keeps that mistake once, the model's, and the schema's mistake of the other column" do
-          expect(errors_of_failed_row.map { |error| [error[:target_column_name], error[:origin]] }).to eq(
+          expect(errors_of_failed_row.map { |error| [error.target_column_name, error.origin] }).to eq(
             [["email", :model], ["phone", :schema]]
           )
         end
 
         it "keeps the words of the model" do
-          expect(errors_of_failed_row.first[:message]).to eq(model_error(key: :value_missing, target_column_name: "email").message)
+          expect(errors_of_failed_row.first.message).to eq(model_error(key: :value_missing, target_column_name: "email").message)
         end
       end
 
@@ -136,7 +136,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
         let(:errors_of) { ->(attributes:) { [model_error(key: :value_invalid, target_column_name: "email")] } }
 
         it "keeps the model's mistake of the column, not the schema's, and the schema's mistake of the other column" do
-          expect(errors_of_failed_row.map { |error| [error[:code], error[:target_column_name]] }).to eq(
+          expect(errors_of_failed_row.map { |error| [error.code, error.target_column_name] }).to eq(
             [[:value_invalid, "email"], [:value_missing, "phone"]]
           )
         end
@@ -161,7 +161,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
 
           it "reports the value the model changed it to, and shows it in the failed row" do
             expect(chunk_result.failed_rows.first).to have_attributes(
-              attributes: {"code" => "abcd"}, errors: [a_hash_including(code: :value_too_long, origin: :schema)]
+              attributes: {"code" => "abcd"}, errors: [have_attributes(code: :value_too_long, origin: :schema)]
             )
           end
         end
@@ -293,7 +293,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
 
       it "reports that row as failed, with the origin database" do
         expect(chunk_result.failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors] }).to eq(
-          [[6, [database_error.to_h]]]
+          [[6, [database_error]]]
         )
       end
 

@@ -10,7 +10,7 @@ module Pipeforge
     # The mistakes of the record, one for each column, with the shared codes: +value_missing+, +value_too_long+,
     # +value_not_unique+, +parent_missing+, +value_not_accepted+ (the target could not give the record the value),
     # +value_not_allowed+ and, for any other validation, +value_invalid+. After {#load} was refused by the
-    # database they are its entry instead, with +origin: :database+, the same codes, +value_out_of_range+ and
+    # database they are its error instead, with +origin: :database+, the same codes, +value_out_of_range+ and
     # +database_error+; a callback that stopped the save is +value_invalid+ with +origin: :model+.
     #
     # @return [Hash{String, nil => ErrorCatalog::ColumnError}] target column name => its error, in the order the errors
@@ -30,7 +30,11 @@ module Pipeforge
     # @raise [ArgumentError] the object was not built by the {ErrorCatalog}
     # @return [void]
     def add_error(error:)
-      raise ArgumentError, "add_error takes an error built by ErrorCatalog, not #{error.class}" unless ErrorCatalog.error?(candidate: error)
+      unless ErrorCatalog.error?(candidate: error)
+        raise ArgumentError,
+          "add_error takes an error built by ErrorCatalog (ErrorCatalog::ERRORS.fetch(key).call(...)), not #{error.class}"
+      end
+
       return if @errors.key?(error.target_column_name)
 
       @errors[error.target_column_name] = error
@@ -62,7 +66,7 @@ module Pipeforge
 
       true
     rescue ActiveRecord::StatementInvalid => database_error
-      add_error(error: database_error_entry(database_error: database_error))
+      add_error(error: database_error_for(database_error: database_error))
 
       false
     rescue ActiveRecord::RecordNotSaved => not_saved_error
@@ -94,9 +98,9 @@ module Pipeforge
 
     private
 
-    # The entry of the {ErrorCatalog} for one database exception, as the database found it (no column, no value),
+    # The error of the {ErrorCatalog} for one database exception, as the database found it (no column, no value),
     # with the text of the database as +native_message+.
-    def database_error_entry(database_error:)
+    def database_error_for(database_error:)
       ErrorCatalog::ERRORS.fetch(database_key_of(database_error: database_error))
         # The column is not worked out from the message: the wording differs between databases.
         .call(origin: :database, target_column_name: nil, value: nil, native_message: database_error.message)
@@ -118,13 +122,13 @@ module Pipeforge
 
     def add_model_errors
       @record.errors.each do |model_error|
-        add_error(error: model_error_entry(model_error: model_error))
+        add_error(error: model_error_for(model_error: model_error))
       end
     end
 
-    # The entry of the {ErrorCatalog} for one error of the model's validations, with the value the record holds for
+    # The error of the {ErrorCatalog} for one error of the model's validations, with the value the record holds for
     # the column.
-    def model_error_entry(model_error:)
+    def model_error_for(model_error:)
       key = key_of(model_error: model_error)
       target_column_name = target_column_name_of(model_error: model_error)
       failed_value = value_of(target_column_name: target_column_name)

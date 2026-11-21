@@ -35,7 +35,7 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
 
   # The codes of the failed row with that row number, in order.
   def codes_of_row(row_number)
-    failed_rows.find { |failed_row| failed_row.row_number == row_number }.errors.map { |error| error[:code] }
+    failed_rows.find { |failed_row| failed_row.row_number == row_number }.errors.map { |error| error.code }
   end
 
   before do
@@ -96,16 +96,16 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
 
     expect(error).to eq(
       Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_accepted_enum_label)
-        .call(origin: :model, target_column_name: error[:target_column_name], value: error[:value]).to_h
+        .call(origin: :model, target_column_name: error.target_column_name, value: error.value)
     )
-    expect(error[:value]).to be_a(String)
+    expect(error.value).to be_a(String)
   end
 
   it "reports a parent that does not exist, on the foreign key column" do
     run_result
 
     expect(failed_rows.find { |failed_row| failed_row.row_number == 7 }.errors).to contain_exactly(
-      include(origin: :model, code: :parent_missing, target_column_name: "company_id")
+      have_attributes(origin: :model, code: :parent_missing, target_column_name: "company_id")
     )
   end
 
@@ -169,7 +169,7 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
   it "reports a value past the unsigned range, and a negative one" do
     run_result
 
-    expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error[:code] }] }).to eq(
+    expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.map { |error| error.code }] }).to eq(
       [[3, [:value_out_of_range]], [4, [:value_out_of_range]], [5, [:value_out_of_range]]]
     )
   end
@@ -177,7 +177,7 @@ RSpec.describe Pipeforge::Engine, "#run with an unsigned integer attribute" do
   it "keeps the signed range for the other column of the table" do
     run_result
 
-    expect(failed_rows.last.errors.first).to include(target_column_name: "misses", code: :value_out_of_range)
+    expect(failed_rows.last.errors.first).to have_attributes(target_column_name: "misses", code: :value_out_of_range)
   end
 end
 
@@ -197,7 +197,7 @@ RSpec.describe Pipeforge::Engine, "#run with float columns" do
 
   def errors_of_row(row_number)
     failed_rows.find { |failed_row| failed_row.row_number == row_number }.errors.map do |error|
-      [error[:target_column_name], error[:code]]
+      [error.target_column_name, error.code]
     end
   end
 
@@ -228,7 +228,7 @@ RSpec.describe Pipeforge::Engine, "#run with a json column" do
   let(:engine) { described_class.new(source_io: csv_io(csv), target_model_name: "AdapterSpecModels::Profile") }
   let(:chunk_results) { [] }
   let(:failed_rows) { chunk_results.flat_map(&:failed_rows) }
-  let(:failed_codes) { failed_rows.flat_map { |failed_row| failed_row.errors.map { |error| error[:code] } } }
+  let(:failed_codes) { failed_rows.flat_map { |failed_row| failed_row.errors.map { |error| error.code } } }
   let(:csv) do
     <<~CSV
       Name,Settings
@@ -306,7 +306,7 @@ RSpec.describe Pipeforge::Engine, "#run with a polymorphic association" do
     run_result
 
     expect(failed_rows.map(&:row_number)).to eq([2])
-    expect(failed_rows.first.errors.map { |error| [error[:target_column_name], error[:code]] }).to eq(
+    expect(failed_rows.first.errors.map { |error| [error.target_column_name, error.code] }).to eq(
       [["commentable_type", :value_not_accepted], ["commentable_id", :parent_missing]]
     )
   end

@@ -39,7 +39,7 @@ RSpec.describe Pipeforge::Engine, "#run" do
 
     failed_rows = chunk_results.flat_map(&:failed_rows)
 
-    expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.first[:code]] }).to eq([[2, :value_missing]])
+    expect(failed_rows.map { |failed_row| [failed_row.row_number, failed_row.errors.first.code] }).to eq([[2, :value_missing]])
   end
 
   it "builds the target of the model it was given" do
