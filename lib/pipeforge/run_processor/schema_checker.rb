@@ -20,7 +20,8 @@ module Pipeforge
     # Whether a value fits the type of its column is not checked: a value that does not look like the
     # type (+abc+ in an integer column) is left to the cast of the framework.
     #
-    # A value may be text or already cast to the type of its column (an Integer, a Float or a decimal number).
+    # The values are the ones the model record holds, already cast to the type of their column (an Integer, a Float
+    # or a decimal number for a number).
     class SchemaChecker
       # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column name => its resolved
       #   mapped column; the checks are made on the target column of each
