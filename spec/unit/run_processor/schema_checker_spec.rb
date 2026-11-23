@@ -1,13 +1,8 @@
 # frozen_string_literal: true
 
-# Each describe is one public method of the checker. A context gives the mapped columns and the attributes it is
-# about, and each example says which errors the checker gives. The ColumnLimitsChecker is a verifying double with its
-# answer scripted in the behaviours, and the real one in the real-limits-checker contexts of the
-# collaboration part. The ErrorCatalog is real: the expected errors are the ones it builds.
 # Each mapped column has a source column name that differs from its target column name, so a value read under the
 # wrong name shows.
 RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
-  # The mapped columns the run gives, one for each target column, in the order given.
   def resolve(*target_columns)
     mapped_columns = {}
 
@@ -18,7 +13,6 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
     resolve_mapped_columns_of(target_columns: target_columns, mapped_columns: mapped_columns)
   end
 
-  # A verifying double of the limits checker that ColumnLimitsChecker.for gives for the target column.
   def script_limits(target_column:, answer: nil)
     limits = instance_double(Pipeforge::ColumnLimitsChecker)
     allow(limits).to receive(:violation_of).and_return(answer)
@@ -294,21 +288,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       end
     end
 
-    describe "collaboration with ColumnLimitsChecker" do
-      context "when email has a value and a source column name that differs" do
-        let(:email_column) { build_target_column(name: "email") }
-        let!(:email_limits) { script_limits(target_column: email_column) }
-        let(:checker) { described_class.new(resolved_mapped_columns: resolve(email_column)) }
-        let(:attributes_with_email_and_its_source) { {"email" => "ada@example.com", "source email" => "other"} }
-        let(:attributes) { attributes_with_email_and_its_source }
-
-        it "asks the limits checker of email with violation_of and exactly the value under email" do
-          errors
-
-          expect(email_limits).to have_received(:violation_of).with(value: "ada@example.com")
-        end
-      end
-
+    describe "the answers of the limits checker" do
       context "when two mapped columns have limits checkers scripted with different answers" do
         let(:email_column) { build_target_column(name: "email") }
         let(:name_column) { build_target_column(name: "name") }
@@ -325,6 +305,27 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
 
         it "keeps the answer of each for its own column" do
           expect(errors).to eq([email_violation, name_violation])
+        end
+      end
+    end
+
+    describe "collaboration with the real ColumnLimitsChecker" do
+      context "when the mapped column code has a source column name that differs and the value is \"abcd\"" do
+        let(:string_column_of_3_characters) { build_target_column(name: "code", type: "string", max_length: 3) }
+        let(:real_limits) { Pipeforge::ColumnLimitsChecker.for(target_column: string_column_of_3_characters) }
+        let(:checker) { described_class.new(resolved_mapped_columns: resolve(string_column_of_3_characters)) }
+        let(:attributes_with_the_value_under_both_names) { {"code" => "abcd", "source code" => "other"} }
+        let(:attributes) { attributes_with_the_value_under_both_names }
+
+        before do
+          allow(Pipeforge::ColumnLimitsChecker).to receive(:for)
+            .with(target_column: string_column_of_3_characters).and_return(real_limits)
+          allow(real_limits).to receive(:violation_of).and_call_original
+        end
+
+        it "asks the real limits checker with exactly the value under code, and gives its real answer" do
+          expect(errors).to eq([too_long_error(target_column_name: "code", value: "abcd")])
+          expect(real_limits).to have_received(:violation_of).with(value: "abcd")
         end
       end
 

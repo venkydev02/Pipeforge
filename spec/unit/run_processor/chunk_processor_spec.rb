@@ -1,13 +1,7 @@
 # frozen_string_literal: true
 
-# ChunkProcessor.call takes one chunk of rows and gives a ChunkResult. In the behaviours and the invariants the
-# transformer, the schema checker, the target and the model records are verifying doubles of our own classes, with
-# their answers scripted. The collaboration part checks four pairs, each with one real provider: the RowTransformer,
-# the SchemaChecker, and the ActiveRecordTarget with its ActiveRecordModelRecord on a real model over a real table of
-# the PostgreSQL test database (made by define_model), the others being doubles. The errors are the ones the
-# ErrorCatalog builds. The row of the source has a source column name ("Mail") that differs from the target column
-# name ("email"), so a raw row given to the target instead of the transformer's values shows.
-# An example that no break fails alone is kept for what the module accepts (contract only).
+# The rows of the source have a source column name ("Mail") that differs from the target column name ("email"), so a
+# raw row given to the target instead of the transformer's values shows.
 RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
   let(:scripted_transformer) { instance_double(Pipeforge::RunProcessor::RowTransformer) }
   let(:scripted_schema_checker) { instance_double(Pipeforge::RunProcessor::SchemaChecker) }
@@ -49,8 +43,6 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     model_record
   end
 
-  # Scripts the doubles for one row: the transformer gives the attributes, the target builds the record from them and the
-  # schema checker answers schema_errors when it is asked with what the record holds.
   def script_row(row:, attributes:, model_record:, schema_errors: [])
     allow(scripted_transformer).to receive(:result_of_row).with(row: row).and_return(attributes)
     allow(scripted_target).to receive(:build_record).with(attributes: attributes).and_return(model_record)
@@ -212,7 +204,7 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     end
 
     describe "building the records and preloading" do
-      context "when rows has 3 rows and the transformer gives other attributes for each" do
+      context "when rows has 3 rows and the target gives a record for each" do
         subject(:chunk_result) { process_chunk(rows: rows_of_three_rows) }
 
         let(:rows_of_three_rows) { [{"Mail" => "a"}, {"Mail" => "b"}, {"Mail" => "c"}] }
@@ -227,15 +219,15 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
           chunk_result
         end
 
-        it "asks the target to build one record for each row, from the attributes of that row, in file order" do
-          expect(scripted_target).to have_received(:build_record).with(attributes: {"email" => "a"}).ordered
-          expect(scripted_target).to have_received(:build_record).with(attributes: {"email" => "b"}).ordered
-          expect(scripted_target).to have_received(:build_record).with(attributes: {"email" => "c"}).ordered
+        it "loads each record the target gave, in file order" do
+          expect(model_record_of_a).to have_received(:load).ordered
+          expect(model_record_of_b).to have_received(:load).ordered
+          expect(model_record_of_c).to have_received(:load).ordered
         end
 
-        it "asks the target once to preload the parents, with the 3 records, after all 3 are built" do
-          expect(scripted_target).to have_received(:build_record).with(attributes: {"email" => "c"}).ordered
-          expect(scripted_target).to have_received(:preload_parents).with(records: [model_record_of_a, model_record_of_b, model_record_of_c]).once.ordered
+        it "asks the target once to preload the parents, after all 3 records are built" do
+          expect(scripted_target).to have_received(:build_record).exactly(3).times.ordered
+          expect(scripted_target).to have_received(:preload_parents).once.ordered
         end
       end
     end
@@ -378,6 +370,54 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
 
         it "gives a failed row with both errors" do
           expect(chunk_result).to eq(chunk_result_with_both_errors)
+        end
+      end
+    end
+
+    describe "the errors of the two levels" do
+      context "when the schema checker answers an error on email and an error on name for a record" do
+        subject(:chunk_result) { process_chunk(rows: rows_of_one_row) }
+
+        let(:rows_of_one_row) { [{"Mail" => "a"}] }
+        let(:record_with_schema_errors) { build_model_record(held_attributes: {"email" => "a", "name" => "n"}) }
+        let(:schema_error_on_email) { schema_value_missing_on(target_column_name: "email") }
+        let(:schema_error_on_name) { schema_value_missing_on(target_column_name: "name") }
+        let(:chunk_result_with_both_schema_errors) do
+          Pipeforge::RunProcessor::ChunkResult.new(
+            first_row_number: 1, last_row_number: 1, processed_rows_count: 1, valid_rows_count: 0, failed_rows_count: 1,
+            failed_rows: [
+              Pipeforge::RunProcessor::FailedRow.new(
+                row_number: 1, attributes: {"email" => "a", "name" => "n"}, errors: [schema_error_on_email, schema_error_on_name]
+              )
+            ]
+          )
+        end
+
+        before do
+          script_row(
+            row: {"Mail" => "a"}, attributes: {"email" => "a"}, model_record: record_with_schema_errors,
+            schema_errors: [schema_error_on_email, schema_error_on_name]
+          )
+        end
+
+        it "gives a failed row with both errors, in the order the schema checker answered them" do
+          expect(chunk_result).to eq(chunk_result_with_both_schema_errors)
+        end
+      end
+
+      context "when the schema checker answers no error for a record" do
+        subject(:chunk_result) { process_chunk(rows: rows_of_one_row) }
+
+        let(:rows_of_one_row) { [{"Mail" => "a"}] }
+        let(:record_with_no_schema_error) { build_model_record(held_attributes: {"email" => "a"}) }
+
+        before do
+          script_row(row: {"Mail" => "a"}, attributes: {"email" => "a"}, model_record: record_with_no_schema_error)
+          chunk_result
+        end
+
+        it "does not call add_error" do
+          expect(record_with_no_schema_error).not_to have_received(:add_error)
         end
       end
     end
@@ -616,50 +656,6 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
     end
 
     describe "collaboration" do
-      describe "with the schema checker and the record, both doubles" do
-        context "when the schema checker answers an error on email and an error on name for a record" do
-          subject(:chunk_result) { process_chunk(rows: rows_of_one_row) }
-
-          let(:rows_of_one_row) { [{"Mail" => "a"}] }
-          let(:record_with_schema_errors) { build_model_record(held_attributes: {"email" => "a", "name" => "n"}) }
-          let(:schema_error_on_email) { schema_value_missing_on(target_column_name: "email") }
-          let(:schema_error_on_name) { schema_value_missing_on(target_column_name: "name") }
-
-          before do
-            script_row(
-              row: {"Mail" => "a"}, attributes: {"email" => "a"}, model_record: record_with_schema_errors,
-              schema_errors: [schema_error_on_email, schema_error_on_name]
-            )
-            chunk_result
-          end
-
-          it "adds each error to the record with add_error, in that order" do
-            expect(record_with_schema_errors).to have_received(:add_error).with(error: schema_error_on_email).ordered
-            expect(record_with_schema_errors).to have_received(:add_error).with(error: schema_error_on_name).ordered
-          end
-
-          it "asks the schema checker with the attributes of the record" do
-            expect(scripted_schema_checker).to have_received(:call).with(attributes: {"email" => "a", "name" => "n"})
-          end
-        end
-
-        context "when the schema checker answers no error for a record" do
-          subject(:chunk_result) { process_chunk(rows: rows_of_one_row) }
-
-          let(:rows_of_one_row) { [{"Mail" => "a"}] }
-          let(:record_with_no_schema_error) { build_model_record(held_attributes: {"email" => "a"}) }
-
-          before do
-            script_row(row: {"Mail" => "a"}, attributes: {"email" => "a"}, model_record: record_with_no_schema_error)
-            chunk_result
-          end
-
-          it "does not call add_error" do
-            expect(record_with_no_schema_error).not_to have_received(:add_error)
-          end
-        end
-      end
-
       describe "with the real RowTransformer" do
         context "when the mapping reads the source column Mail into email and the row has that cell" do
           subject(:chunk_result) do
@@ -675,18 +671,34 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
           let(:record_built_from_the_mail_cell) { build_model_record(held_attributes: {"email" => "ann@example.com"}) }
 
           before do
+            allow(real_transformer_of_mail_into_email).to receive(:result_of_row).and_call_original
             allow(scripted_target).to receive(:build_record).and_return(record_built_from_the_mail_cell)
             allow(scripted_schema_checker).to receive(:call).and_return([])
             chunk_result
           end
 
+          it "asks the transformer for the values of the row" do
+            expect(real_transformer_of_mail_into_email).to have_received(:result_of_row).with(row: {"Mail" => "ann@example.com"})
+          end
+
           it "asks the target to build the record with the cell under email" do
             expect(scripted_target).to have_received(:build_record).with(attributes: {"email" => "ann@example.com"})
+          end
+
+          it "loads the record the target gave" do
+            expect(record_built_from_the_mail_cell).to have_received(:load)
           end
         end
       end
 
       describe "with the real SchemaChecker" do
+        # The transformer gives no values and the target builds the given record, so what the schema checker is asked
+        # about is only what the record holds.
+        def script_one_record(row:, model_record:)
+          allow(scripted_transformer).to receive(:result_of_row).with(row: row).and_return({})
+          allow(scripted_target).to receive(:build_record).with(attributes: {}).and_return(model_record)
+        end
+
         context "when email is required and the record holds nil for it" do
           subject(:chunk_result) do
             process_chunk(rows: rows_with_an_empty_cell, schema_checker: real_schema_checker_of_required_email)
@@ -701,22 +713,33 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
               )
             )
           end
-          let(:record_with_nil_email) { build_model_record(held_attributes: {"email" => nil}) }
+          let(:record_with_nil_email) do
+            build_model_record(held_attributes: {"email" => nil}, json_attributes: {"id" => nil, "email" => nil})
+          end
+          let(:schema_error_on_email) { schema_value_missing_on(target_column_name: "email") }
           let(:chunk_result_with_value_missing) do
             Pipeforge::RunProcessor::ChunkResult.new(
               first_row_number: 1, last_row_number: 1, processed_rows_count: 1, valid_rows_count: 0, failed_rows_count: 1,
               failed_rows: [
                 Pipeforge::RunProcessor::FailedRow.new(
-                  row_number: 1, attributes: {"email" => nil},
-                  errors: [Pipeforge::ErrorCatalog::ERRORS.fetch(:value_missing).call(origin: :schema, target_column_name: "email", value: nil)]
+                  row_number: 1, attributes: {"id" => nil, "email" => nil}, errors: [schema_error_on_email]
                 )
               ]
             )
           end
 
           before do
-            allow(scripted_transformer).to receive(:result_of_row).with(row: {"Mail" => nil}).and_return({})
-            allow(scripted_target).to receive(:build_record).with(attributes: {}).and_return(record_with_nil_email)
+            script_one_record(row: {"Mail" => nil}, model_record: record_with_nil_email)
+            allow(real_schema_checker_of_required_email).to receive(:call).and_call_original
+            chunk_result
+          end
+
+          it "asks the schema checker with what attributes of the record answers" do
+            expect(real_schema_checker_of_required_email).to have_received(:call).with(attributes: record_with_nil_email.attributes)
+          end
+
+          it "adds the value_missing error of the schema checker to the record with add_error" do
+            expect(record_with_nil_email).to have_received(:add_error).with(error: schema_error_on_email)
           end
 
           it "gives a failed row with value_missing from the schema" do
@@ -724,19 +747,119 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
           end
 
           it "does not load the record" do
-            chunk_result
             expect(record_with_nil_email).not_to have_received(:load)
+          end
+        end
+
+        context "when email and name are required and the record holds nil for both" do
+          subject(:chunk_result) do
+            process_chunk(rows: rows_with_two_empty_cells, schema_checker: real_schema_checker_of_required_email_and_name)
+          end
+
+          let(:rows_with_two_empty_cells) { [{"Mail" => nil, "Name" => nil}] }
+          let(:real_schema_checker_of_required_email_and_name) do
+            Pipeforge::RunProcessor::SchemaChecker.new(
+              resolved_mapped_columns: resolve_mapped_columns_of(
+                target_columns: [build_target_column(name: "email", required: true), build_target_column(name: "name", required: true)],
+                mapped_columns: {"email" => {source_column_name: "Mail"}, "name" => {source_column_name: "Name"}}
+              )
+            )
+          end
+          let(:record_with_nil_email_and_name) { build_model_record(held_attributes: {"email" => nil, "name" => nil}) }
+          let(:schema_error_on_email) { schema_value_missing_on(target_column_name: "email") }
+          let(:schema_error_on_name) { schema_value_missing_on(target_column_name: "name") }
+          let(:chunk_result_with_two_value_missing) do
+            Pipeforge::RunProcessor::ChunkResult.new(
+              first_row_number: 1, last_row_number: 1, processed_rows_count: 1, valid_rows_count: 0, failed_rows_count: 1,
+              failed_rows: [
+                Pipeforge::RunProcessor::FailedRow.new(
+                  row_number: 1, attributes: {"email" => nil, "name" => nil}, errors: [schema_error_on_email, schema_error_on_name]
+                )
+              ]
+            )
+          end
+
+          before do
+            script_one_record(row: {"Mail" => nil, "Name" => nil}, model_record: record_with_nil_email_and_name)
+            chunk_result
+          end
+
+          it "adds each error of the schema checker to the record with add_error, in the order of the mapped columns" do
+            expect(record_with_nil_email_and_name).to have_received(:add_error).with(error: schema_error_on_email).ordered
+            expect(record_with_nil_email_and_name).to have_received(:add_error).with(error: schema_error_on_name).ordered
+          end
+
+          it "gives a failed row with both errors" do
+            expect(chunk_result).to eq(chunk_result_with_two_value_missing)
+          end
+        end
+
+        context "when email is required and the record holds a value for it" do
+          subject(:chunk_result) do
+            process_chunk(rows: rows_with_an_email_cell, schema_checker: real_schema_checker_of_required_email)
+          end
+
+          let(:rows_with_an_email_cell) { [{"Mail" => "a"}] }
+          let(:real_schema_checker_of_required_email) do
+            Pipeforge::RunProcessor::SchemaChecker.new(
+              resolved_mapped_columns: resolve_mapped_columns_of(
+                target_columns: [build_target_column(name: "email", required: true)],
+                mapped_columns: {"email" => {source_column_name: "Mail"}}
+              )
+            )
+          end
+          let(:record_with_an_email) { build_model_record(held_attributes: {"email" => "a"}) }
+          let(:chunk_result_with_no_failed_row) do
+            Pipeforge::RunProcessor::ChunkResult.new(
+              first_row_number: 1, last_row_number: 1, processed_rows_count: 1, valid_rows_count: 1, failed_rows_count: 0,
+              failed_rows: []
+            )
+          end
+
+          before { script_one_record(row: {"Mail" => "a"}, model_record: record_with_an_email) }
+
+          it "does not call add_error on the record" do
+            chunk_result
+            expect(record_with_an_email).not_to have_received(:add_error)
+          end
+
+          it "gives no failed row" do
+            expect(chunk_result).to eq(chunk_result_with_no_failed_row)
           end
         end
       end
 
       describe "with the real ActiveRecordTarget and its ActiveRecordModelRecord" do
-        # The transformer gives the cell of Mail under email, and the schema checker answers schema_errors for every record.
         def script_email_rows(rows:, schema_errors: [])
           rows.each do |row|
             allow(scripted_transformer).to receive(:result_of_row).with(row: row).and_return({"email" => row["Mail"]})
           end
           allow(scripted_schema_checker).to receive(:call).and_return(schema_errors)
+        end
+
+        context "when the real target builds a record for each of three rows" do
+          subject(:chunk_result) { process_chunk(rows: rows_of_three_emails, target: real_target) }
+
+          let(:rows_of_three_emails) { [{"Mail" => "a"}, {"Mail" => "b"}, {"Mail" => "c"}] }
+          let(:model_of_three_rows) do
+            define_model(name: "ModelOfThreeRows", columns: ->(table) { table.string :email })
+          end
+          let(:real_target) { Pipeforge::ActiveRecordTarget.new(target_model_name: model_of_three_rows.name) }
+          let(:records_built_by_the_target) { [] }
+
+          before do
+            script_email_rows(rows: rows_of_three_emails)
+            allow(real_target).to receive(:preload_parents).and_call_original
+            allow(real_target).to receive(:build_record).and_wrap_original do |build_record, **keywords|
+              build_record.call(**keywords).tap { |model_record| records_built_by_the_target << model_record }
+            end
+            chunk_result
+          end
+
+          it "calls preload_parents once on the target, with the three records, after all three are built" do
+            expect(real_target).to have_received(:build_record).exactly(3).times.ordered
+            expect(real_target).to have_received(:preload_parents).with(records: records_built_by_the_target).once.ordered
+          end
         end
 
         context "when the model accepts the row and the table takes it" do
@@ -874,6 +997,144 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
 
           it "gives a failed row with one error for the column, the model's" do
             expect(chunk_result).to eq(chunk_result_with_the_model_error_only)
+          end
+        end
+      end
+
+      describe "with all the real collaborators" do
+        context "when rows has a row that passes, one with an empty name, one the model refuses and one the table refuses, and first_row_number is 5" do
+          subject(:chunk_result) do
+            described_class.call(
+              rows: rows_of_four_kinds, first_row_number: 5, transformer: real_transformer, schema_checker: real_schema_checker,
+              target: real_target
+            )
+          end
+
+          let(:rows_of_four_kinds) do
+            [
+              {"Mail" => "ann@example.com", "Name" => "Ann"},
+              {"Mail" => "bob@example.com", "Name" => nil},
+              {"Mail" => "no-at-sign", "Name" => "Cy"},
+              {"Mail" => "ann@example.com", "Name" => "Dee"}
+            ]
+          end
+          let(:mapped_columns_of_email_and_name) do
+            {"email" => {source_column_name: "Mail"}, "name" => {source_column_name: "Name"}}
+          end
+          let(:required_name_column) { build_target_column(name: "name", required: true) }
+          let(:real_transformer) do
+            Pipeforge::RunProcessor::RowTransformer.new(
+              resolved_mapped_columns: resolve_mapped_columns_of(
+                target_columns: [build_target_column(name: "email"), required_name_column],
+                mapped_columns: mapped_columns_of_email_and_name
+              )
+            )
+          end
+          let(:real_schema_checker) do
+            Pipeforge::RunProcessor::SchemaChecker.new(
+              resolved_mapped_columns: resolve_mapped_columns_of(
+                target_columns: [build_target_column(name: "email"), required_name_column],
+                mapped_columns: mapped_columns_of_email_and_name
+              )
+            )
+          end
+          let(:model_with_a_format_and_a_unique_index_on_email) do
+            define_model(
+              name: "ModelWithAFormatAndAUniqueIndexOnEmail",
+              columns: ->(table) {
+                table.string :email
+                table.string :name
+                table.index :email, unique: true
+              }
+            ) do
+              validates :email, format: {with: /@/}
+            end
+          end
+          let(:real_target) do
+            Pipeforge::ActiveRecordTarget.new(target_model_name: model_with_a_format_and_a_unique_index_on_email.name)
+          end
+          let(:native_message_of_the_unique_index) do
+            "PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint " \
+              "\"index_model_with_a_format_and_a_unique_index_on_email_on_email\"\n" \
+              "DETAIL:  Key (email)=(ann@example.com) already exists.\n"
+          end
+          let(:expected_chunk_result) do
+            Pipeforge::RunProcessor::ChunkResult.new(
+              first_row_number: 5, last_row_number: 8, processed_rows_count: 4, valid_rows_count: 1, failed_rows_count: 3,
+              failed_rows: [
+                Pipeforge::RunProcessor::FailedRow.new(
+                  row_number: 6, attributes: {"id" => nil, "email" => "bob@example.com", "name" => nil},
+                  errors: [schema_value_missing_on(target_column_name: "name")]
+                ),
+                Pipeforge::RunProcessor::FailedRow.new(
+                  row_number: 7, attributes: {"id" => nil, "email" => "no-at-sign", "name" => "Cy"},
+                  errors: [model_error_on(target_column_name: "email", value: "no-at-sign")]
+                ),
+                Pipeforge::RunProcessor::FailedRow.new(
+                  row_number: 8, attributes: {"id" => nil, "email" => "ann@example.com", "name" => "Dee"},
+                  errors: [
+                    Pipeforge::ErrorCatalog::ERRORS.fetch(:value_not_unique).call(
+                      origin: :database, target_column_name: nil, value: nil, native_message: native_message_of_the_unique_index
+                    )
+                  ]
+                )
+              ]
+            )
+          end
+
+          let(:records_built_by_the_target) { [] }
+          let(:attributes_of_the_records_when_built) { [] }
+          let(:values_of_the_rows) do
+            [
+              {"email" => "ann@example.com", "name" => "Ann"},
+              {"email" => "bob@example.com"},
+              {"email" => "no-at-sign", "name" => "Cy"},
+              {"email" => "ann@example.com", "name" => "Dee"}
+            ]
+          end
+
+          before do
+            allow(real_transformer).to receive(:result_of_row).and_call_original
+            allow(real_schema_checker).to receive(:call).and_call_original
+            allow(real_target).to receive(:preload_parents).and_call_original
+            allow(real_target).to receive(:build_record).and_wrap_original do |build_record, **keywords|
+              build_record.call(**keywords).tap do |model_record|
+                records_built_by_the_target << model_record
+                attributes_of_the_records_when_built << model_record.attributes
+              end
+            end
+            chunk_result
+          end
+
+          it "asks the transformer for the values of each row" do
+            rows_of_four_kinds.each do |row|
+              expect(real_transformer).to have_received(:result_of_row).with(row: row)
+            end
+          end
+
+          it "asks the target to build each record with the values the transformer gave" do
+            values_of_the_rows.each do |values|
+              expect(real_target).to have_received(:build_record).with(attributes: values)
+            end
+          end
+
+          it "asks the schema checker with what attributes of each record answered" do
+            attributes_of_the_records_when_built.each do |attributes|
+              expect(real_schema_checker).to have_received(:call).with(attributes: attributes)
+            end
+          end
+
+          it "asks the target once to preload the parents, with the four records" do
+            expect(real_target).to have_received(:preload_parents).with(records: records_built_by_the_target).once
+          end
+
+          it "gives the ChunkResult with the three failed rows and their errors from the three origins" do
+            expect(chunk_result).to eq(expected_chunk_result)
+          end
+
+          it "writes the row that passes" do
+            chunk_result
+            expect(model_with_a_format_and_a_unique_index_on_email.pluck(:email, :name)).to eq([["ann@example.com", "Ann"]])
           end
         end
       end

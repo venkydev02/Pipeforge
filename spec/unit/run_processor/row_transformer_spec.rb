@@ -1,11 +1,8 @@
 # frozen_string_literal: true
 
-# Each describe is one public method of the transformer. A context gives the mapped columns and the row it is about,
-# and each example says which values the transformer gives. Each mapped column has a source column name that differs
-# from its target column name, so a cell read from the wrong column shows. Utilities.blank? is the real one: it is a
-# pure function of ours that needs no set-up.
+# Each mapped column has a source column name that differs from its target column name, so a cell read from the wrong
+# column shows.
 RSpec.describe Pipeforge::RunProcessor::RowTransformer do
-  # The transformer built from mapped columns written as the consumer writes them.
   def transformer_of(mapped_columns:)
     described_class.new(resolved_mapped_columns: resolve_mapped_columns(mapped_columns))
   end
