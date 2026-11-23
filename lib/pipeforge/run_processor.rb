@@ -66,7 +66,7 @@ module Pipeforge
         ) do |rows|
           chunk_result = ChunkProcessor.call(
             rows: rows, first_row_number: first_row_number, transformer: transformer,
-            schema_checker: schema_checker, resolved_mapped_columns: resolved_mapped_columns, target: target
+            schema_checker: schema_checker, target: target
           )
           yield chunk_result if block_given?
 

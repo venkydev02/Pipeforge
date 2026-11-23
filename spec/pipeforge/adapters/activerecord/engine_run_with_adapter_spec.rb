@@ -121,11 +121,11 @@ RSpec.describe Pipeforge::Engine, "#run with the ActiveRecord adapter installed"
     expect(codes_of_row(9)).to eq([:value_not_accepted])
   end
 
-  it "shows the values as they would have been loaded, as JSON values, for the columns of the schema" do
+  it "shows the values as they would have been loaded, as JSON values, for every column of the record" do
     run_result
 
     expect(failed_rows.first.attributes).to eq(
-      "email" => nil, "seats" => 10, "fee" => "10.5", "tier" => "basic", "company_id" => company.id
+      "id" => nil, "email" => nil, "seats" => 10, "fee" => "10.5", "tier" => "basic", "company_id" => company.id
     )
   end
 
@@ -311,9 +311,9 @@ RSpec.describe Pipeforge::Engine, "#run with a polymorphic association" do
     )
   end
 
-  it "shows in the failed row what the record holds: the id, and no type" do
+  it "shows in the failed row what the record holds: the commentable id, and no type" do
     run_result
 
-    expect(failed_rows.first.attributes).to eq("commentable_id" => 7, "commentable_type" => nil)
+    expect(failed_rows.first.attributes).to eq("id" => nil, "commentable_id" => 7, "commentable_type" => nil)
   end
 end
