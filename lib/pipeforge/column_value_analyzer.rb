@@ -26,11 +26,10 @@ module Pipeforge
   #   result.column_summaries["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
-    #   source_identifier  the file path of the source, or its class name when it has no path
     #   row_count          data rows read; blank and all-empty rows are not counted
     #   column_summaries   a ColumnSummary per mapped target column, keyed by the target column
     #                      and in the order of the mapped columns
-    Result = Data.define(:source_identifier, :row_count, :column_summaries) do
+    Result = Data.define(:row_count, :column_summaries) do
       # @return [Hash] the result as plain JSON types, ready to store or send
       def to_h
         column_summaries_as_hashes = {}
@@ -40,7 +39,6 @@ module Pipeforge
         end
 
         {
-          source_identifier: source_identifier,
           row_count: row_count,
           column_summaries: column_summaries_as_hashes
         }
@@ -92,7 +90,7 @@ module Pipeforge
         column_summaries = {}
         summary_builders.each { |target_column_name, summary_builder| column_summaries[target_column_name] = summary_builder.summary }
 
-        Result.new(source_identifier: source_reader.identifier, row_count: row_count, column_summaries: column_summaries)
+        Result.new(row_count: row_count, column_summaries: column_summaries)
       end
     end
   end

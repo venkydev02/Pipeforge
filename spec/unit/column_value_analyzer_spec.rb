@@ -16,7 +16,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       )
     end
 
-    let(:source_reader) { instance_double(Pipeforge::Source::CsvReader, identifier: "users.csv") }
+    let(:source_reader) { instance_double(Pipeforge::Source::CsvReader) }
     let(:target) { instance_double(Pipeforge::ActiveRecordTarget) }
     let(:header_names) { %w[Mail Age] }
     let(:rows) do
@@ -209,12 +209,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         end
       end
 
-      context "when identifier is \"users.csv\"" do
-        it "has source_identifier \"users.csv\"" do
-          expect(result.source_identifier).to eq("users.csv")
-        end
-      end
-
       # Contract only: the row count does not depend on the mapping.
       context "when resolved_mapped_columns is empty" do
         let(:resolved_mapped_columns) { {} }
@@ -229,9 +223,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
   describe "Result#to_h" do
     subject(:hash) do
-      described_class::Result.new(
-        source_identifier: "users.csv", row_count: 3, column_summaries: column_summaries
-      ).to_h
+      described_class::Result.new(row_count: 3, column_summaries: column_summaries).to_h
     end
 
     context "when column_summaries has the summaries of \"a\" and \"b\"" do
@@ -242,9 +234,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         }
       end
 
-      it "writes source_identifier, row_count and the to_h of each summary keyed by target column" do
+      it "writes row_count and the to_h of each summary keyed by target column" do
         expect(hash).to eq(
-          source_identifier: "users.csv",
           row_count: 3,
           column_summaries: {"a" => {empty_count: 1}, "b" => {empty_count: 2}}
         )
@@ -254,8 +245,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     context "when column_summaries is empty" do
       let(:column_summaries) { {} }
 
-      it "writes column_summaries as an empty Hash and the other two keys as they were" do
-        expect(hash).to eq(source_identifier: "users.csv", row_count: 3, column_summaries: {})
+      it "writes column_summaries as an empty Hash and row_count as it was" do
+        expect(hash).to eq(row_count: 3, column_summaries: {})
       end
     end
   end

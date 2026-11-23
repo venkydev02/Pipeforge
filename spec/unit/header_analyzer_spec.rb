@@ -21,7 +21,6 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   let(:settings) { Pipeforge::Configuration::RecommendationSettings.new(inclusion_threshold: 55, reorder_penalty: 10) }
 
   let(:source_headers) { [] }
-  let(:source_identifier) { "users.csv" }
   let(:target_columns) { [] }
   let(:table_name) { "users" }
   let(:model_name) { "User" }
@@ -38,7 +37,7 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
   end
 
   def call_header_analyzer
-    described_class.call(source_headers: source_headers, source_identifier: source_identifier, target_schema: schema)
+    described_class.call(source_headers: source_headers, target_schema: schema)
   end
 
   # What the matcher gives back.
@@ -58,9 +57,9 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
 
   # The Result that a context expects; the fields it does not give keep the defaults of the lets.
   def result_of(matches: [], unmatched_source_column_names: [], unmatched_target_columns: [],
-    source_identifier: "users.csv", target_table_name: "users", model_name: "User")
+    target_table_name: "users", model_name: "User")
     described_class::Result.new(
-      source_identifier: source_identifier, target_table_name: target_table_name, model_name: model_name, matches: matches,
+      target_table_name: target_table_name, model_name: model_name, matches: matches,
       unmatched_source_column_names: unmatched_source_column_names, unmatched_target_columns: unmatched_target_columns
     )
   end
@@ -235,14 +234,6 @@ RSpec.describe Pipeforge::HeaderAnalyzer do
 
         it "has no model" do
           expect(result).to eq(result_of(model_name: nil))
-        end
-      end
-
-      context "when the source is people.csv" do
-        let(:source_identifier) { "people.csv" }
-
-        it "names the source with that identifier" do
-          expect(result).to eq(result_of(source_identifier: "people.csv"))
         end
       end
     end

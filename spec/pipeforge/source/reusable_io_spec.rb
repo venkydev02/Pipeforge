@@ -71,16 +71,4 @@ RSpec.describe Pipeforge::Source::ReusableIO do
       expect(source_io).not_to respond_to(:close)
     end
   end
-
-  describe "#identifier" do
-    it "is the file path when the IO has one" do
-      file = File.open(csv_file("A\n1\n"))
-
-      expect(described_class.new(io: file).identifier).to eq(file.path)
-    end
-
-    it "is the class name when the IO has no path" do
-      expect(source_io.identifier).to eq("StringIO")
-    end
-  end
 end

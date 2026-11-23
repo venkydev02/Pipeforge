@@ -13,14 +13,13 @@ module Pipeforge
   #
   # @example
   #   result = Pipeforge::HeaderAnalyzer.call(
-  #     source_headers: ["First Name", "Zip"], source_identifier: "users.csv", target_schema: schema
+  #     source_headers: ["First Name", "Zip"], target_schema: schema
   #   )
   #   result.matches.first
   #   # => {target_column_name: "first_name", source_column_name: "First Name", score: 100.0, tied_source_column_names: [],
   #   #     metadata: {...}}
   module HeaderAnalyzer
     # The outcome of the header stage.
-    #   source_identifier            the file path of the source, or its class name
     #   target_table_name, model_name     the table and the model the adapter read it from (nil when
     #                                the adapter has no model)
     #   matches                      [{target_column_name:, source_column_name:, score:, tied_source_column_names:,
@@ -42,23 +41,19 @@ module Pipeforge
     # Everything in it is a plain Hash, Array, String, number, boolean or nil, so +to_h+ gives the
     # result as plain JSON types, ready to store or send.
     Result = Data.define(
-      :source_identifier, :target_table_name, :model_name, :matches, :unmatched_source_column_names,
-      :unmatched_target_columns
+      :target_table_name, :model_name, :matches, :unmatched_source_column_names, :unmatched_target_columns
     )
 
     class << self
       # @param source_headers [Array<String>] the column names of the source, in file order,
       #   already checked (not blank, not repeated)
-      # @param source_identifier [String] the file path of the source, or its class name
       # @param target_schema [TargetSchema] the schema of the target table
       # @return [Result]
-      def call(source_headers:, source_identifier:, target_schema:)
+      def call(source_headers:, target_schema:)
         target_column_names = target_schema.columns.map(&:name)
         matcher_result = build_matcher.call(source_column_names: source_headers, target_column_names: target_column_names)
 
-        build_result(
-          source_identifier: source_identifier, target_schema: target_schema, matcher_result: matcher_result
-        )
+        build_result(target_schema: target_schema, matcher_result: matcher_result)
       end
 
       private
@@ -73,7 +68,7 @@ module Pipeforge
         )
       end
 
-      def build_result(source_identifier:, target_schema:, matcher_result:)
+      def build_result(target_schema:, matcher_result:)
         metadata_by_target_column_name = {}
 
         target_schema.columns.each do |target_column|
@@ -81,7 +76,6 @@ module Pipeforge
         end
 
         Result.new(
-          source_identifier: source_identifier,
           target_table_name: target_schema.table_name,
           model_name: target_schema.model_name,
           matches: build_matches(matcher_result: matcher_result, metadata_by_target_column_name: metadata_by_target_column_name),
