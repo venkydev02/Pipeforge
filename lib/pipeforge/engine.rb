@@ -77,7 +77,6 @@ module Pipeforge
     def analyze_headers
       HeaderAnalyzer.call(
         source_headers: @source_reader.headers,
-        source_identifier: @source_reader.identifier,
         target_schema: target_schema
       )
     end

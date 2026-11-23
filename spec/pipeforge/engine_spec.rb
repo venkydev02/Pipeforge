@@ -64,10 +64,6 @@ RSpec.describe Pipeforge::Engine do
       expect(target_class).to have_received(:new).with(target_model_name: "Record")
     end
 
-    it "names the source by its class when it has no path" do
-      expect(result.source_identifier).to eq("StringIO")
-    end
-
     context "with a higher inclusion threshold in the settings" do
       let(:settings) { {recommendation: {inclusion_threshold: 100}} }
       let(:source_io) { csv_io("Stat,Code\n1,2\n") }
@@ -119,10 +115,6 @@ RSpec.describe Pipeforge::Engine do
         "code" => {source_column_name: "Code"},
         "note" => {source_column_name: "Note"}
       }
-    end
-
-    it "names the source file" do
-      expect(result.source_identifier).to eq(source_io.path)
     end
 
     it "builds the target of the model it was given" do

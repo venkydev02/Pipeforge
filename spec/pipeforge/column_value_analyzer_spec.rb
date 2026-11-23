@@ -58,10 +58,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:file) { File.open(csv_file(csv)) }
       let(:source_reader) { Pipeforge::Source::CsvReader.new(source_io: Pipeforge::Source::ReusableIO.new(io: file)) }
 
-      it "names the source file" do
-        expect(result.source_identifier).to eq(file.path)
-      end
-
       it "counts the data rows, not the blank line" do
         expect(result.row_count).to eq(4)
       end
@@ -412,15 +408,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
     end
 
-    context "when the source is a file" do
-      let(:file) { File.open(csv_file(csv)) }
-      let(:source_reader) { Pipeforge::Source::CsvReader.new(source_io: Pipeforge::Source::ReusableIO.new(io: file)) }
-
-      it "names the source by its file path" do
-        expect(result.source_identifier).to eq(file.path)
-      end
-    end
-
     context "with a different chunk size in the settings" do
       let(:settings) { {execution: {chunk_size: 1}} }
 
@@ -665,7 +652,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
 
     it "survives a round trip through JSON" do
       expect(stored).to eq(
-        "source_identifier" => result.source_identifier,
         "row_count" => 2,
         "column_summaries" => {
           "age" => {

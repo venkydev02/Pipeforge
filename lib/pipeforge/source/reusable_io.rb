@@ -15,7 +15,6 @@ module Pipeforge
     #
     # @example
     #   source_io = Pipeforge::Source::ReusableIO.new(io: File.open("data/users.csv"))
-    #   source_io.identifier  # => "data/users.csv"
     class ReusableIO
       # The methods the IO must have, and the error code for each one that is missing.
       REQUIRED_METHODS = {
@@ -53,13 +52,6 @@ module Pipeforge
 
       def eof?
         @io.eof?
-      end
-
-      # @return [String] the file path of the IO when it has one, else the name of its class
-      def identifier
-        return @io.path.to_s if @io.respond_to?(:path)
-
-        @io.class.name
       end
 
       private

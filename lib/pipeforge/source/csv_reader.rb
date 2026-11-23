@@ -135,11 +135,6 @@ module Pipeforge
         rows_read
       end
 
-      # @return [String] the file path of the source when it has one, else the name of its class
-      def identifier
-        @source_io.identifier
-      end
-
       # The column names in file order, trimmed. They are read from the first line of the file
       # without reading the rest of it (the first data row is parsed too, because the gem needs
       # it, so a malformed first row stops this as well), and then kept: later calls give the same
