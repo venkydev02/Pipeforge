@@ -2,7 +2,7 @@
 
 # Each describe is one public method of the checker. A context gives the mapped columns and the attributes it is
 # about, and each example says which errors the checker gives. The ColumnLimitsChecker is a verifying double with its
-# answer scripted in the behaviours and the invariants, and the real one in the real-limits-checker contexts of the
+# answer scripted in the behaviours, and the real one in the real-limits-checker contexts of the
 # collaboration part. The ErrorCatalog is real: the expected errors are the ones it builds.
 # Each mapped column has a source column name that differs from its target column name, so a value read under the
 # wrong name shows.
@@ -175,7 +175,7 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
         end
 
         it "gives no other error" do
-          expect(errors.size).to eq(1)
+          expect(errors).to eq([violation])
         end
       end
     end
@@ -241,58 +241,56 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       end
     end
 
-    describe "invariants" do
-      context "when email is required and its value is nil" do
-        let(:required_email_column) { build_target_column(name: "email", required: true) }
-        let(:violation) { too_long_error(target_column_name: "email", value: "") }
-        let!(:limits_with_a_violation) { script_limits(target_column: required_email_column, answer: violation) }
-        let(:checker) { described_class.new(resolved_mapped_columns: resolve(required_email_column)) }
-        let(:attributes_with_empty_email) { {"email" => nil} }
-        let(:attributes) { attributes_with_empty_email }
+    context "when email is required and its value is nil" do
+      let(:required_email_column) { build_target_column(name: "email", required: true) }
+      let(:violation) { too_long_error(target_column_name: "email", value: "") }
+      let!(:limits_with_a_violation) { script_limits(target_column: required_email_column, answer: violation) }
+      let(:checker) { described_class.new(resolved_mapped_columns: resolve(required_email_column)) }
+      let(:attributes_with_empty_email) { {"email" => nil} }
+      let(:attributes) { attributes_with_empty_email }
 
-        it "does not ask the limits checker for it" do
-          errors
+      it "does not ask the limits checker for it" do
+        errors
 
-          expect(limits_with_a_violation).not_to have_received(:violation_of)
-        end
-
-        it "gives value_missing as its one error" do
-          expect(errors).to eq([missing_error(target_column_name: "email")])
-        end
+        expect(limits_with_a_violation).not_to have_received(:violation_of)
       end
 
-      context "when email is not required and its value is nil" do
-        let(:optional_email_column) { build_target_column(name: "email", required: false) }
-        let(:violation) { too_long_error(target_column_name: "email", value: "") }
-        let!(:limits_with_a_violation) { script_limits(target_column: optional_email_column, answer: violation) }
-        let(:checker) { described_class.new(resolved_mapped_columns: resolve(optional_email_column)) }
-        let(:attributes_with_empty_email) { {"email" => nil} }
-        let(:attributes) { attributes_with_empty_email }
+      it "gives value_missing as its one error" do
+        expect(errors).to eq([missing_error(target_column_name: "email")])
+      end
+    end
 
-        it "does not ask the limits checker for it" do
-          errors
+    context "when email is not required and its value is nil" do
+      let(:optional_email_column) { build_target_column(name: "email", required: false) }
+      let(:violation) { too_long_error(target_column_name: "email", value: "") }
+      let!(:limits_with_a_violation) { script_limits(target_column: optional_email_column, answer: violation) }
+      let(:checker) { described_class.new(resolved_mapped_columns: resolve(optional_email_column)) }
+      let(:attributes_with_empty_email) { {"email" => nil} }
+      let(:attributes) { attributes_with_empty_email }
 
-          expect(limits_with_a_violation).not_to have_received(:violation_of)
-        end
+      it "does not ask the limits checker for it" do
+        errors
+
+        expect(limits_with_a_violation).not_to have_received(:violation_of)
+      end
+    end
+
+    context "when the same checker is called with attributes that give an error and then with ones that pass" do
+      let(:code_column) { build_target_column(name: "code") }
+      let(:violation) { too_long_error(target_column_name: "code", value: "abcd") }
+      let(:checker) { described_class.new(resolved_mapped_columns: resolve(code_column)) }
+      let(:attributes_with_a_violation) { {"code" => "abcd"} }
+      let(:attributes_that_pass) { {"code" => "abc"} }
+      let(:attributes) { attributes_that_pass }
+
+      before do
+        limits = script_limits(target_column: code_column, answer: violation)
+        allow(limits).to receive(:violation_of).with(value: "abc").and_return(nil)
+        checker.call(attributes: attributes_with_a_violation)
       end
 
-      context "when the same checker is called with attributes that give an error and then with ones that pass" do
-        let(:code_column) { build_target_column(name: "code") }
-        let(:violation) { too_long_error(target_column_name: "code", value: "abcd") }
-        let(:checker) { described_class.new(resolved_mapped_columns: resolve(code_column)) }
-        let(:attributes_with_a_violation) { {"code" => "abcd"} }
-        let(:attributes_that_pass) { {"code" => "abc"} }
-        let(:attributes) { attributes_that_pass }
-
-        before do
-          limits = script_limits(target_column: code_column, answer: violation)
-          allow(limits).to receive(:violation_of).with(value: "abc").and_return(nil)
-          checker.call(attributes: attributes_with_a_violation)
-        end
-
-        it "gives no error for the second call" do
-          expect(errors).to eq([])
-        end
+      it "gives no error for the second call" do
+        expect(errors).to eq([])
       end
     end
 

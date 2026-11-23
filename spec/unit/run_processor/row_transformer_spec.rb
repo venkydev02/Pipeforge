@@ -245,59 +245,57 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
       end
     end
 
-    describe "invariants" do
-      context "when the mapped columns are in one order and the row lists its source columns in another" do
-        subject(:values) { transformer_of(mapped_columns: mapped_columns_in_order).result_of_row(row: row_in_another_order) }
+    context "when the mapped columns are in one order and the row lists its source columns in another" do
+      subject(:values) { transformer_of(mapped_columns: mapped_columns_in_order).result_of_row(row: row_in_another_order) }
 
-        let(:mapped_columns_in_order) do
-          {
-            "name" => {source_column_name: "Full name"},
-            "email" => {source_column_name: "Mail"},
-            "age" => {source_column_name: "Years"}
-          }
-        end
-        let(:row_in_another_order) { {"Years" => "30", "Mail" => "ann@example.com", "Full name" => "Ann"} }
+      let(:mapped_columns_in_order) do
+        {
+          "name" => {source_column_name: "Full name"},
+          "email" => {source_column_name: "Mail"},
+          "age" => {source_column_name: "Years"}
+        }
+      end
+      let(:row_in_another_order) { {"Years" => "30", "Mail" => "ann@example.com", "Full name" => "Ann"} }
 
-        it "lists the target columns in the order of the mapped columns" do
-          expect(values.keys).to eq(%w[name email age])
-        end
+      it "lists the target columns in the order of the mapped columns" do
+        expect(values.to_a).to eq([["name", "Ann"], ["email", "ann@example.com"], ["age", "30"]])
+      end
+    end
+
+    context "when the row and the value mapping are given" do
+      subject(:values) { transformer_of(mapped_columns: mapped_columns_with_a_value_mapping).result_of_row(row: row_given_to_the_transformer) }
+
+      let(:mapped_columns_with_a_value_mapping) do
+        {
+          "status" => {source_column_name: "State", value_mapping: {"Y" => "active", "n/a" => nil}},
+          "email" => {source_column_name: "Mail"}
+        }
+      end
+      let(:row_given_to_the_transformer) { {"State" => "n/a", "Mail" => "", "Zip" => "10001"} }
+
+      it "does not change the row" do
+        expect { values }.not_to change { row_given_to_the_transformer.dup }
       end
 
-      context "when the row and the value mapping are given" do
-        subject(:values) { transformer_of(mapped_columns: mapped_columns_with_a_value_mapping).result_of_row(row: row_given_to_the_transformer) }
+      it "does not change the value mapping" do
+        resolved_mapped_columns = resolve_mapped_columns(mapped_columns_with_a_value_mapping)
+        value_mapping_before = resolved_mapped_columns["status"].value_mapping.dup
+        described_class.new(resolved_mapped_columns: resolved_mapped_columns)
+          .result_of_row(row: row_given_to_the_transformer)
 
-        let(:mapped_columns_with_a_value_mapping) do
-          {
-            "status" => {source_column_name: "State", value_mapping: {"Y" => "active", "n/a" => nil}},
-            "email" => {source_column_name: "Mail"}
-          }
-        end
-        let(:row_given_to_the_transformer) { {"State" => "n/a", "Mail" => "", "Zip" => "10001"} }
-
-        it "does not change the row" do
-          expect { values }.not_to change { row_given_to_the_transformer.dup }
-        end
-
-        it "does not change the value mapping" do
-          resolved_mapped_columns = resolve_mapped_columns(mapped_columns_with_a_value_mapping)
-          value_mapping_before = resolved_mapped_columns["status"].value_mapping.dup
-          described_class.new(resolved_mapped_columns: resolved_mapped_columns)
-            .result_of_row(row: row_given_to_the_transformer)
-
-          expect(resolved_mapped_columns["status"].value_mapping).to eq(value_mapping_before)
-        end
+        expect(resolved_mapped_columns["status"].value_mapping).to eq(value_mapping_before)
       end
+    end
 
-      context "when one transformer is used for two rows, the first with values and the second empty" do
-        let(:transformer_of_one_column) { transformer_of(mapped_columns: {"email" => {source_column_name: "Mail"}}) }
-        let(:row_with_a_mail) { {"Mail" => "ann@example.com"} }
-        let(:row_with_an_empty_mail) { {"Mail" => nil} }
+    context "when one transformer is used for two rows, the first with values and the second empty" do
+      let(:transformer_of_one_column) { transformer_of(mapped_columns: {"email" => {source_column_name: "Mail"}}) }
+      let(:row_with_a_mail) { {"Mail" => "ann@example.com"} }
+      let(:row_with_an_empty_mail) { {"Mail" => nil} }
 
-        it "gives the second row nothing from the first" do
-          transformer_of_one_column.result_of_row(row: row_with_a_mail)
+      it "gives the second row nothing from the first" do
+        transformer_of_one_column.result_of_row(row: row_with_a_mail)
 
-          expect(transformer_of_one_column.result_of_row(row: row_with_an_empty_mail)).to eq({})
-        end
+        expect(transformer_of_one_column.result_of_row(row: row_with_an_empty_mail)).to eq({})
       end
     end
 
