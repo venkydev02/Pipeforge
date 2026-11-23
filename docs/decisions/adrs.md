@@ -501,6 +501,7 @@
 * **Consequences:**
   * The two stages take the same input, and the schema stays inside the `Engine`.
   * `protocols.md` and the README sentence about the failed row are updated in the same change.
+* **Amendment (2026-11-23): a failed row shows every column of its record.** *Supersedes item 4 above.* Item 4 narrowed the failed row to the mapped columns because `ChunkProcessor` no longer knew the schema; it hid a column that an error can be about (a column a callback of the model filled, or one that the database refused), so the consumer read an error whose value was not in the attributes. `FailedRow#attributes` is now `json_attributes` of the model record, as it was in ADR-30: every column of the record, in table order, as plain JSON types, so an unmapped column that holds no value shows as `nil` (the primary key of a row that was not written). `ChunkProcessor.call` no longer takes `resolved_mapped_columns:`, which only gave the names of the columns to show.
 
 ### ADR-32: The Columns of a Polymorphic Association Are Described in the Metadata of a Target Column
 * **Status:** Accepted (2026-11-18). **Adds** a field to the metadata of a target column (ADR-18 amendments, ADR-22).

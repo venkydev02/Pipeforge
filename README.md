@@ -188,12 +188,12 @@ A mapping screen can mark `company_id` as required, show that it points to `comp
 }
 ```
 
-And one failed row from a run, as `failed_row.to_h` gives it, with the attributes the record held (the columns you mapped, in the order of your mapping, cast to their types, as JSON values), never the raw line:
+And one failed row from a run, as `failed_row.to_h` gives it, with the attributes the record held (every column of the record, also the ones you did not map, cast to their types, as JSON values), never the raw line:
 
 ```json
 {
   "row_number": 4,
-  "attributes": {"email": "noah.fox@example.com", "company_id": 4, "status": "this status is far too long to fit"},
+  "attributes": {"id": null, "email": "noah.fox@example.com", "company_id": 4, "status": "this status is far too long to fit"},
   "errors": [
     {
       "origin": "schema",
