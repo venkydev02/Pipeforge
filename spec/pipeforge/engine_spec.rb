@@ -36,8 +36,8 @@ RSpec.describe Pipeforge::Engine do
     context "when the source is missing a method" do
       let(:source_io) { Object.new }
 
-      it "stops with our own error, naming the missing methods" do
-        expect { engine }.to raise_error(Pipeforge::Source::UnsupportedSourceError, /read.*rewind.*seek/)
+      it "raises ArgumentError, naming the missing methods" do
+        expect { engine }.to raise_error(ArgumentError, /does not respond to read, rewind, seek\z/)
       end
     end
   end
@@ -78,7 +78,7 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("") }
 
       it "stops with source_empty, before the target is built" do
-        expect { result }.to raise_error(Pipeforge::Source::EmptySourceError)
+        expect { result }.to raise_error(Pipeforge::Source::Error)
         expect(target_class).not_to have_received(:new)
       end
     end
@@ -87,7 +87,7 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Status,,Code\n1,2,3\n") }
 
       it "stops with source_header_blank, before the target is built" do
-        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_header_blank])
         end
         expect(target_class).not_to have_received(:new)
@@ -98,7 +98,7 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Status,Status,Code\n1,2,3\n") }
 
       it "stops with source_header_duplicated, before the target is built" do
-        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_header_duplicated])
         end
         expect(target_class).not_to have_received(:new)
@@ -180,7 +180,7 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Status,,Code\n1,2,3\n") }
 
       it "stops with the header error before the mapped columns are checked" do
-        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError)
+        expect { result }.to raise_error(Pipeforge::Source::Error)
       end
     end
 

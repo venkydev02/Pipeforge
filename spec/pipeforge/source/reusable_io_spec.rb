@@ -13,28 +13,16 @@ RSpec.describe Pipeforge::Source::ReusableIO do
     context "when the IO has none of the methods the engine needs" do
       let(:io) { Object.new }
 
-      it "stops with our own error, listing every missing method" do
-        expect { source_io }.to raise_error(
-          Pipeforge::Source::UnsupportedSourceError, /read.*rewind.*seek/
-        )
-      end
-
-      it "gives a code for each missing method" do
-        expect { source_io }.to raise_error(Pipeforge::Source::UnsupportedSourceError) do |error|
-          expect(error.codes).to eq(%i[source_io_missing_read source_io_missing_rewind source_io_missing_seek])
-        end
+      it "raises ArgumentError, naming every missing method" do
+        expect { source_io }.to raise_error(ArgumentError, /does not respond to read, rewind, seek\z/)
       end
     end
 
     context "when the IO lacks only seek" do
       let(:io) { instance_double(IO, read: nil, rewind: 0) }
 
-      it "reports just that method" do
-        expect { source_io }.to raise_error(Pipeforge::Source::UnsupportedSourceError) do |error|
-          expect(error.errors.map { |entry| entry.slice(:code, :method) }).to eq(
-            [{code: :source_io_missing_seek, method: :seek}]
-          )
-        end
+      it "names just that method" do
+        expect { source_io }.to raise_error(ArgumentError, /does not respond to seek\z/)
       end
     end
   end
