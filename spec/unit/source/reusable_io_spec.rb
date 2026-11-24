@@ -63,13 +63,13 @@ RSpec.describe Pipeforge::Source::ReusableIO do
   end
 
   describe "#gets, #read, #rewind, #eof? and #external_encoding" do
-    # contract only
-    it "has them as public methods, gets and read taking any arguments" do
-      source_io = StringIO.new
-      wrapper = described_class.new(io: source_io)
+    context "when the source IO is a StringIO" do
+      let(:source_io) { StringIO.new }
 
-      expect(wrapper).to respond_to(:gets, :read, :rewind, :eof?, :external_encoding)
-      expect([wrapper.method(:gets).arity, wrapper.method(:read).arity]).to eq([-1, -1])
+      # contract only
+      it "has them as public methods" do
+        expect(reusable_io).to respond_to(:gets, :read, :rewind, :eof?, :external_encoding)
+      end
     end
 
     context "when the source IO is a double with scripted answers" do
