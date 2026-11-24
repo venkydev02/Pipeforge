@@ -18,58 +18,45 @@ RSpec.describe Pipeforge::Source::ReusableIO do
     end
 
     describe "a source IO that lacks methods" do
-      subject(:missing_entries) do
-        described_class.new(io: source_io)
-      rescue Pipeforge::Source::UnsupportedSourceError => error
-        error.errors.map { |entry| entry.slice(:code, :method) }
-      end
+      subject(:new_wrapper) { described_class.new(io: source_io) }
 
       context "when the source IO lacks only read" do
         let(:source_io) { instance_double(StringIO, rewind: 0, seek: 0) }
 
-        it "raises UnsupportedSourceError with the entry source_io_missing_read" do
-          expect(missing_entries).to eq([{code: :source_io_missing_read, method: :read}])
+        it "raises ArgumentError naming read" do
+          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read\z/)
         end
       end
 
       context "when the source IO lacks only rewind" do
         let(:source_io) { instance_double(StringIO, read: "", seek: 0) }
 
-        it "raises UnsupportedSourceError with the entry source_io_missing_rewind" do
-          expect(missing_entries).to eq([{code: :source_io_missing_rewind, method: :rewind}])
+        it "raises ArgumentError naming rewind" do
+          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to rewind\z/)
         end
       end
 
       context "when the source IO lacks only seek" do
         let(:source_io) { instance_double(StringIO, read: "", rewind: 0) }
 
-        it "raises UnsupportedSourceError with the entry source_io_missing_seek" do
-          expect(missing_entries).to eq([{code: :source_io_missing_seek, method: :seek}])
+        it "raises ArgumentError naming seek" do
+          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to seek\z/)
         end
       end
 
       context "when the source IO lacks read and seek" do
         let(:source_io) { instance_double(StringIO, rewind: 0) }
 
-        it "raises one UnsupportedSourceError listing read, then seek" do
-          expect(missing_entries).to eq([
-            {code: :source_io_missing_read, method: :read},
-            {code: :source_io_missing_seek, method: :seek}
-          ])
+        it "raises ArgumentError naming read, then seek" do
+          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read, seek\z/)
         end
       end
 
-      [nil, "data.csv"].each do |value_that_is_not_an_io|
-        context "when the source IO is #{value_that_is_not_an_io.inspect}" do
-          let(:source_io) { value_that_is_not_an_io }
+      context "when the source IO is nil" do
+        let(:source_io) { nil }
 
-          it "raises one UnsupportedSourceError listing read, rewind, then seek" do
-            expect(missing_entries).to eq([
-              {code: :source_io_missing_read, method: :read},
-              {code: :source_io_missing_rewind, method: :rewind},
-              {code: :source_io_missing_seek, method: :seek}
-            ])
-          end
+        it "raises ArgumentError naming read, rewind, then seek" do
+          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read, rewind, seek\z/)
         end
       end
     end
