@@ -59,7 +59,7 @@ module Pipeforge
     # @param target_model_name [String] the name of the model the data will be loaded through,
     #   for example +"User"+
     #
-    # @raise [Source::UnsupportedSourceError] the source is missing a method the engine needs
+    # @raise [ArgumentError] the source is missing a method the engine needs (+read+, +rewind+ or +seek+)
     def initialize(source_io:, target_model_name:)
       @source_reader = Source::CsvReader.new(source_io: Source::ReusableIO.new(io: source_io))
       @target_model_name = target_model_name
@@ -72,8 +72,7 @@ module Pipeforge
     #
     # @return [HeaderAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [Source::EmptySourceError] the source has no header row
-    # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
+    # @raise [Source::Error] the source has no header row, or a header cell is blank or a name appears twice
     def analyze_headers
       HeaderAnalyzer.call(
         source_headers: @source_reader.headers,
@@ -98,13 +97,12 @@ module Pipeforge
     #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [Source::EmptySourceError] the source has no header row
-    # @raise [Source::InvalidHeaderError] a header cell is blank or a name appears twice
+    # @raise [Source::Error] the source has no header row, a header cell is blank or a name appears twice, or a row
+    #   cannot be parsed or has more cells than the header
     # @raise [InvalidMappedColumnsError] the mapped columns, an entry or a value mapping is not a
     #   Hash; a target column is not in the schema; an entry has no source column or one that is
     #   not in the file; or a required target column has no entry. Every such mistake is listed,
     #   except that mapped columns that are not a Hash are reported alone.
-    # @raise [Source::MalformedSourceError] a row cannot be parsed
     def analyze_column_values(mapped_columns:)
       check_mapped_columns(mapped_columns: mapped_columns)
 
@@ -135,7 +133,7 @@ module Pipeforge
     #   or +chunk_size+ is not a whole number of at least 1; every bad one is in the message
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [InvalidMappedColumnsError] as in {#analyze_column_values}
-    # @raise [Source::MalformedSourceError] a row cannot be parsed
+    # @raise [Source::Error] a row cannot be parsed, or has more cells than the header
     def run(mode:, mapped_columns:, offset: 0, chunk_size: Configuration.execution.chunk_size, &on_chunk)
       check_run_arguments(mode: mode, offset: offset, chunk_size: chunk_size)
       check_mapped_columns(mapped_columns: mapped_columns)

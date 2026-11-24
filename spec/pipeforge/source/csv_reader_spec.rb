@@ -131,7 +131,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
         let(:csv) { "A,B\n1,2,3\n" }
 
         it "still stops with source_row_too_long" do
-          expect { read_chunks_with(columns: %w[A]) }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+          expect { read_chunks_with(columns: %w[A]) }.to raise_error(Pipeforge::Source::Error) do |error|
             expect(error.codes).to eq([:source_row_too_long])
           end
         end
@@ -166,7 +166,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,,C\n1,2,3\n" }
 
       it "raises before yielding any rows" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry[:code] }).to eq([:source_header_blank])
         end
       end
@@ -176,7 +176,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "" }
 
       it "raises source_empty" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::EmptySourceError)
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
       end
     end
 
@@ -184,7 +186,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,B\n1,2\n3,4,5\n" }
 
       it "raises source_row_too_long, with the line of the row" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :line) }).to eq([{code: :source_row_too_long, line: 3}])
         end
       end
@@ -194,7 +196,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,B\n1,2,\n" }
 
       it "raises source_row_too_long too" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry[:code] }).to eq([:source_row_too_long])
         end
       end
@@ -212,13 +214,13 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A\n1\n\"never closed\n2\n" }
 
       it "raises our own error, naming the line where the row starts" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::MalformedSourceError, /line 3/) do |error|
-          expect(error.line).to eq(3)
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error, /line 3/) do |error|
+          expect(error.errors.map { |entry| entry[:line] }).to eq([3])
         end
       end
 
       it "gives the code malformed_row, with the line" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :line) }).to eq([{code: :malformed_row, line: 3}])
         end
       end
@@ -308,7 +310,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "" }
 
       it "raises source_empty and yields nothing" do
-        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::EmptySourceError) do |error|
+        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_empty])
         end
       end
@@ -320,7 +322,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       it "raises source_header_blank before any row is yielded" do
         yielded = []
 
-        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::InvalidHeaderError)
+        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_header_blank])
+        end
         expect(yielded).to eq([])
       end
     end
@@ -331,7 +335,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       it "raises source_row_too_long, after the rows before it" do
         yielded = []
 
-        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_row_too_long])
         end
         expect(yielded.size).to eq(1)
@@ -342,7 +346,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,B\n1,\"2\n" }
 
       it "raises malformed_row" do
-        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { reader.each_row { |_row| } }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:malformed_row])
         end
       end
@@ -390,7 +394,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,A,B\n1,2,3\n" }
 
       it "stops with source_header_duplicated and the name" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :source_column_name) }).to eq(
             [{code: :source_header_duplicated, source_column_name: "A"}]
           )
@@ -402,7 +406,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,,C\n1,2,3\n" }
 
       it "stops with source_header_blank and the position of the cell" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :position) }).to eq(
             [{code: :source_header_blank, position: 2}]
           )
@@ -414,7 +418,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,,\n1,2,3\n" }
 
       it "reports each blank cell, and does not call the blank name a repeated name" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq(%i[source_header_blank source_header_blank])
         end
       end
@@ -424,7 +428,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "A,A,\n1,2,3\n" }
 
       it "reports every mistake together" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq(%i[source_header_blank source_header_duplicated])
         end
       end
@@ -434,7 +438,7 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "" }
 
       it "stops with source_empty" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::EmptySourceError) do |error|
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_empty])
         end
       end
@@ -444,7 +448,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "\nA,B\n1,2\n" }
 
       it "stops with source_empty" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::EmptySourceError)
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
       end
     end
 

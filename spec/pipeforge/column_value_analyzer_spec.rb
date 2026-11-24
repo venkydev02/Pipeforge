@@ -299,7 +299,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer"), "c" => maps_to(source_column_name: "C", type: "integer")} }
 
       it "stops with source_row_too_long, with the line of the row" do
-        expect { result }.to raise_error(Pipeforge::Source::MalformedSourceError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :line) }).to eq([{code: :source_row_too_long, line: 2}])
         end
       end
@@ -310,7 +310,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_header_blank, even though the blank cell is not mapped" do
-        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.errors.map { |entry| entry.slice(:code, :position) }).to eq([{code: :source_header_blank, position: 2}])
         end
       end
@@ -321,7 +321,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_header_duplicated" do
-        expect { result }.to raise_error(Pipeforge::Source::InvalidHeaderError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_header_duplicated])
         end
       end
@@ -332,7 +332,7 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"a" => maps_to(source_column_name: "A", type: "integer")} }
 
       it "stops with source_empty" do
-        expect { result }.to raise_error(Pipeforge::Source::EmptySourceError) do |error|
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
           expect(error.codes).to eq([:source_empty])
         end
       end
@@ -344,8 +344,8 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       let(:mapped_columns) { {"name" => maps_to(source_column_name: "Name", type: "string")} }
 
       it "stops with our own error, naming the line where the row starts" do
-        expect { result }.to raise_error(Pipeforge::Source::MalformedSourceError, /malformed CSV at line 3: .*quote/i) do |error|
-          expect(error.line).to eq(3)
+        expect { result }.to raise_error(Pipeforge::Source::Error, /malformed CSV at line 3: .*quote/i) do |error|
+          expect(error.errors.map { |entry| entry[:line] }).to eq([3])
         end
       end
     end

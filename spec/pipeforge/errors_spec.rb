@@ -6,16 +6,8 @@ RSpec.describe Pipeforge::Error do
       expect(Pipeforge::InvalidMappedColumnsError.ancestors).to include(described_class)
     end
 
-    it "includes Source::UnsupportedSourceError" do
-      expect(Pipeforge::Source::UnsupportedSourceError.ancestors).to include(described_class)
-    end
-
-    it "includes Source::EmptySourceError" do
-      expect(Pipeforge::Source::EmptySourceError.ancestors).to include(described_class)
-    end
-
-    it "includes Source::MalformedSourceError" do
-      expect(Pipeforge::Source::MalformedSourceError.ancestors).to include(described_class)
+    it "includes Source::Error" do
+      expect(Pipeforge::Source::Error.ancestors).to include(described_class)
     end
   end
 
@@ -74,18 +66,6 @@ RSpec.describe Pipeforge::Error do
       error = Pipeforge::InvalidMappedColumnsError.new(errors: entries, message: "its own layout")
 
       expect(error.message).to eq("its own layout")
-    end
-  end
-
-  describe Pipeforge::Source::MalformedSourceError do
-    subject(:error) { described_class.new(message: "bad row", line: 7) }
-
-    it "keeps the line" do
-      expect(error.line).to eq(7)
-    end
-
-    it "has the code malformed_row, with the line" do
-      expect(error.errors).to eq([{code: :malformed_row, message: "bad row", line: 7}])
     end
   end
 end
