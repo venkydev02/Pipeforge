@@ -16,16 +16,12 @@ module Pipeforge
     # @example
     #   source_io = Pipeforge::Source::ReusableIO.new(io: File.open("data/users.csv"))
     class ReusableIO
-      # The methods the IO must have, and the error code for each one that is missing.
-      REQUIRED_METHODS = {
-        read: :source_io_missing_read,
-        rewind: :source_io_missing_rewind,
-        seek: :source_io_missing_seek
-      }.freeze
+      # The methods the IO must have.
+      REQUIRED_METHODS = %i[read rewind seek].freeze
 
       # @param io [IO] the source to read through, for example +File.open("data/users.csv")+
-      # @raise [UnsupportedSourceError] the IO lacks a method the engine needs; every missing
-      #   method is listed
+      # @raise [ArgumentError] the IO lacks a method the engine needs; every missing method is named in
+      #   the message
       def initialize(io:)
         reject_missing_methods(io: io)
         @io = io
@@ -56,23 +52,18 @@ module Pipeforge
 
       private
 
-      # Raises UnsupportedSourceError, listing every method the IO does not have.
+      # Raises ArgumentError, naming every method the IO does not have.
       def reject_missing_methods(io:)
-        errors = []
+        missing_method_names = []
 
-        REQUIRED_METHODS.each do |method_name, code|
-          next if io.respond_to?(method_name)
-
-          errors << {
-            code: code,
-            message: "source does not respond to #{method_name}",
-            method: method_name
-          }
+        REQUIRED_METHODS.each do |method_name|
+          missing_method_names << method_name unless io.respond_to?(method_name)
         end
 
-        return if errors.empty?
+        return if missing_method_names.empty?
 
-        raise UnsupportedSourceError.new(errors: errors)
+        raise ArgumentError,
+          "the source must respond to #{REQUIRED_METHODS.join(", ")}; it does not respond to #{missing_method_names.join(", ")}"
       end
     end
   end

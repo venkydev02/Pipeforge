@@ -66,35 +66,12 @@ module Pipeforge
 
   # The errors about the source file: the file itself, its header and its rows.
   module Source
-    # Raised when the source object lacks a method the engine needs (+read+, +rewind+ or +seek+).
-    # Codes: +source_io_missing_read+, +source_io_missing_rewind+, +source_io_missing_seek+, one
-    # entry for each missing method.
-    class UnsupportedSourceError < Pipeforge::Error; end
-
-    # Raised by the header stage when the source file has no content at all, so there is no
-    # header to read. A file with a header and no data rows is not an error. Code:
-    # +source_empty+.
-    class EmptySourceError < Pipeforge::Error; end
-
-    # Raised by the header stage when the header row cannot be used: a header cell is blank
-    # (+source_header_blank+, with its +position+) or a name appears twice
-    # (+source_header_duplicated+, with the +source_column_name+). One entry for each mistake.
-    class InvalidHeaderError < Pipeforge::Error; end
-
-    # Raised when a row cannot be used as written: it cannot be parsed (for example a quote that
-    # is never closed, code +malformed_row+) or it has more cells than the header (code
-    # +source_row_too_long+).
-    class MalformedSourceError < Pipeforge::Error
-      # @return [Integer] the physical line of the file where the error starts
-      attr_reader :line
-
-      # @param message [String] what is wrong
-      # @param line [Integer] the physical line where the error starts
-      # @param code [Symbol] +:malformed_row+ or +:source_row_too_long+
-      def initialize(message:, line:, code: :malformed_row)
-        super(errors: [{code: code, message: message, line: line}])
-        @line = line
-      end
-    end
+    # Raised when the source file cannot be used. One entry for each mistake, told apart by its code:
+    # +source_empty+ (no header line to read; a file with a header and no data rows is not an error),
+    # +source_header_blank+ (a header cell is blank, with its +position+), +source_header_duplicated+ (a name
+    # appears twice, with the +source_column_name+), +malformed_row+ (a row cannot be parsed, for example a quote
+    # that is never closed) and +source_row_too_long+ (a row has more cells than the header). The two row codes
+    # have the +line+ where the row starts.
+    class Error < Pipeforge::Error; end
   end
 end

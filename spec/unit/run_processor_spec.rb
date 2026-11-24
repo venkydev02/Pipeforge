@@ -293,10 +293,10 @@ RSpec.describe Pipeforge::RunProcessor do
         end
       end
       describe "a failure of the reader" do
-        context "when the reader raises a MalformedSourceError while it reads" do
+        context "when the reader raises a Source::Error while it reads" do
           subject(:run_call) { run_all(source_reader: reader_that_raises, mode: :run) }
 
-          let(:error_of_the_reader) { Pipeforge::Source::MalformedSourceError.new(message: "malformed CSV at line 3", line: 3) }
+          let(:error_of_the_reader) { Pipeforge::Source::Error.single(code: :malformed_row, message: "malformed CSV at line 3", line: 3) }
           let(:reader_that_raises) do
             reader = instance_double(Pipeforge::Source::CsvReader)
             allow(reader).to receive(:each_chunk).and_raise(error_of_the_reader)
@@ -525,7 +525,7 @@ RSpec.describe Pipeforge::RunProcessor do
           end
         end
 
-        context "when the reader yields a chunk and then raises a MalformedSourceError" do
+        context "when the reader yields a chunk and then raises a Source::Error" do
           subject(:run_result) do
             run_all(
               source_reader: reader_that_fails_in_the_second_chunk,
@@ -538,7 +538,7 @@ RSpec.describe Pipeforge::RunProcessor do
           end
           let(:real_target) { Pipeforge::ActiveRecordTarget.new(target_model_name: model_of_two_emails.name) }
           let(:resolved_mapped_columns_of_mail) { resolve_mapped_columns("email" => {source_column_name: "Mail"}) }
-          let(:error_of_the_reader) { Pipeforge::Source::MalformedSourceError.new(message: "malformed CSV at line 4", line: 4) }
+          let(:error_of_the_reader) { Pipeforge::Source::Error.single(code: :malformed_row, message: "malformed CSV at line 4", line: 4) }
           let(:reader_that_fails_in_the_second_chunk) do
             reader = instance_double(Pipeforge::Source::CsvReader)
             allow(reader).to receive(:each_chunk) do |**_keywords, &block|
@@ -550,7 +550,7 @@ RSpec.describe Pipeforge::RunProcessor do
 
           def run_and_ignore_the_error
             run_result
-          rescue Pipeforge::Source::MalformedSourceError
+          rescue Pipeforge::Source::Error
             nil
           end
 

@@ -22,20 +22,21 @@ module Pipeforge
       EMPTY_VALUE = /\A[[:space:]]*\z/
 
       # Called by the gem for a row it cannot use (an unclosed quote, or more cells than the
-      # header). Stops the scan with a {MalformedSourceError} that carries the line where the row
+      # header). Stops the scan with an {Error} that carries the line where the row
       # starts.
       STOP_ON_BAD_ROW = lambda do |bad_row|
         line = bad_row[:file_line_number]
 
         if bad_row[:error_class] == SmarterCSV::HeaderSizeMismatch
-          raise MalformedSourceError.new(
+          raise Error.single(
+            code: :source_row_too_long,
             message: "the row at line #{line} has more cells than the header",
-            line: line,
-            code: :source_row_too_long
+            line: line
           )
         end
 
-        raise MalformedSourceError.new(
+        raise Error.single(
+          code: :malformed_row,
           message: "malformed CSV at line #{line}: #{bad_row[:error_message]}",
           line: line
         )
@@ -80,10 +81,8 @@ module Pipeforge
       # @return [Integer] the number of data rows read, the dropped ones included. Blank lines and rows
       #   with only empty cells are not rows.
       # @raise [ArgumentError] no block is given
-      # @raise [EmptySourceError] see +headers+
-      # @raise [InvalidHeaderError] see +headers+
-      # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
-      #   than the header (+source_row_too_long+)
+      # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
+      #   has more cells than the header (+source_row_too_long+)
       def each_chunk(offset: 0, chunk_size: Configuration.execution.chunk_size, columns: nil)
         raise ArgumentError, "each_chunk needs a block" unless block_given?
 
@@ -117,10 +116,8 @@ module Pipeforge
       # @yieldparam row [Hash{String => String, nil}] header => raw text, or nil when empty
       # @return [Integer] the number of data rows read
       # @raise [ArgumentError] no block is given
-      # @raise [EmptySourceError] see +headers+
-      # @raise [InvalidHeaderError] see +headers+
-      # @raise [MalformedSourceError] a row cannot be parsed (+malformed_row+) or has more cells
-      #   than the header (+source_row_too_long+)
+      # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
+      #   has more cells than the header (+source_row_too_long+)
       def each_row
         raise ArgumentError, "each_row needs a block" unless block_given?
 
@@ -144,9 +141,8 @@ module Pipeforge
       # every one is listed in one error.
       #
       # @return [Array<String>]
-      # @raise [EmptySourceError] there is no header line to read (+source_empty+)
-      # @raise [InvalidHeaderError] a header cell is blank or a name appears twice
-      #   (+source_header_blank+, +source_header_duplicated+)
+      # @raise [Error] there is no header line to read (+source_empty+), or a header cell is blank or a name
+      #   appears twice (+source_header_blank+, +source_header_duplicated+)
       def headers
         if @headers.nil?
           header_names = read_header_names
@@ -188,13 +184,13 @@ module Pipeforge
       # Raises when there is no header, or collects every blank cell and repeated name.
       def reject_unusable_header(header_names:)
         if header_names.empty?
-          raise EmptySourceError.single(code: :source_empty, message: "the source has no header row to read")
+          raise Error.single(code: :source_empty, message: "the source has no header row to read")
         end
 
         errors = blank_cell_errors(header_names: header_names) + repeated_name_errors(header_names: header_names)
         return if errors.empty?
 
-        raise InvalidHeaderError.new(errors: errors)
+        raise Error.new(errors: errors)
       end
 
       def blank_cell_errors(header_names:)
