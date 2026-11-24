@@ -56,10 +56,11 @@ module Pipeforge
 
       # The options for reading only the header: one row at a time, and a repeated name is
       # reported by the gem instead of being renamed, so the names are read as written.
+      # A first data row with more cells than the header is not given invented names (the gem would add
+      # symbols such as +:column_3+): it stops here with the same error as the other reads.
       HEADER_OPTIONS = OPTIONS.merge(
         chunk_size: 1,
-        duplicate_header_suffix: nil,
-        missing_headers: :auto
+        duplicate_header_suffix: nil
       ).freeze
 
       # @param source_io [ReusableIO] the CSV source; nothing is read until +headers+ or
