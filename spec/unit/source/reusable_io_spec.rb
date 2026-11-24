@@ -8,8 +8,8 @@ RSpec.describe Pipeforge::Source::ReusableIO do
       let(:source_io) { instance_double(StringIO, read: "", rewind: 0, seek: 0) }
 
       # contract only
-      it "gives a ReusableIO" do
-        expect(reusable_io).to be_a(described_class)
+      it "gives a wrapper that answers gets, read, rewind, eof? and external_encoding" do
+        expect(reusable_io).to respond_to(:gets, :read, :rewind, :eof?, :external_encoding)
       end
 
       it "gives a wrapper that does not respond to close" do
@@ -63,15 +63,6 @@ RSpec.describe Pipeforge::Source::ReusableIO do
   end
 
   describe "#gets, #read, #rewind, #eof? and #external_encoding" do
-    context "when the source IO is a StringIO" do
-      let(:source_io) { StringIO.new }
-
-      # contract only
-      it "has them as public methods" do
-        expect(reusable_io).to respond_to(:gets, :read, :rewind, :eof?, :external_encoding)
-      end
-    end
-
     context "when the source IO is a double with scripted answers" do
       let(:source_io) do
         instance_double(
