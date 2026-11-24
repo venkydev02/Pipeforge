@@ -176,7 +176,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "" }
 
       it "raises source_empty" do
-        expect { read_chunks }.to raise_error(Pipeforge::Source::Error)
+        expect { read_chunks }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
       end
     end
 
@@ -320,7 +322,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       it "raises source_header_blank before any row is yielded" do
         yielded = []
 
-        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::Error)
+        expect { reader.each_row { |row| yielded << row } }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_header_blank])
+        end
         expect(yielded).to eq([])
       end
     end
@@ -444,7 +448,9 @@ RSpec.describe Pipeforge::Source::CsvReader do
       let(:csv) { "\nA,B\n1,2\n" }
 
       it "stops with source_empty" do
-        expect { reader.headers }.to raise_error(Pipeforge::Source::Error)
+        expect { reader.headers }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
       end
     end
 

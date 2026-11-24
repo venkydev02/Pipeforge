@@ -97,12 +97,12 @@ module Pipeforge
     #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [Source::Error] the source has no header row, or a header cell is blank or a name appears twice
+    # @raise [Source::Error] the source has no header row, a header cell is blank or a name appears twice, or a row
+    #   cannot be parsed or has more cells than the header
     # @raise [InvalidMappedColumnsError] the mapped columns, an entry or a value mapping is not a
     #   Hash; a target column is not in the schema; an entry has no source column or one that is
     #   not in the file; or a required target column has no entry. Every such mistake is listed,
     #   except that mapped columns that are not a Hash are reported alone.
-    # @raise [Source::Error] a row cannot be parsed, or has more cells than the header
     def analyze_column_values(mapped_columns:)
       check_mapped_columns(mapped_columns: mapped_columns)
 

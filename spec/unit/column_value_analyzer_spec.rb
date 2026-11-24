@@ -71,14 +71,14 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     describe "the header" do
       # Contract only: an error of the source is not caught.
       context "when headers raises Pipeforge::Source::Error" do
-        before do
-          allow(source_reader).to receive(:headers).and_raise(
-            Pipeforge::Source::Error.single(code: :source_empty, message: "the source has no header row")
-          )
+        let(:error_of_the_source) do
+          Pipeforge::Source::Error.single(code: :source_empty, message: "the source has no header row")
         end
 
+        before { allow(source_reader).to receive(:headers).and_raise(error_of_the_source) }
+
         it "raises it to the caller" do
-          expect { result }.to raise_error(Pipeforge::Source::Error)
+          expect { result }.to raise_error(error_of_the_source)
         end
       end
     end

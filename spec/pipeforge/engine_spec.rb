@@ -78,7 +78,9 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("") }
 
       it "stops with source_empty, before the target is built" do
-        expect { result }.to raise_error(Pipeforge::Source::Error)
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_empty])
+        end
         expect(target_class).not_to have_received(:new)
       end
     end
@@ -180,7 +182,9 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { csv_io("Status,,Code\n1,2,3\n") }
 
       it "stops with the header error before the mapped columns are checked" do
-        expect { result }.to raise_error(Pipeforge::Source::Error)
+        expect { result }.to raise_error(Pipeforge::Source::Error) do |error|
+          expect(error.codes).to eq([:source_header_blank])
+        end
       end
     end
 
