@@ -226,3 +226,145 @@ RSpec.describe "Pipeforge::InvalidMappedColumnsError::ENTRIES" do
     end
   end
 end
+
+RSpec.describe "Pipeforge::TargetSchemaError::ENTRIES" do
+  let(:entries) { Pipeforge::TargetSchemaError::ENTRIES }
+
+  describe "the keys" do
+    let(:expected_codes) { %i[active_record_model_not_found target_table_not_found] }
+
+    it "are the two codes, in order" do
+      expect(entries.keys).to eq(expected_codes)
+    end
+  end
+
+  describe ":active_record_model_not_found" do
+    subject(:entry) { entries.fetch(:active_record_model_not_found).call(target_model_name: "Customer") }
+
+    let(:expected_entry) do
+      {
+        code: :active_record_model_not_found,
+        message: "no loaded model is named Customer; the model must be loaded before the schema is read",
+        model_name: "Customer"
+      }
+    end
+
+    context "when given a target_model_name" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+
+  describe ":target_table_not_found" do
+    subject(:entry) { entries.fetch(:target_table_not_found).call(table_name: "customers", model_name: "Customer") }
+
+    let(:expected_entry) do
+      {
+        code: :target_table_not_found,
+        message: "table customers of Customer does not exist in the database",
+        table_name: "customers"
+      }
+    end
+
+    context "when given a table_name and a model_name" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+end
+
+RSpec.describe "Pipeforge::Source::Error::ENTRIES" do
+  let(:entries) { Pipeforge::Source::Error::ENTRIES }
+
+  describe "the keys" do
+    let(:expected_codes) do
+      %i[source_empty source_header_blank source_header_duplicated malformed_row source_row_too_long]
+    end
+
+    it "are the five codes, in order" do
+      expect(entries.keys).to eq(expected_codes)
+    end
+  end
+
+  describe ":source_empty" do
+    subject(:entry) { entries.fetch(:source_empty).call }
+
+    let(:expected_entry) do
+      {code: :source_empty, message: "the source has no header row to read"}
+    end
+
+    context "when given no facts" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+
+  describe ":source_header_blank" do
+    subject(:entry) { entries.fetch(:source_header_blank).call(position: 3) }
+
+    let(:expected_entry) do
+      {code: :source_header_blank, message: "header cell 3 is blank", position: 3}
+    end
+
+    context "when given a position" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+
+  describe ":source_header_duplicated" do
+    subject(:entry) do
+      entries.fetch(:source_header_duplicated).call(source_column_name: "Mail", count: 3)
+    end
+
+    let(:expected_entry) do
+      {
+        code: :source_header_duplicated,
+        message: "column name Mail appears 3 times",
+        source_column_name: "Mail"
+      }
+    end
+
+    context "when given a source_column_name and a count" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+
+  describe ":malformed_row" do
+    subject(:entry) { entries.fetch(:malformed_row).call(line: 7, reason: "unclosed quoted field") }
+
+    let(:expected_entry) do
+      {code: :malformed_row, message: "malformed CSV at line 7: unclosed quoted field", line: 7}
+    end
+
+    context "when given a line and a reason" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+
+  describe ":source_row_too_long" do
+    subject(:entry) { entries.fetch(:source_row_too_long).call(line: 9) }
+
+    let(:expected_entry) do
+      {
+        code: :source_row_too_long,
+        message: "the row at line 9 has more cells than the header",
+        line: 9
+      }
+    end
+
+    context "when given a line" do
+      it "gives the whole entry" do
+        expect(entry).to eq(expected_entry)
+      end
+    end
+  end
+end

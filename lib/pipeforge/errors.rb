@@ -94,7 +94,26 @@ module Pipeforge
   # Raised by a target that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table_name+). A code that belongs
   # to one adapter carries its name, for example +active_record_model_not_found+ (field +model_name+).
-  class TargetSchemaError < Error; end
+  class TargetSchemaError < Error
+    # The entries of the error, each written once and keyed by its code. The value of a key is a function that takes the
+    # facts its sentence uses and returns the entry: the +code+, the +message+ and the fields that locate the mistake.
+    ENTRIES = {
+      active_record_model_not_found: ->(target_model_name:) {
+        {
+          code: :active_record_model_not_found,
+          message: "no loaded model is named #{target_model_name}; the model must be loaded before the schema is read",
+          model_name: target_model_name
+        }
+      },
+      target_table_not_found: ->(table_name:, model_name:) {
+        {
+          code: :target_table_not_found,
+          message: "table #{table_name} of #{model_name} does not exist in the database",
+          table_name: table_name
+        }
+      }
+    }.freeze
+  end
 
   # The errors about the source file: the file itself, its header and its rows.
   module Source
@@ -104,6 +123,35 @@ module Pipeforge
     # appears twice, with the +source_column_name+), +malformed_row+ (a row cannot be parsed, for example a quote
     # that is never closed) and +source_row_too_long+ (a row has more cells than the header). The two row codes
     # have the +line+ where the row starts.
-    class Error < Pipeforge::Error; end
+    class Error < Pipeforge::Error
+      # The entries of the error, each written once and keyed by its code. The value of a key is a function that takes
+      # the facts its sentence uses and returns the entry: the +code+, the +message+ and the fields that locate the
+      # mistake.
+      ENTRIES = {
+        source_empty: -> {
+          {code: :source_empty, message: "the source has no header row to read"}
+        },
+        source_header_blank: ->(position:) {
+          {code: :source_header_blank, message: "header cell #{position} is blank", position: position}
+        },
+        source_header_duplicated: ->(source_column_name:, count:) {
+          {
+            code: :source_header_duplicated,
+            message: "column name #{source_column_name} appears #{count} times",
+            source_column_name: source_column_name
+          }
+        },
+        malformed_row: ->(line:, reason:) {
+          {code: :malformed_row, message: "malformed CSV at line #{line}: #{reason}", line: line}
+        },
+        source_row_too_long: ->(line:) {
+          {
+            code: :source_row_too_long,
+            message: "the row at line #{line} has more cells than the header",
+            line: line
+          }
+        }
+      }.freeze
+    end
   end
 end

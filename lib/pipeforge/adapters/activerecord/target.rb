@@ -211,9 +211,7 @@ module Pipeforge
       return model unless model.nil?
 
       raise TargetSchemaError.single(
-        code: :active_record_model_not_found,
-        message: "no loaded model is named #{target_model_name}; the model must be loaded before the schema is read",
-        model_name: target_model_name
+        **TargetSchemaError::ENTRIES.fetch(:active_record_model_not_found).call(target_model_name: target_model_name)
       )
     end
 
@@ -225,9 +223,9 @@ module Pipeforge
       return if table_exists
 
       raise TargetSchemaError.single(
-        code: :target_table_not_found,
-        message: "table #{@model.table_name} of #{@model.name} does not exist in the database",
-        table_name: @model.table_name
+        **TargetSchemaError::ENTRIES.fetch(:target_table_not_found).call(
+          table_name: @model.table_name, model_name: @model.name
+        )
       )
     end
 

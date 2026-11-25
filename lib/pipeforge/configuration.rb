@@ -33,12 +33,16 @@ module Pipeforge
     # (0 to 100) are taken off when the matched words are in a different order.
     RecommendationSettings = Data.define(:inclusion_threshold, :reorder_penalty)
 
+    # The sections the settings file may have.
     SECTION_NAMES = %w[execution recommendation].freeze
 
-    class << self
-      # @return [String] the path the settings were read from
-      attr_reader :path
+    # The value of each setting when the file does not give it.
+    DEFAULTS = {
+      execution: {chunk_size: 2000},
+      recommendation: {inclusion_threshold: 55, reorder_penalty: 10}
+    }.freeze
 
+    class << self
       # @return [ExecutionSettings]
       attr_reader :execution
 
@@ -52,20 +56,19 @@ module Pipeforge
       #   section or setting, a section that is not settings, a value of the wrong type or
       #   range), all listed in the message
       def load
-        @errors = []
-        @sections = read_sections
-        execution = build_execution
-        recommendation = build_recommendation
+        @error_messages = []
+        @sections_by_name = read_sections
+        execution_settings = build_execution
+        recommendation_settings = build_recommendation
         raise_errors
 
-        @path = DEFAULT_PATH
-        @execution = execution
-        @recommendation = recommendation
+        @execution = execution_settings
+        @recommendation = recommendation_settings
       end
 
       private
 
-      # The sections under `engine:` in the file; empty when the file has none, or when there is
+      # The sections under +engine:+ in the file; empty when the file has none, or when there is
       # no file (every setting then has its default). A section the engine does not know is
       # recorded as an error, and the rest is still read.
       def read_sections
@@ -86,52 +89,51 @@ module Pipeforge
         end
 
         sections
-      rescue Psych::Exception => e
-        fail_fast(message: "not valid YAML: #{e.message}")
+      rescue Psych::Exception => yaml_error
+        fail_fast(message: "not valid YAML: #{yaml_error.message}")
       end
 
       # Records a mistake as a sentence.
       def add_error(message:)
-        @errors << message
+        @error_messages << message
       end
 
-      # Records the error and raises at once, through the one place that raises: nothing after
-      # this can be checked.
+      # Records the mistake and raises at once: nothing after it can be checked.
       def fail_fast(message:)
         add_error(message: message)
         raise_errors
       end
 
       def build_execution
-        execution = build_section(
-          settings_class: ExecutionSettings, section_name: "execution", defaults: {chunk_size: 2000}
+        execution_settings = build_section(
+          settings_class: ExecutionSettings, section_name: "execution", defaults: DEFAULTS.fetch(:execution)
         )
-        require_positive_whole_number(setting_name: "execution.chunk_size", value: execution.chunk_size)
+        require_positive_whole_number(setting_name: "execution.chunk_size", value: execution_settings.chunk_size)
 
-        execution
+        execution_settings
       end
 
       def build_recommendation
-        recommendation = build_section(
+        recommendation_settings = build_section(
           settings_class: RecommendationSettings,
           section_name: "recommendation",
-          defaults: {inclusion_threshold: 55, reorder_penalty: 10}
+          defaults: DEFAULTS.fetch(:recommendation)
         )
         require_positive_whole_number(
-          setting_name: "recommendation.inclusion_threshold", value: recommendation.inclusion_threshold
+          setting_name: "recommendation.inclusion_threshold", value: recommendation_settings.inclusion_threshold
         )
         require_whole_number_from_0_to_100(
-          setting_name: "recommendation.reorder_penalty", value: recommendation.reorder_penalty
+          setting_name: "recommendation.reorder_penalty", value: recommendation_settings.reorder_penalty
         )
 
-        recommendation
+        recommendation_settings
       end
 
       # The section's settings from the file, over the defaults given. A section that is not
       # settings, or a setting that is not known, is recorded as an error and the rest is still
       # read, so the values that can be checked are checked.
       def build_section(settings_class:, section_name:, defaults:)
-        section = @sections[section_name] || {}
+        section = @sections_by_name[section_name] || {}
 
         unless section.is_a?(Hash)
           add_error(message: "section #{section_name} must hold settings, each written as name: value")
@@ -163,13 +165,13 @@ module Pipeforge
 
       # One ArgumentError for everything collected: the sentence itself for one, a list for several.
       def raise_errors
-        return if @errors.empty?
+        return if @error_messages.empty?
 
-        if @errors.size == 1
-          message = "#{DEFAULT_PATH}: #{@errors.first}"
+        if @error_messages.size == 1
+          message = "#{DEFAULT_PATH}: #{@error_messages.first}"
         else
-          lines = @errors.map { |error| "  - #{error}" }
-          message = "#{DEFAULT_PATH} has #{@errors.size} errors:\n#{lines.join("\n")}"
+          lines = @error_messages.map { |error_message| "  - #{error_message}" }
+          message = "#{DEFAULT_PATH} has #{@error_messages.size} errors:\n#{lines.join("\n")}"
         end
 
         raise ArgumentError, message

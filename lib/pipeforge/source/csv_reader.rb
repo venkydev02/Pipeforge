@@ -28,18 +28,10 @@ module Pipeforge
         line = bad_row[:file_line_number]
 
         if bad_row[:error_class] == SmarterCSV::HeaderSizeMismatch
-          raise Error.single(
-            code: :source_row_too_long,
-            message: "the row at line #{line} has more cells than the header",
-            line: line
-          )
+          raise Error.single(**Error::ENTRIES.fetch(:source_row_too_long).call(line: line))
         end
 
-        raise Error.single(
-          code: :malformed_row,
-          message: "malformed CSV at line #{line}: #{bad_row[:error_message]}",
-          line: line
-        )
+        raise Error.single(**Error::ENTRIES.fetch(:malformed_row).call(line: line, reason: bad_row[:error_message]))
       end
 
       # The options every read passes to smarter_csv. Trimming is the gem's default.
@@ -185,7 +177,7 @@ module Pipeforge
       # Raises when there is no header, or collects every blank cell and repeated name.
       def reject_unusable_header(header_names:)
         if header_names.empty?
-          raise Error.single(code: :source_empty, message: "the source has no header row to read")
+          raise Error.single(**Error::ENTRIES.fetch(:source_empty).call)
         end
 
         errors = blank_cell_errors(header_names: header_names) + repeated_name_errors(header_names: header_names)
@@ -200,11 +192,7 @@ module Pipeforge
         header_names.each_with_index do |header_name, index|
           next unless header_name.empty?
 
-          errors << {
-            code: :source_header_blank,
-            message: "header cell #{index + 1} is blank",
-            position: index + 1
-          }
+          errors << Error::ENTRIES.fetch(:source_header_blank).call(position: index + 1)
         end
 
         errors
@@ -219,11 +207,7 @@ module Pipeforge
         counts.each do |header_name, count|
           next if count == 1
 
-          errors << {
-            code: :source_header_duplicated,
-            message: "column name #{header_name} appears #{count} times",
-            source_column_name: header_name
-          }
+          errors << Error::ENTRIES.fetch(:source_header_duplicated).call(source_column_name: header_name, count: count)
         end
 
         errors
