@@ -131,21 +131,22 @@ RSpec.describe Pipeforge::Engine, "#run" do
   context "with a mode that is not :dry_run or :run" do
     context "when it is a misspelled symbol" do
       include_examples "an argument the engine refuses", {run_mode: :dryrun},
-        "mode must be :dry_run or :run, got :dryrun"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: :dryrun)
     end
 
     context "when it is text" do
       include_examples "an argument the engine refuses", {run_mode: "dry_run"},
-        'mode must be :dry_run or :run, got "dry_run"'
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: "dry_run")
     end
 
     context "when it is the text run" do
       include_examples "an argument the engine refuses", {run_mode: "run"},
-        'mode must be :dry_run or :run, got "run"'
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: "run")
     end
 
     context "when it is nil" do
-      include_examples "an argument the engine refuses", {run_mode: nil}, "mode must be :dry_run or :run, got nil"
+      include_examples "an argument the engine refuses", {run_mode: nil},
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: nil)
     end
   end
 
@@ -158,27 +159,27 @@ RSpec.describe Pipeforge::Engine, "#run" do
   context "with an offset that is not a whole number of at least 0" do
     context "when it is negative" do
       include_examples "an argument the engine refuses", {offset: -1},
-        "offset must be a whole number of at least 0, got -1"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: -1)
     end
 
     context "when it is a decimal number" do
       include_examples "an argument the engine refuses", {offset: 1.5},
-        "offset must be a whole number of at least 0, got 1.5"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: 1.5)
     end
 
     context "when it is text" do
       include_examples "an argument the engine refuses", {offset: "2"},
-        'offset must be a whole number of at least 0, got "2"'
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: "2")
     end
 
     context "when it is nil" do
       include_examples "an argument the engine refuses", {offset: nil},
-        "offset must be a whole number of at least 0, got nil"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: nil)
     end
 
     context "when it is true" do
       include_examples "an argument the engine refuses", {offset: true},
-        "offset must be a whole number of at least 0, got true"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: true)
     end
   end
 
@@ -197,27 +198,27 @@ RSpec.describe Pipeforge::Engine, "#run" do
   context "with a chunk size that is not a whole number of at least 1" do
     context "when it is 0" do
       include_examples "an argument the engine refuses", {chunk_size: 0},
-        "chunk_size must be a whole number of at least 1, got 0"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: 0)
     end
 
     context "when it is negative" do
       include_examples "an argument the engine refuses", {chunk_size: -5},
-        "chunk_size must be a whole number of at least 1, got -5"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: -5)
     end
 
     context "when it is a decimal number" do
       include_examples "an argument the engine refuses", {chunk_size: 2.5},
-        "chunk_size must be a whole number of at least 1, got 2.5"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: 2.5)
     end
 
     context "when it is text" do
       include_examples "an argument the engine refuses", {chunk_size: "big"},
-        'chunk_size must be a whole number of at least 1, got "big"'
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: "big")
     end
 
     context "when it is nil" do
       include_examples "an argument the engine refuses", {chunk_size: nil},
-        "chunk_size must be a whole number of at least 1, got nil"
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: nil)
     end
   end
 
@@ -225,15 +226,17 @@ RSpec.describe Pipeforge::Engine, "#run" do
     it "lists every one in a single ArgumentError, in the order mode, offset, chunk_size" do
       expect { run_engine(run_mode: :dryrun, offset: -1, chunk_size: 0) }.to raise_error(
         ArgumentError,
-        "mode must be :dry_run or :run, got :dryrun; " \
-        "offset must be a whole number of at least 0, got -1; " \
-        "chunk_size must be a whole number of at least 1, got 0"
+        [
+          Pipeforge::ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: :dryrun),
+          Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: -1),
+          Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: 0)
+        ].join("; ")
       )
     end
 
     it "lists only the ones that cannot be used" do
       expect { run_engine(offset: -1) }.to raise_error(
-        ArgumentError, "offset must be a whole number of at least 0, got -1"
+        ArgumentError, Pipeforge::ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: -1)
       )
     end
   end

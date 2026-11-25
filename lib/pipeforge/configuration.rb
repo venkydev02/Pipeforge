@@ -76,21 +76,21 @@ module Pipeforge
 
         document = YAML.safe_load_file(DEFAULT_PATH) || {}
         unless document.is_a?(Hash)
-          fail_fast(message: "must be made of name: value entries at the top level")
+          fail_fast(message: ArgumentMessages::MESSAGES.fetch(:settings_not_name_value_entries).call)
         end
 
         sections = document["engine"] || {}
         unless sections.is_a?(Hash)
-          fail_fast(message: "engine must hold sections, each written as a name with entries under it")
+          fail_fast(message: ArgumentMessages::MESSAGES.fetch(:settings_engine_not_sections).call)
         end
 
         (sections.keys.map(&:to_s) - SECTION_NAMES).each do |section_name|
-          add_error(message: "unknown section #{section_name}")
+          add_error(message: ArgumentMessages::MESSAGES.fetch(:settings_section_unknown).call(section_name: section_name))
         end
 
         sections
       rescue Psych::Exception => yaml_error
-        fail_fast(message: "not valid YAML: #{yaml_error.message}")
+        fail_fast(message: ArgumentMessages::MESSAGES.fetch(:settings_not_valid_yaml).call(reason: yaml_error.message))
       end
 
       # Records a mistake as a sentence.
@@ -136,14 +136,18 @@ module Pipeforge
         section = @sections_by_name[section_name] || {}
 
         unless section.is_a?(Hash)
-          add_error(message: "section #{section_name} must hold settings, each written as name: value")
+          add_error(message: ArgumentMessages::MESSAGES.fetch(:settings_section_not_settings).call(section_name: section_name))
           return settings_class.new(**defaults)
         end
 
         given_settings = section.transform_keys(&:to_sym)
 
         (given_settings.keys - settings_class.members).each do |setting_name|
-          add_error(message: "unknown setting #{setting_name} in section #{section_name}")
+          add_error(
+            message: ArgumentMessages::MESSAGES.fetch(:settings_setting_unknown).call(
+              setting_name: setting_name, section_name: section_name
+            )
+          )
         end
 
         settings_class.new(**defaults.merge(given_settings.slice(*settings_class.members)))
@@ -153,28 +157,27 @@ module Pipeforge
       def require_positive_whole_number(setting_name:, value:)
         return if Utilities.positive_whole_number?(value: value)
 
-        add_error(message: "#{setting_name} must be a whole number of at least 1, got #{value.inspect}")
+        add_error(
+          message: ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: setting_name, value: value)
+        )
       end
 
       # A whole number from 0 to 100, for a score or a number of points.
       def require_whole_number_from_0_to_100(setting_name:, value:)
         return if value.is_a?(Integer) && value.between?(0, 100)
 
-        add_error(message: "#{setting_name} must be a whole number from 0 to 100, got #{value.inspect}")
+        add_error(
+          message: ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_from_0_to_100).call(name: setting_name, value: value)
+        )
       end
 
       # One ArgumentError for everything collected: the sentence itself for one, a list for several.
       def raise_errors
         return if @error_messages.empty?
 
-        if @error_messages.size == 1
-          message = "#{DEFAULT_PATH}: #{@error_messages.first}"
-        else
-          lines = @error_messages.map { |error_message| "  - #{error_message}" }
-          message = "#{DEFAULT_PATH} has #{@error_messages.size} errors:\n#{lines.join("\n")}"
-        end
-
-        raise ArgumentError, message
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:settings_file_has_errors).call(
+          path: DEFAULT_PATH, error_messages: @error_messages
+        )
       end
     end
   end

@@ -62,8 +62,9 @@ module Pipeforge
 
         return if missing_method_names.empty?
 
-        raise ArgumentError,
-          "the source must respond to #{REQUIRED_METHODS.join(", ")}; it does not respond to #{missing_method_names.join(", ")}"
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:source_missing_methods).call(
+          required_method_names: REQUIRED_METHODS, missing_method_names: missing_method_names
+        )
       end
     end
   end

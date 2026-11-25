@@ -18,7 +18,7 @@ module Pipeforge
   #   target.schema.columns.map(&:name)  # => ["email", "company_id"]
   class ActiveRecordTarget
     # @param target_model_name [String] the name of a loaded model
-    # @raise [TargetSchemaError] no loaded model has that name (+active_record_model_not_found+), or
+    # @raise [TargetSchemaError] no loaded model has that name (+model_not_found+), or
     #   the table of the model does not exist (+target_table_not_found+)
     def initialize(target_model_name:)
       @model = find_model(target_model_name: target_model_name)
@@ -211,7 +211,7 @@ module Pipeforge
       return model unless model.nil?
 
       raise TargetSchemaError.single(
-        **TargetSchemaError::ENTRIES.fetch(:active_record_model_not_found).call(target_model_name: target_model_name)
+        **TargetSchemaError::ENTRIES.fetch(:model_not_found).call(target_model_name: target_model_name)
       )
     end
 

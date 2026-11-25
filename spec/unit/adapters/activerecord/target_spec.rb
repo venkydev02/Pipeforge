@@ -30,9 +30,9 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     context "when target_model_name is the name of no loaded model" do
       let(:target_model_name) { "AdapterSpecModels::ModelNobodyLoaded" }
 
-      it "raises TargetSchemaError with active_record_model_not_found, naming model_name" do
+      it "raises TargetSchemaError with model_not_found, naming model_name" do
         expect { target }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found, model_name: "AdapterSpecModels::ModelNobodyLoaded")
+          expect(error.errors.first).to include(code: :model_not_found, model_name: "AdapterSpecModels::ModelNobodyLoaded")
         end
       end
     end
@@ -40,9 +40,9 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     context "when target_model_name is only the beginning of the name of a loaded model" do
       let(:target_model_name) { define_model(name: "ModelWithLongerName").name.delete_suffix("Name") }
 
-      it "raises TargetSchemaError with active_record_model_not_found, naming model_name" do
+      it "raises TargetSchemaError with model_not_found, naming model_name" do
         expect { target }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found, model_name: "AdapterSpecModels::ModelWithLonger")
+          expect(error.errors.first).to include(code: :model_not_found, model_name: "AdapterSpecModels::ModelWithLonger")
         end
       end
     end
@@ -50,9 +50,9 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     context "when target_model_name is the name of an abstract class" do
       let(:target_model_name) { "AdapterSpecModels::AbstractModel" }
 
-      it "raises TargetSchemaError with active_record_model_not_found" do
+      it "raises TargetSchemaError with model_not_found" do
         expect { target }.to raise_error(Pipeforge::TargetSchemaError) do |error|
-          expect(error.errors.first).to include(code: :active_record_model_not_found)
+          expect(error.errors.first).to include(code: :model_not_found)
         end
       end
     end

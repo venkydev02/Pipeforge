@@ -42,7 +42,7 @@ Matching uses names only, with no language model. The same names and settings al
 
 ## A migration in four steps
 
-The example below uses a `User` model that belongs to a `Company`, and a CSV file `users.csv` with a header row. Use your own model and file. The ActiveRecord adapter finds the model you name among the models that are already loaded; it never loads one itself, so load your models first (a Rails application has loaded them already). A name that no loaded model has stops with `active_record_model_not_found`.
+The example below uses a `User` model that belongs to a `Company`, and a CSV file `users.csv` with a header row. Use your own model and file. The ActiveRecord adapter finds the model you name among the models that are already loaded; it never loads one itself, so load your models first (a Rails application has loaded them already). A name that no loaded model has stops with `model_not_found`.
 
 ### 1. Match the columns
 

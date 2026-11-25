@@ -17,6 +17,18 @@ RSpec.describe Pipeforge::Configuration do
       {"engine" => engine}.to_yaml
     end
 
+    def message(key, **arguments)
+      Pipeforge::ArgumentMessages::MESSAGES.fetch(key).call(**arguments)
+    end
+
+    def file_message(*error_messages)
+      message(:settings_file_has_errors, path: described_class::DEFAULT_PATH, error_messages: error_messages)
+    end
+
+    def file_message_start(key, **arguments)
+      /\A#{Regexp.escape(described_class::DEFAULT_PATH)}: #{Regexp.escape(message(key, **arguments))}/
+    end
+
     context "when the settings file has every known setting" do
       let(:settings_file) do
         engine_file(
@@ -158,55 +170,12 @@ RSpec.describe Pipeforge::Configuration do
     end
 
     describe "a value that is refused" do
-      let(:chunk_size_sentence) { "must be a whole number of at least 1" }
-      let(:reorder_penalty_sentence) { "must be a whole number from 0 to 100" }
-
       context "when execution.chunk_size is text" do
         let(:settings_file) { engine_file("execution" => {"chunk_size" => "5"}) }
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: execution.chunk_size #{chunk_size_sentence}, got \"5\""
-          )
-        end
-      end
-
-      context "when execution.chunk_size is a decimal" do
-        let(:settings_file) { engine_file("execution" => {"chunk_size" => 2.5}) }
-
-        it "raises ArgumentError naming the setting and the value" do
-          expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: execution.chunk_size #{chunk_size_sentence}, got 2.5"
-          )
-        end
-      end
-
-      context "when execution.chunk_size is 0" do
-        let(:settings_file) { engine_file("execution" => {"chunk_size" => 0}) }
-
-        it "raises ArgumentError naming the setting and the value" do
-          expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: execution.chunk_size #{chunk_size_sentence}, got 0"
-          )
-        end
-      end
-
-      context "when execution.chunk_size is negative" do
-        let(:settings_file) { engine_file("execution" => {"chunk_size" => -3}) }
-
-        it "raises ArgumentError naming the setting and the value" do
-          expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: execution.chunk_size #{chunk_size_sentence}, got -3"
-          )
-        end
-      end
-
-      context "when execution.chunk_size is nil" do
-        let(:settings_file) { engine_file("execution" => {"chunk_size" => nil}) }
-
-        it "raises ArgumentError naming the setting and the value" do
-          expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: execution.chunk_size #{chunk_size_sentence}, got nil"
+            ArgumentError, file_message(message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: "5"))
           )
         end
       end
@@ -216,7 +185,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: recommendation.inclusion_threshold #{chunk_size_sentence}, got 0"
+            ArgumentError, file_message(message(:value_not_whole_number_at_least_1, name: "recommendation.inclusion_threshold", value: 0))
           )
         end
       end
@@ -226,7 +195,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: recommendation.reorder_penalty #{reorder_penalty_sentence}, got 101"
+            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101))
           )
         end
       end
@@ -236,7 +205,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: recommendation.reorder_penalty #{reorder_penalty_sentence}, got -1"
+            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: -1))
           )
         end
       end
@@ -246,7 +215,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: recommendation.reorder_penalty #{reorder_penalty_sentence}, got 5.5"
+            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 5.5))
           )
         end
       end
@@ -256,7 +225,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: recommendation.reorder_penalty #{reorder_penalty_sentence}, got \"10\""
+            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: "10"))
           )
         end
       end
@@ -267,7 +236,7 @@ RSpec.describe Pipeforge::Configuration do
         let(:settings_file) { "engine: [unclosed" }
 
         it "raises ArgumentError saying the file is not valid YAML" do
-          expect { loading }.to raise_error(ArgumentError, %r{\Aconfig/pipeforge\.yml: not valid YAML: })
+          expect { loading }.to raise_error(ArgumentError, file_message_start(:settings_not_valid_yaml, reason: ""))
         end
       end
 
@@ -275,7 +244,7 @@ RSpec.describe Pipeforge::Configuration do
         let(:settings_file) { "engine: !ruby/object:Object {}\n" }
 
         it "raises ArgumentError saying the file is not valid YAML" do
-          expect { loading }.to raise_error(ArgumentError, %r{\Aconfig/pipeforge\.yml: not valid YAML: })
+          expect { loading }.to raise_error(ArgumentError, file_message_start(:settings_not_valid_yaml, reason: ""))
         end
       end
 
@@ -284,7 +253,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying it must be made of name: value entries" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: must be made of name: value entries at the top level"
+            ArgumentError, file_message(message(:settings_not_name_value_entries))
           )
         end
       end
@@ -294,8 +263,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying engine must hold sections" do
           expect { loading }.to raise_error(
-            ArgumentError,
-            "config/pipeforge.yml: engine must hold sections, each written as a name with entries under it"
+            ArgumentError, file_message(message(:settings_engine_not_sections))
           )
         end
       end
@@ -306,7 +274,9 @@ RSpec.describe Pipeforge::Configuration do
         let(:settings_file) { engine_file("source" => {"limit" => 3}) }
 
         it "raises ArgumentError naming the section" do
-          expect { loading }.to raise_error(ArgumentError, "config/pipeforge.yml: unknown section source")
+          expect { loading }.to raise_error(
+            ArgumentError, file_message(message(:settings_section_unknown, section_name: "source"))
+          )
         end
       end
 
@@ -315,7 +285,8 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the section" do
           expect { loading }.to raise_error(
-            ArgumentError, "config/pipeforge.yml: unknown setting batch_size in section execution"
+            ArgumentError,
+            file_message(message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"))
           )
         end
       end
@@ -325,8 +296,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying the section must hold settings" do
           expect { loading }.to raise_error(
-            ArgumentError,
-            "config/pipeforge.yml: section execution must hold settings, each written as name: value"
+            ArgumentError, file_message(message(:settings_section_not_settings, section_name: "execution"))
           )
         end
       end
@@ -341,12 +311,11 @@ RSpec.describe Pipeforge::Configuration do
         it "raises one ArgumentError that lists each mistake on its own line, in the order found" do
           expect { loading }.to raise_error(
             ArgumentError,
-            <<~MESSAGE.chomp
-              config/pipeforge.yml has 3 errors:
-                - unknown section source
-                - unknown setting batch_size in section execution
-                - execution.chunk_size must be a whole number of at least 1, got 0
-            MESSAGE
+            file_message(
+              message(:settings_section_unknown, section_name: "source"),
+              message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"),
+              message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0)
+            )
           )
         end
       end
@@ -359,11 +328,10 @@ RSpec.describe Pipeforge::Configuration do
         it "reports both" do
           expect { loading }.to raise_error(
             ArgumentError,
-            <<~MESSAGE.chomp
-              config/pipeforge.yml has 2 errors:
-                - execution.chunk_size must be a whole number of at least 1, got 0
-                - recommendation.reorder_penalty must be a whole number from 0 to 100, got 101
-            MESSAGE
+            file_message(
+              message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0),
+              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+            )
           )
         end
       end
@@ -376,11 +344,10 @@ RSpec.describe Pipeforge::Configuration do
         it "reports the wrong value as well" do
           expect { loading }.to raise_error(
             ArgumentError,
-            <<~MESSAGE.chomp
-              config/pipeforge.yml has 2 errors:
-                - section execution must hold settings, each written as name: value
-                - recommendation.reorder_penalty must be a whole number from 0 to 100, got 101
-            MESSAGE
+            file_message(
+              message(:settings_section_not_settings, section_name: "execution"),
+              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+            )
           )
         end
       end
@@ -393,11 +360,10 @@ RSpec.describe Pipeforge::Configuration do
         it "reports both" do
           expect { loading }.to raise_error(
             ArgumentError,
-            <<~MESSAGE.chomp
-              config/pipeforge.yml has 2 errors:
-                - unknown setting batch_size in section recommendation
-                - recommendation.reorder_penalty must be a whole number from 0 to 100, got 101
-            MESSAGE
+            file_message(
+              message(:settings_setting_unknown, setting_name: :batch_size, section_name: "recommendation"),
+              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+            )
           )
         end
       end

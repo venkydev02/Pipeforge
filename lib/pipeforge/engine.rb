@@ -155,15 +155,15 @@ module Pipeforge
       messages = []
 
       unless RUN_MODES.include?(mode)
-        messages << "mode must be :dry_run or :run, got #{mode.inspect}"
+        messages << ArgumentMessages::MESSAGES.fetch(:mode_not_allowed).call(mode: mode)
       end
 
       unless Utilities.non_negative_whole_number?(value: offset)
-        messages << "offset must be a whole number of at least 0, got #{offset.inspect}"
+        messages << ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_0).call(name: "offset", value: offset)
       end
 
       unless Utilities.positive_whole_number?(value: chunk_size)
-        messages << "chunk_size must be a whole number of at least 1, got #{chunk_size.inspect}"
+        messages << ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_at_least_1).call(name: "chunk_size", value: chunk_size)
       end
 
       raise ArgumentError, messages.join("; ") unless messages.empty?

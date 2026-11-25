@@ -77,7 +77,7 @@ module Pipeforge
       # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
       #   has more cells than the header (+source_row_too_long+)
       def each_chunk(offset: 0, chunk_size: Configuration.execution.chunk_size, columns: nil)
-        raise ArgumentError, "each_chunk needs a block" unless block_given?
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:block_needed).call(method_name: "each_chunk") unless block_given?
 
         headers
         rows_read = 0
@@ -112,7 +112,7 @@ module Pipeforge
       # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
       #   has more cells than the header (+source_row_too_long+)
       def each_row
-        raise ArgumentError, "each_row needs a block" unless block_given?
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:block_needed).call(method_name: "each_row") unless block_given?
 
         headers
         rows_read = 0
