@@ -36,7 +36,6 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
     let(:email_column) { build_target_column(name: "email") }
     let(:name_column) { build_target_column(name: "name") }
 
-    # contract only
     context "when resolved_mapped_columns is a Hash of target column name => mapped column" do
       subject(:checker) { described_class.new(resolved_mapped_columns: resolve(email_column)) }
 
@@ -47,7 +46,6 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       end
     end
 
-    # contract only
     context "when resolved_mapped_columns is empty" do
       subject(:checker) { described_class.new(resolved_mapped_columns: {}) }
 
@@ -78,7 +76,6 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
   describe "#call" do
     subject(:errors) { checker.call(attributes: attributes) }
 
-    # contract only
     context "when attributes is a Hash of target column name => value that passes every check" do
       let(:name_column) { build_target_column(name: "name") }
       let(:checker) { described_class.new(resolved_mapped_columns: resolve(name_column)) }
@@ -179,7 +176,6 @@ RSpec.describe Pipeforge::RunProcessor::SchemaChecker do
       let(:checker) { described_class.new(resolved_mapped_columns: resolve(name_column)) }
       let!(:name_limits) { script_limits(target_column: name_column) }
 
-      # contract only
       context "when a required column is filled by no mapped column and has no value" do
         let(:attributes_with_empty_unmapped_email) { {"name" => "Ada", "email" => nil} }
         let(:attributes) { attributes_with_empty_unmapped_email }

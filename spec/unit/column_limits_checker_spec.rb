@@ -6,7 +6,6 @@
 # ErrorCatalog builds for the mistake (the checker promises that error, so it is compared with the catalog's own call
 # and no sentence is copied here). The whole error is compared in the first refusing example of each kind and the
 # code only after that.
-# An accepting example that no break fails alone is kept for what it says the rule accepts (contract only).
 # Utilities.largest_float is a pure helper and stays real.
 RSpec.describe Pipeforge::ColumnLimitsChecker do
   subject(:checker) { described_class.new(target_column_name: "amount", type: type, **limits) }

@@ -20,7 +20,6 @@ RSpec.describe Pipeforge::MappedColumns do
     context "when given a Hash of entries, the header names and the target columns" do
       let(:mapped_columns) { {email: {source_column_name: "Mail"}} }
 
-      # contract only
       it "gives a MappedColumns" do
         expect(mapping).to be_a(described_class)
       end

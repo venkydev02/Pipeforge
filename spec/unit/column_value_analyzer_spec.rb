@@ -3,8 +3,7 @@
 # The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the target are doubles: the analyzer only
 # reads the header for the position of each source column, builds a summary builder for each resolved mapped column,
 # hands each builder the cell of its source column row after row and collects the summaries into a Result.
-# What a summary builder does with a cell belongs to its own spec. An example that documents what the analyzer accepts
-# (an empty mapping, a file with no data rows) is kept for that and marked contract only.
+# What a summary builder does with a cell belongs to its own spec.
 RSpec.describe Pipeforge::ColumnValueAnalyzer do
   let(:summary_builder_class) { Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder }
   let(:column_summary_class) { Pipeforge::ColumnValueAnalyzer::ColumnSummary }
@@ -69,7 +68,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
     end
 
     describe "the header" do
-      # Contract only: an error of the source is not caught.
       context "when headers raises Pipeforge::Source::Error" do
         let(:error_of_the_source) do
           Pipeforge::Source::Error.single(code: :source_empty, message: "the source has no header row")
@@ -113,7 +111,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         end
       end
 
-      # Contract only: an empty mapping is not an error.
       context "when resolved_mapped_columns is empty" do
         let(:resolved_mapped_columns) { {} }
 
@@ -161,7 +158,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         end
       end
 
-      # Contract only: a file with a header and no data rows is not an error.
       context "when the file has no data rows" do
         let(:rows) { [] }
 
@@ -209,7 +205,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
         end
       end
 
-      # Contract only: the row count does not depend on the mapping.
       context "when resolved_mapped_columns is empty" do
         let(:resolved_mapped_columns) { {} }
 

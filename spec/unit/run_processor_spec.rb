@@ -140,7 +140,6 @@ RSpec.describe Pipeforge::RunProcessor do
           script_chunk_processor(chunk_results_by_rows: {one_chunk => chunk_result_of_one_chunk})
         end
 
-        # contract only
         it "gives a RunResult with processed_rows_count, valid_rows_count and failed_rows_count" do
           expect(run_result).to eq(run_result_of_one_chunk)
         end
@@ -275,7 +274,6 @@ RSpec.describe Pipeforge::RunProcessor do
             expect(events).to eq(events_with_no_transaction)
           end
 
-          # contract only
           it "gives the run result of the chunks" do
             expect(run_result).to eq(run_result_of_three_chunks)
           end

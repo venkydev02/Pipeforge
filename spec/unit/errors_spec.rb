@@ -7,7 +7,6 @@ RSpec.describe Pipeforge::Error do
     context "when given a list of entries" do
       let(:entries_of_the_error) { [{code: :first_mistake, message: "first"}] }
 
-      # contract only
       it "is a StandardError that answers errors with that list" do
         expect(error).to be_a(StandardError)
         expect(error.errors).to equal(entries_of_the_error)
@@ -57,7 +56,6 @@ RSpec.describe Pipeforge::Error do
     context "when given a code, a message and fields" do
       let(:fields) { {target_column_name: "email"} }
 
-      # contract only
       it "gives an error with one entry" do
         expect(error.errors.size).to eq(1)
       end
@@ -104,7 +102,6 @@ RSpec.describe Pipeforge::Error do
     context "when the error has one entry" do
       let(:entries_of_the_error) { [{code: :first_mistake, message: "first"}] }
 
-      # contract only
       it "gives an Array of Symbols" do
         expect(codes).to all(be_a(Symbol))
       end

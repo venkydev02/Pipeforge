@@ -6,7 +6,6 @@
 # shows here. The models are named for the fact they show. The only model taken from spec/support/active_record_helper.rb
 # is the parent AdapterSpecModels::Company. ErrorCatalog is plain data of ours, so it is called for real: an error of
 # the record is compared with the catalog's call for the same input.
-# An example that no break fails alone is kept for what the rule accepts or reports (contract only).
 RSpec.describe Pipeforge::ActiveRecordModelRecord do
   subject(:model_record) { described_class.new(record: record) }
 
@@ -180,7 +179,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
   describe "#record" do
     let(:model) { define_model_with_required_email }
 
-    # contract only
     it "is the record given at build" do
       expect(model_record.record).to be(record)
     end
@@ -189,7 +187,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
   describe "#errors" do
     let(:model) { define_model_with_required_email }
 
-    # contract only
     it "is an empty Hash when the model record is just built" do
       expect(model_record.errors).to eq({})
     end
@@ -207,7 +204,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
     context "when the error is for the column email" do
       before { model_record.add_error(error: email_error) }
 
-      # contract only
       it "keeps it under the key email" do
         expect(model_record.errors).to eq({"email" => email_error})
       end
@@ -238,7 +234,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       context "when the model's validations accept the record" do
         let(:attributes) { {email: "a@example.com"} }
 
-        # contract only
         it "is true and #errors is empty" do
           expect(model_record.valid?).to be(true)
           expect(model_record.errors).to eq({})
@@ -260,7 +255,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       context "when a validation refuses the record" do
         let(:attributes) { {email: nil} }
 
-        # contract only
         it "is false" do
           expect(model_record.valid?).to be(false)
         end
@@ -296,7 +290,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         let(:model) { define_model_with_required_email }
         let(:target_column_name) { "email" }
 
-        # contract only
         it "is value_missing with origin model and value nil" do
           expect(error).to eq(
             catalog_error(
@@ -374,7 +367,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
         context "and owner_id is 999999 and owner_type is AdapterSpecModels::Company" do
           let(:attributes) { {owner_id: 999_999, owner_type: "AdapterSpecModels::Company"} }
 
-          # contract only
           it "is parent_missing for owner_id with the value 999999" do
             expect(error).to eq(
               catalog_error(
@@ -392,7 +384,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
           let(:attributes) { {seats: 100_000} }
           let(:target_column_name) { "seats" }
 
-          # contract only
           it "is value_invalid with native_message and error_type less_than, and the value" do
             expect(error).to eq(
               catalog_error(
@@ -448,7 +439,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
       let(:model) { define_model_with_required_email }
       let(:attributes) { {email: "a@example.com"} }
 
-      # contract only
       it "is true and the row is in the table" do
         expect(model_record.load).to be(true)
         expect(model.pluck(:email)).to eq(["a@example.com"])
@@ -551,7 +541,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
         before { model_record.valid? }
 
-        # contract only
         it "has the entry of the database only" do
           model_record.load
 
@@ -615,7 +604,6 @@ RSpec.describe Pipeforge::ActiveRecordModelRecord do
 
       before { model_record.valid? }
 
-      # contract only
       it "has the stripped email" do
         expect(model_record.attributes.fetch("email")).to eq("a@example.com")
       end

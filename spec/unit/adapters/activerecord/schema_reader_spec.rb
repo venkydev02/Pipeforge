@@ -5,7 +5,6 @@
 # and dropped after it, and nothing is replaced by a double: a change in a new version of ActiveRecord shows here.
 # The models are named for the fact they show. The parents AdapterSpecModels::Company and AdapterSpecModels::Order
 # are the only models taken from spec/support/active_record_helper.rb.
-# An example that no break fails alone is kept for what the rule accepts or reports (contract only).
 RSpec.describe Pipeforge::ActiveRecordSchemaReader do
   subject(:schema) do
     described_class.new(
@@ -79,7 +78,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
       context "when model is ModelWithTypedColumns" do
         let(:model) { define_model_with_typed_columns }
 
-        # contract only
         it "has table_name \"model_with_typed_columns\" and model_name \"AdapterSpecModels::ModelWithTypedColumns\"" do
           expect(schema.table_name).to eq("model_with_typed_columns")
           expect(schema.model_name).to eq("AdapterSpecModels::ModelWithTypedColumns")
@@ -89,7 +87,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
           expect(schema.columns.map(&:name)).to eq(%w[email age balance bio active created_at updated_at])
         end
 
-        # contract only
         it "has a TargetColumn for each column" do
           expect(schema.columns).to all(be_a(Pipeforge::TargetColumn))
         end
@@ -100,7 +97,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
       context "when model is ModelWithTypedColumns, whose primary_key is \"id\"" do
         let(:model) { define_model_with_typed_columns }
 
-        # contract only
         it "leaves out id and has email" do
           names = schema.columns.map(&:name)
 
@@ -156,7 +152,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
           )
         end
 
-        # contract only
         it "has only title" do
           expect(schema.columns.map(&:name)).to eq(%w[title])
         end
@@ -168,7 +163,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "email" }
 
-        # contract only
         it "has name \"email\", type \"string\", sql_type \"character varying(255)\" and max_length 255, with limit nil" do
           expect(target_column).to have_attributes(
             name: "email", type: "string", sql_type: "character varying(255)", max_length: 255, limit: nil
@@ -193,7 +187,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "age" }
 
-        # contract only
         it "has type \"integer\", sql_type \"smallint\" and limit 2, with max_length nil" do
           expect(target_column).to have_attributes(type: "integer", sql_type: "smallint", limit: 2, max_length: nil)
         end
@@ -203,7 +196,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         let(:model) { define_model_with_floats }
         let(:column_name) { "ratio" }
 
-        # contract only
         it "has type \"float\" and limit 24" do
           expect(target_column).to have_attributes(type: "float", limit: 24)
         end
@@ -213,7 +205,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "balance" }
 
-        # contract only
         it "has type \"decimal\", precision 10 and scale 2" do
           expect(target_column).to have_attributes(type: "decimal", precision: 10, scale: 2)
         end
@@ -225,7 +216,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         let(:model) { define_model_with_typed_columns }
         let(:column_name) { "age" }
 
-        # contract only
         it "is true" do
           expect(target_column.is_signed).to be(true)
         end
@@ -321,7 +311,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         context "and column is status, which is NOT NULL with a value default" do
           let(:column_name) { "status" }
 
-          # contract only
           it "is false" do
             expect(target_column.required).to be(false)
           end
@@ -338,7 +327,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         context "and column is number, which is NOT NULL with no default and is not a timestamp" do
           let(:column_name) { "number" }
 
-          # contract only
           it "is true" do
             expect(target_column.required).to be(true)
           end
@@ -412,7 +400,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         context "and column is email, which no association uses" do
           let(:column_name) { "email" }
 
-          # contract only
           it "has foreign_key nil" do
             expect(target_column.foreign_key).to be_nil
           end
@@ -433,7 +420,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
           end
         end
 
-        # contract only
         it "has its own foreign_key, with its own association_name, on each column" do
           foreign_keys_by_column_name = schema.columns.to_h { |column| [column.name, column.foreign_key] }
 
@@ -458,7 +444,6 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
           end
         end
 
-        # contract only
         it "has foreign_key nil on each column" do
           expect(schema.columns.map(&:foreign_key)).to eq([nil, nil])
         end
