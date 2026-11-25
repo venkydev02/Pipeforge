@@ -58,7 +58,7 @@ module Pipeforge
     # key may be a Symbol or a String.
     def reject_wrong_shape(mapped_columns:)
       unless mapped_columns.is_a?(Hash)
-        raise ArgumentError, "mapped_columns must be a Hash of target column name => entry, got #{mapped_columns.class}"
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:mapped_columns_not_a_hash).call(given_class: mapped_columns.class)
       end
 
       problems = []
@@ -76,13 +76,17 @@ module Pipeforge
       problems = []
 
       unless symbol_or_string?(value: target_column_name)
-        problems << "the key #{target_column_name.inspect} of mapped_columns must be a Symbol or a String"
+        problems << ArgumentMessages::MESSAGES.fetch(:mapped_column_name_not_symbol_or_string).call(
+          target_column_name: target_column_name
+        )
       end
 
       if entry.is_a?(Hash)
         problems.concat(key_problems_of(target_column_name: target_column_name, entry: entry))
       else
-        problems << "#{target_column_name} must be given as {source_column_name: ...}, got #{entry.class}"
+        problems << ArgumentMessages::MESSAGES.fetch(:mapped_column_entry_not_a_hash).call(
+          target_column_name: target_column_name, given_class: entry.class
+        )
       end
 
       problems
@@ -96,11 +100,14 @@ module Pipeforge
           # A value mapping that is given must be a Hash, or nil for no mapping. What is inside the Hash is not checked,
           # because a value may be mapped to anything, even nil or a blank.
           if key.to_sym == :value_mapping && !value.nil? && !value.is_a?(Hash)
-            problems << "the value_mapping of #{target_column_name} must be a Hash of value in the file => value to " \
-                        "load, got #{value.class}"
+            problems << ArgumentMessages::MESSAGES.fetch(:value_mapping_not_a_hash).call(
+              target_column_name: target_column_name, given_class: value.class
+            )
           end
         else
-          problems << "#{target_column_name} has the unknown key #{key.inspect}; the keys are #{ENTRY_KEYS_TEXT}"
+          problems << ArgumentMessages::MESSAGES.fetch(:mapped_column_unknown_key).call(
+            target_column_name: target_column_name, key: key, entry_keys_text: ENTRY_KEYS_TEXT
+          )
         end
       end
 

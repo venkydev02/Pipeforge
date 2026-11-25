@@ -31,8 +31,7 @@ module Pipeforge
     # @return [void]
     def add_error(error:)
       unless ErrorCatalog.error?(candidate: error)
-        raise ArgumentError,
-          "add_error takes an error built by ErrorCatalog (ErrorCatalog::ERRORS.fetch(key).call(...)), not #{error.class}"
+        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:error_not_from_error_catalog).call(given_class: error.class)
       end
 
       return if @errors.key?(error.target_column_name)

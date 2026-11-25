@@ -19,11 +19,19 @@ RSpec.describe Pipeforge::Source::ReusableIO do
     describe "a source IO that lacks methods" do
       subject(:new_wrapper) { described_class.new(io: source_io) }
 
+      def source_missing_message(missing_method_names:)
+        Pipeforge::ArgumentMessages::MESSAGES.fetch(:source_missing_methods).call(
+          required_method_names: described_class::REQUIRED_METHODS, missing_method_names: missing_method_names
+        )
+      end
+
       context "when the source IO lacks only read" do
         let(:source_io) { instance_double(StringIO, rewind: 0, seek: 0) }
 
         it "raises ArgumentError naming read" do
-          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read\z/)
+          expect { new_wrapper }.to raise_error(
+            ArgumentError, source_missing_message(missing_method_names: %i[read])
+          )
         end
       end
 
@@ -31,7 +39,9 @@ RSpec.describe Pipeforge::Source::ReusableIO do
         let(:source_io) { instance_double(StringIO, read: "", seek: 0) }
 
         it "raises ArgumentError naming rewind" do
-          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to rewind\z/)
+          expect { new_wrapper }.to raise_error(
+            ArgumentError, source_missing_message(missing_method_names: %i[rewind])
+          )
         end
       end
 
@@ -39,7 +49,9 @@ RSpec.describe Pipeforge::Source::ReusableIO do
         let(:source_io) { instance_double(StringIO, read: "", rewind: 0) }
 
         it "raises ArgumentError naming seek" do
-          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to seek\z/)
+          expect { new_wrapper }.to raise_error(
+            ArgumentError, source_missing_message(missing_method_names: %i[seek])
+          )
         end
       end
 
@@ -47,7 +59,9 @@ RSpec.describe Pipeforge::Source::ReusableIO do
         let(:source_io) { instance_double(StringIO, rewind: 0) }
 
         it "raises ArgumentError naming read, then seek" do
-          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read, seek\z/)
+          expect { new_wrapper }.to raise_error(
+            ArgumentError, source_missing_message(missing_method_names: %i[read seek])
+          )
         end
       end
 
@@ -55,7 +69,9 @@ RSpec.describe Pipeforge::Source::ReusableIO do
         let(:source_io) { nil }
 
         it "raises ArgumentError naming read, rewind, then seek" do
-          expect { new_wrapper }.to raise_error(ArgumentError, /it does not respond to read, rewind, seek\z/)
+          expect { new_wrapper }.to raise_error(
+            ArgumentError, source_missing_message(missing_method_names: %i[read rewind seek])
+          )
         end
       end
     end

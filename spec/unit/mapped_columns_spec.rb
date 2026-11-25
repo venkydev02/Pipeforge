@@ -10,6 +10,14 @@ RSpec.describe Pipeforge::MappedColumns do
   let(:email_column) { build_target_column(name: "email") }
   let(:age_column) { build_target_column(name: "age") }
 
+  def message(key, **arguments)
+    Pipeforge::ArgumentMessages::MESSAGES.fetch(key).call(**arguments)
+  end
+
+  def entry_keys_text
+    described_class::ENTRY_KEYS_TEXT
+  end
+
   def without_messages(entries:)
     entries.map { |entry| entry.except(:message) }
   end
@@ -31,7 +39,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError, alone" do
           expect { mapping }.to raise_error(
-            ArgumentError, "mapped_columns must be a Hash of target column name => entry, got Array"
+            ArgumentError, message(:mapped_columns_not_a_hash, given_class: Array)
           )
         end
       end
@@ -42,7 +50,9 @@ RSpec.describe Pipeforge::MappedColumns do
         let(:mapped_columns) { {1 => {source_column_name: "Mail"}} }
 
         it "raises ArgumentError naming the key and saying it must be a Symbol or a String" do
-          expect { mapping }.to raise_error(ArgumentError, "the key 1 of mapped_columns must be a Symbol or a String")
+          expect { mapping }.to raise_error(
+            ArgumentError, message(:mapped_column_name_not_symbol_or_string, target_column_name: 1)
+          )
         end
       end
 
@@ -51,7 +61,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError naming the target column" do
           expect { mapping }.to raise_error(
-            ArgumentError, "email must be given as {source_column_name: ...}, got NilClass"
+            ArgumentError, message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
           )
         end
       end
@@ -62,8 +72,10 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises one ArgumentError with both mistakes, the name first" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            "the key 1 of mapped_columns must be a Symbol or a String; " \
-            "1 must be given as {source_column_name: ...}, got NilClass"
+            [
+              message(:mapped_column_name_not_symbol_or_string, target_column_name: 1),
+              message(:mapped_column_entry_not_a_hash, target_column_name: 1, given_class: NilClass)
+            ].join("; ")
           )
         end
       end
@@ -76,7 +88,10 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the key and the keys that are read" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            "email has the unknown key :value_mappping; the keys are :source_column_name and :value_mapping"
+            message(
+              :mapped_column_unknown_key,
+              target_column_name: "email", key: :value_mappping, entry_keys_text: entry_keys_text
+            )
           )
         end
       end
@@ -87,7 +102,10 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the key as it was written" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            'email has the unknown key "value_mappping"; the keys are :source_column_name and :value_mapping'
+            message(
+              :mapped_column_unknown_key,
+              target_column_name: "email", key: "value_mappping", entry_keys_text: entry_keys_text
+            )
           )
         end
       end
@@ -97,7 +115,8 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError naming the key as it was written" do
           expect { mapping }.to raise_error(
-            ArgumentError, "email has the unknown key 2; the keys are :source_column_name and :value_mapping"
+            ArgumentError,
+            message(:mapped_column_unknown_key, target_column_name: "email", key: 2, entry_keys_text: entry_keys_text)
           )
         end
       end
@@ -108,7 +127,7 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the target column and the class" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            "the value_mapping of email must be a Hash of value in the file => value to load, got Array"
+            message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
           )
         end
       end
@@ -121,8 +140,13 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises one ArgumentError with both mistakes" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            "email has the unknown key :value_mappping; the keys are :source_column_name and :value_mapping; " \
-            "the value_mapping of email must be a Hash of value in the file => value to load, got Array"
+            [
+              message(
+                :mapped_column_unknown_key,
+                target_column_name: "email", key: :value_mappping, entry_keys_text: entry_keys_text
+              ),
+              message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
+            ].join("; ")
           )
         end
       end
@@ -135,8 +159,10 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises one ArgumentError with the mistakes of both, in the order of the entries, joined with \"; \"" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            "email must be given as {source_column_name: ...}, got NilClass; " \
-            "the value_mapping of age must be a Hash of value in the file => value to load, got Array"
+            [
+              message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass),
+              message(:value_mapping_not_a_hash, target_column_name: "age", given_class: Array)
+            ].join("; ")
           )
         end
       end
@@ -146,7 +172,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises only the ArgumentError of the shape" do
           expect { mapping }.to raise_error(
-            ArgumentError, "email must be given as {source_column_name: ...}, got NilClass"
+            ArgumentError, message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
           )
         end
       end

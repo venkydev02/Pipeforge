@@ -37,7 +37,13 @@ RSpec.describe Pipeforge::Engine do
       let(:source_io) { Object.new }
 
       it "raises ArgumentError, naming the missing methods" do
-        expect { engine }.to raise_error(ArgumentError, /does not respond to read, rewind, seek\z/)
+        expect { engine }.to raise_error(
+          ArgumentError,
+          Pipeforge::ArgumentMessages::MESSAGES.fetch(:source_missing_methods).call(
+            required_method_names: Pipeforge::Source::ReusableIO::REQUIRED_METHODS,
+            missing_method_names: %i[read rewind seek]
+          )
+        )
       end
     end
   end
@@ -215,7 +221,10 @@ RSpec.describe Pipeforge::Engine do
 
       it "raises ArgumentError naming the key, because the type comes from the schema" do
         expect { result }.to raise_error(
-          ArgumentError, "code has the unknown key :type; the keys are :source_column_name and :value_mapping"
+          ArgumentError,
+          Pipeforge::ArgumentMessages::MESSAGES.fetch(:mapped_column_unknown_key).call(
+            target_column_name: "code", key: :type, entry_keys_text: Pipeforge::MappedColumns::ENTRY_KEYS_TEXT
+          )
         )
       end
     end
