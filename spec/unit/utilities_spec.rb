@@ -117,7 +117,6 @@ RSpec.describe Pipeforge::Utilities do
         end
       end
 
-      # Contract only: no break fails it.
       context 'when value is "x"' do
         let(:value) { "x" }
 
@@ -137,7 +136,6 @@ RSpec.describe Pipeforge::Utilities do
         end
       end
 
-      # Contract only: a collection that holds something is not blank, even when it holds nil.
       context "when value is [nil]" do
         let(:value) { [nil] }
 

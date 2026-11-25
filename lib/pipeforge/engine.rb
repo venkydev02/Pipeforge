@@ -5,7 +5,7 @@ require_relative "source/csv_reader"
 require_relative "column_value_analyzer"
 require_relative "header_analyzer"
 require_relative "target_schema"
-require_relative "mapped_data_validator"
+require_relative "mapped_columns"
 require_relative "run_processor"
 
 module Pipeforge
@@ -17,7 +17,7 @@ module Pipeforge
   #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_model_name: "User")
   #   header_analysis = engine.analyze_headers
   #   value_analysis = engine.analyze_column_values(
-  #     mapped_columns: {"email" => {source_column_name: "Mail", value_mapping: {"N/A" => nil}}}
+  #     mapped_columns: {email: {source_column_name: "Mail", value_mapping: {"N/A" => nil}}}
   #   )
   #
   # The engine reaches the target through a target class that an adapter gem installs when it is
@@ -88,27 +88,27 @@ module Pipeforge
     # what would be loaded, and the mapping comes back in the result. The rows are read again on
     # every call, so an edited mapping can be measured again.
     #
-    # @param mapped_columns [Hash{String => Hash}] target column => {source_column_name:,
-    #   value_mapping: {value in the file => value to load}}, a plain Hash the caller builds (the
-    #   header result is not passed in). A source column may be given to several target columns.
-    #   Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
-    #   optional (leave the key out for none; +nil+ is an error), its keys are turned into text, and a
+    # @param mapped_columns [Hash{Symbol, String => Hash}] target column name => {source_column_name:,
+    #   value_mapping: {value in the file => value to load}}, a plain Hash the caller builds (the header result is
+    #   not passed in). The keys are Symbols; a String key is read as the Symbol. A source column may be given to
+    #   several target columns. Every required target column (see {TargetColumn}) needs an entry. +value_mapping+ is
+    #   optional (leave the key out, or give nil, for none), its keys are turned into text, and a
     #   value that maps to nil or a blank is loaded as empty. The caller's Hash is not changed (see
     #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
     # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [Source::Error] the source has no header row, a header cell is blank or a name appears twice, or a row
     #   cannot be parsed or has more cells than the header
-    # @raise [InvalidMappedColumnsError] the mapped columns, an entry or a value mapping is not a
-    #   Hash; a target column is not in the schema; an entry has no source column or one that is
-    #   not in the file; or a required target column has no entry. Every such mistake is listed,
-    #   except that mapped columns that are not a Hash are reported alone.
+    # @raise [ArgumentError] the mapped columns are not a Hash (alone), or an entry is not a Hash, an entry has a key
+    #   other than +source_column_name+ and +value_mapping+, or a value mapping is not a Hash. Every such mistake is in
+    #   the message.
+    # @raise [InvalidMappedColumnsError] a target column is not in the schema; an entry has no source column or one
+    #   that is not in the file; or a required target column has no entry. Every such mistake is listed.
     def analyze_column_values(mapped_columns:)
-      check_mapped_columns(mapped_columns: mapped_columns)
+      resolved_mapped_columns = resolved_mapped_columns_of(mapped_columns: mapped_columns)
 
       ColumnValueAnalyzer.call(
-        source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
-        target: target
+        source_reader: @source_reader, resolved_mapped_columns: resolved_mapped_columns, target: target
       )
     end
 
@@ -132,14 +132,15 @@ module Pipeforge
     # @raise [ArgumentError] +mode+ is not +:dry_run+ or +:run+, +offset+ is not a whole number of at least 0,
     #   or +chunk_size+ is not a whole number of at least 1; every bad one is in the message
     # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [InvalidMappedColumnsError] as in {#analyze_column_values}
+    # @raise [InvalidMappedColumnsError] as in {#analyze_column_values}; so is the +ArgumentError+ for the shape of
+    #   the mapped columns
     # @raise [Source::Error] a row cannot be parsed, or has more cells than the header
     def run(mode:, mapped_columns:, offset: 0, chunk_size: Configuration.execution.chunk_size, &on_chunk)
       check_run_arguments(mode: mode, offset: offset, chunk_size: chunk_size)
-      check_mapped_columns(mapped_columns: mapped_columns)
+      resolved_mapped_columns = resolved_mapped_columns_of(mapped_columns: mapped_columns)
 
       RunProcessor.call(
-        source_reader: @source_reader, resolved_mapped_columns: resolve_mapped_columns(mapped_columns: mapped_columns),
+        source_reader: @source_reader, resolved_mapped_columns: resolved_mapped_columns,
         offset: offset, chunk_size: chunk_size, mode: mode, target: target, &on_chunk
       )
     end
@@ -168,22 +169,18 @@ module Pipeforge
       raise ArgumentError, messages.join("; ") unless messages.empty?
     end
 
-    # The columns of the target table by name.
-    def target_columns_by_name
-      columns_by_name = {}
-      target_schema.columns.each { |target_column| columns_by_name[target_column.name] = target_column }
-
-      columns_by_name
-    end
-
-    # Stops with every mistake in the mapped columns, or does nothing when there is none.
-    def check_mapped_columns(mapped_columns:)
-      MappedDataValidator.new(
-        source_header_names: @source_reader.headers,
-        target_column_names: target_columns_by_name.keys,
-        required_target_column_names: target_schema.columns.select(&:required).map(&:name),
-        target_table_name: target_schema.table_name
-      ).call(mapped_columns: mapped_columns)
+    # Checks the consumer's mapped columns against the header of the source and the columns of the target table, and gives
+    # them resolved for the column values stage and the run.
+    #
+    # @param mapped_columns [Object] what the caller gave
+    # @return [Hash{String => ResolvedMappedColumn}]
+    # @raise [ArgumentError] the shape of the mapped columns is wrong (see {MappedColumns#initialize})
+    # @raise [InvalidMappedColumnsError] the mapped columns do not fit the file or the table; every mistake is listed
+    def resolved_mapped_columns_of(mapped_columns:)
+      MappedColumns.new(
+        mapped_columns: mapped_columns, source_header_names: @source_reader.headers,
+        target_columns: target_schema.columns
+      ).resolved_mapped_columns!
     end
 
     # The target of the target model, which reads its schema, casts texts and builds records.
@@ -204,25 +201,6 @@ module Pipeforge
       end
 
       @target_schema
-    end
-
-    # Makes the resolved mapped columns that the column values stage and the run take from the consumer's mapped
-    # columns, which the engine has checked: each entry gets the column of the target table it fills.
-    #
-    # @param mapped_columns [Hash{String => Hash}] target column => the entry the caller wrote
-    # @return [Hash{String => ResolvedMappedColumn}] the same keys; the caller's entries are not changed
-    def resolve_mapped_columns(mapped_columns:)
-      columns_by_name = target_columns_by_name
-      resolved_mapped_columns = {}
-
-      mapped_columns.each do |target_column_name, entry|
-        target_column = columns_by_name.fetch(target_column_name)
-        resolved_mapped_columns[target_column_name] = ResolvedMappedColumn.from_entry(
-          entry: entry, target_column: target_column
-        )
-      end
-
-      resolved_mapped_columns
     end
   end
 end

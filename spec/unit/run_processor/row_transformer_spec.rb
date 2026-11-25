@@ -11,7 +11,6 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
     context "when resolved_mapped_columns has a mapped column" do
       let(:mapped_columns_with_one_column) { {"email" => {source_column_name: "Mail"}} }
 
-      # contract only
       it "gives a transformer that answers result_of_row" do
         expect(transformer_of(mapped_columns: mapped_columns_with_one_column)).to respond_to(:result_of_row)
       end
@@ -22,7 +21,6 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
 
       let(:row_with_a_cell) { {"Mail" => "ann@example.com"} }
 
-      # contract only
       it "gives no value for any row" do
         expect(values).to eq({})
       end
@@ -37,7 +35,6 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
         let(:mapped_columns_of_one_column) { {"email" => {source_column_name: "Mail"}} }
         let(:row_with_a_mail) { {"Mail" => "ann@example.com"} }
 
-        # contract only
         it "gives a Hash of target column name => value" do
           expect(values).to eq("email" => "ann@example.com")
         end
@@ -213,7 +210,6 @@ RSpec.describe Pipeforge::RunProcessor::RowTransformer do
         end
         let(:row_with_a_status) { {"State" => "none"} }
 
-        # contract only
         it "gives the column 0" do
           expect(values).to eq("status" => 0)
         end

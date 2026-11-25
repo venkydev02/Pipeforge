@@ -8,7 +8,6 @@
 # AdapterSpecModels::ModelWithTableOnlyInDefaultDatabase (another database) and AdapterSpecModels::AbstractModel.
 # The only doubles are our own ActiveRecordSchemaReader (in the examples of #schema) and ActiveRecordModelRecord (in
 # the examples of #build_record and #preload_parents).
-# An example that no break fails alone is kept for what the rule accepts or reports (contract only).
 RSpec.describe Pipeforge::ActiveRecordTarget do
   subject(:target) { described_class.new(target_model_name: model.name) }
 
@@ -23,7 +22,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     context "when target_model_name is the name of a loaded model with a table" do
       let(:target_model_name) { define_model(name: "ModelWithNumbers").name }
 
-      # contract only
       it "answers an ActiveRecordTarget" do
         expect(target).to be_an_instance_of(described_class)
       end
@@ -117,7 +115,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and column_name is note, which is no enum" do
         let(:column_name) { "note" }
 
-        # contract only
         it "answers nil" do
           expect(enum_labels).to be_nil
         end
@@ -126,7 +123,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and column_name is not a column of the table" do
         let(:column_name) { "nope" }
 
-        # contract only
         it "answers nil" do
           expect(enum_labels).to be_nil
         end
@@ -147,7 +143,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
     context "when model is ModelWithoutParent, with no enum and no association" do
       let(:model) { define_model(name: "ModelWithoutParent", columns: ->(table) { table.string :name }) }
 
-      # contract only
       it "answers what the schema reader answers" do
         expect(schema).to be(schema_from_reader)
       end
@@ -275,7 +270,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         context "and value is \"12\"" do
           let(:value) { "12" }
 
-          # contract only
           it "answers a CastResult" do
             expect(cast_result).to be_an_instance_of(Pipeforge::CastResult)
           end
@@ -284,7 +278,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
             expect(cast_result).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 12, json_value: 12))
           end
 
-          # contract only
           it "sends no statement other than a schema read to the database" do
             target
 
@@ -295,7 +288,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         context "and value is 12, as a value mapping gives it" do
           let(:value) { 12 }
 
-          # contract only
           it "answers castable, with the cast_value 12" do
             expect(cast_result).to eq(Pipeforge::CastResult.new(castable: true, cast_value: 12, json_value: 12))
           end
@@ -328,7 +320,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
         context "and value is a text" do
           let(:value) { "ann@example.com" }
 
-          # contract only
           it "answers the text as it is" do
             expect(cast_result).to eq(
               Pipeforge::CastResult.new(castable: true, cast_value: "ann@example.com", json_value: "ann@example.com")
@@ -345,7 +336,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and value is false" do
         let(:value) { false }
 
-        # contract only
         it "answers castable, with the cast_value false" do
           expect(cast_result).to eq(Pipeforge::CastResult.new(castable: true, cast_value: false, json_value: false))
         end
@@ -524,7 +514,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and attributes are email \"ann@example.com\", a value the record can hold" do
         let(:attributes) { {"email" => "ann@example.com"} }
 
-        # contract only
         it "answers the model record that ActiveRecordModelRecord.new answered" do
           expect(built_record).to be(model_record)
         end
@@ -542,14 +531,12 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
           expect(handed_record.email).to eq("ann@example.com")
         end
 
-        # contract only
         it "adds no error" do
           built_record
 
           expect(model_record).not_to have_received(:add_error)
         end
 
-        # contract only
         it "sends no statement other than a schema read to the database" do
           target
 
@@ -638,7 +625,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and attributes are settings of a JSON text" do
         let(:attributes) { {"settings" => '{"theme":"dark"}'} }
 
-        # contract only
         it "adds no error" do
           built_record
 
@@ -707,7 +693,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and attributes are commentable_type \"AdapterSpecModels::Company\", a type that names a model" do
         let(:attributes) { {"commentable_type" => "AdapterSpecModels::Company"} }
 
-        # contract only
         it "adds no error" do
           built_record
 
@@ -859,7 +844,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       context "and there are no records" do
         let(:unsaved_records) { [] }
 
-        # contract only
         it "sends no query" do
           expect(statements_sent_by_call).to be_empty
         end
@@ -975,7 +959,6 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
       let(:unsaved_records) { [model.new(name: "x")] }
 
       context "and there is a record" do
-        # contract only
         it "sends no query" do
           expect(statements_sent_by_call).to be_empty
         end

@@ -7,7 +7,6 @@ RSpec.describe Pipeforge::Source::ReusableIO do
     context "when the source IO responds to read, rewind and seek" do
       let(:source_io) { instance_double(StringIO, read: "", rewind: 0, seek: 0) }
 
-      # contract only
       it "gives a wrapper that answers gets, read, rewind, eof? and external_encoding" do
         expect(reusable_io).to respond_to(:gets, :read, :rewind, :eof?, :external_encoding)
       end

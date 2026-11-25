@@ -92,7 +92,6 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
           )
         end
 
-        # contract only
         it "gives a ChunkResult with first_row_number, last_row_number, processed_rows_count, valid_rows_count, failed_rows_count and failed_rows" do
           expect(chunk_result).to eq(chunk_result_with_a_failed_row)
         end
@@ -879,7 +878,6 @@ RSpec.describe Pipeforge::RunProcessor::ChunkProcessor do
 
           before { script_email_rows(rows: rows_with_an_email) }
 
-          # contract only
           it "writes the row and gives no failed row" do
             expect(chunk_result).to eq(chunk_result_with_no_failed_row)
             expect(model_that_accepts_any_email.pluck(:email)).to eq(["ann@example.com"])
@@ -1158,17 +1156,14 @@ RSpec.describe Pipeforge::RunProcessor::FailedRow do
     end
 
     context "when row_number is 7, attributes is a Hash and errors is a list of one error" do
-      # contract only
       it "holds row_number as it was given" do
         expect(failed_row.row_number).to eq(7)
       end
 
-      # contract only
       it "holds attributes as they were given" do
         expect(failed_row.attributes).to eq({"email" => nil})
       end
 
-      # contract only
       it "holds errors as they were given" do
         expect(failed_row.errors).to eq([schema_error_on_email])
       end
@@ -1182,7 +1177,6 @@ RSpec.describe Pipeforge::RunProcessor::FailedRow do
           described_class.new(row_number: 7, attributes: {"email" => nil}, errors: [schema_error_on_email]).to_h
         end
 
-        # contract only
         it "gives a Hash with the keys row_number, attributes and errors" do
           expect(failed_row_hash.keys).to eq(%i[row_number attributes errors])
         end

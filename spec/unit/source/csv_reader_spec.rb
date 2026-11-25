@@ -33,7 +33,6 @@ RSpec.describe Pipeforge::Source::CsvReader do
     context "when source_io is a ReusableIO" do
       let(:csv) { "A,B\n1,2\n" }
 
-      # contract only
       it "gives a CsvReader" do
         expect(reader).to be_a(described_class)
       end
@@ -58,7 +57,6 @@ RSpec.describe Pipeforge::Source::CsvReader do
       context "when the header is A,B and there are three data rows" do
         let(:csv) { "A,B\n1,2\n3,4\n5,6\n" }
 
-        # contract only
         it "gives an Array of Strings" do
           expect(reader.headers).to all(be_a(String))
         end
@@ -247,7 +245,6 @@ RSpec.describe Pipeforge::Source::CsvReader do
       context "when a block is given" do
         let(:csv) { "A,B\n1,2\n3,4\n" }
 
-        # contract only
         it "yields Arrays of rows" do
           expect(read_chunks).to all(be_an(Array))
         end

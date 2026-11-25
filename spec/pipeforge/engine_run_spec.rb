@@ -28,6 +28,24 @@ RSpec.describe Pipeforge::Engine, "#run" do
     expect(run_engine).to have_attributes(processed_rows_count: 3, valid_rows_count: 2, failed_rows_count: 1)
   end
 
+  context "when the mapped columns are written with Symbols" do
+    let(:mapped_columns) { {email: {source_column_name: "Mail"}, level: {source_column_name: "Level"}} }
+
+    it "returns the same totals" do
+      expect(run_engine).to have_attributes(processed_rows_count: 3, valid_rows_count: 2, failed_rows_count: 1)
+    end
+  end
+
+  context "when the mapped columns are written with Strings, as JSON.parse gives them" do
+    let(:mapped_columns) do
+      {"email" => {"source_column_name" => "Mail"}, "level" => {"source_column_name" => "Level"}}
+    end
+
+    it "returns the same totals" do
+      expect(run_engine).to have_attributes(processed_rows_count: 3, valid_rows_count: 2, failed_rows_count: 1)
+    end
+  end
+
   it "yields the result of each chunk" do
     run_engine
 
