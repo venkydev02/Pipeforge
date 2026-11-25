@@ -22,7 +22,7 @@ module Pipeforge
   # @api private
   #
   # @example through the engine
-  #   result = engine.analyze_column_values(mapped_columns: {"email" => {source_column_name: "Mail"}})
+  #   result = engine.analyze_column_values(mapped_columns: {email: {source_column_name: "Mail"}})
   #   result.column_summaries["email"].distinct_values.compatible_count # => 1170
   module ColumnValueAnalyzer
     # The outcome of one analysis.
@@ -52,7 +52,7 @@ module Pipeforge
       # value it maps to, which is what would be loaded, and the mapping comes back in the result.
       #
       # The mapped columns must already be checked against the file header and the target schema
-      # ({MappedDataValidator}); the {Engine} does that. The position of each source column is read from the
+      # ({MappedColumns}); the {Engine} does that. The position of each source column is read from the
       # header, and a {ColumnLimitsChecker} is built for each target column from its type and limits. A file
       # with no data rows is not an error: its mapped columns come back with zero counts. A source column mapped
       # to several target columns is measured once for each of them. Nothing the caller gave is changed.

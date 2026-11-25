@@ -12,7 +12,7 @@ module ResolvedMappedColumnHelper
     entries.to_h do |target_column_name, entry|
       target_column = build_target_column(name: target_column_name, **entry.slice(*TARGET_COLUMN_KEYS))
 
-      [target_column_name, Pipeforge::ResolvedMappedColumn.from_entry(entry: entry, target_column: target_column)]
+      [target_column_name, resolved_mapped_column_of(entry: entry, target_column: target_column)]
     end
   end
 
@@ -22,12 +22,17 @@ module ResolvedMappedColumnHelper
 
     mapped_columns.each do |target_column_name, entry|
       target_column = target_columns.find { |candidate| candidate.name == target_column_name }
-      resolved_mapped_columns[target_column_name] = Pipeforge::ResolvedMappedColumn.from_entry(
-        entry: entry, target_column: target_column
-      )
+      resolved_mapped_columns[target_column_name] = resolved_mapped_column_of(entry: entry, target_column: target_column)
     end
 
     resolved_mapped_columns
+  end
+
+  def resolved_mapped_column_of(entry:, target_column:)
+    Pipeforge::ResolvedMappedColumn.new(
+      source_column_name: entry.fetch(:source_column_name), value_mapping: entry.fetch(:value_mapping, {}),
+      target_column: target_column
+    )
   end
 end
 

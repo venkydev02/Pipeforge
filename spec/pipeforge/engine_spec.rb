@@ -213,8 +213,39 @@ RSpec.describe Pipeforge::Engine do
       let(:target_columns) { [build_target_column(name: "code", type: "integer")] }
       let(:mapped_columns) { {"code" => {source_column_name: "Code", type: "string"}} }
 
-      it "uses the type of the schema instead" do
-        expect(result.column_summaries["code"].distinct_values).to have_attributes(compatible_count: 0, incompatible_count: 7)
+      it "raises ArgumentError naming the key, because the type comes from the schema" do
+        expect { result }.to raise_error(
+          ArgumentError, "code has the unknown key :type; the keys are :source_column_name and :value_mapping"
+        )
+      end
+    end
+
+    context "when the mapped columns are written with Symbols" do
+      let(:target_columns) { [build_target_column(name: "code")] }
+      let(:mapped_columns) { {code: {source_column_name: "Code"}} }
+
+      it "measures the column as when it is written with a String name" do
+        expect(result.column_summaries.keys).to eq(["code"])
+      end
+    end
+
+    context "when the mapped columns are written with Strings, as JSON.parse gives them" do
+      let(:target_columns) { [build_target_column(name: "code")] }
+      let(:mapped_columns) { {"code" => {"source_column_name" => "Code"}} }
+
+      it "measures the column" do
+        expect(result.column_summaries.keys).to eq(["code"])
+      end
+    end
+
+    context "when the caller's mapped columns are written with Strings" do
+      let(:target_columns) { [build_target_column(name: "code")] }
+      let(:mapped_columns) { {"code" => {"source_column_name" => "Code"}} }
+
+      it "does not change them" do
+        result
+
+        expect(mapped_columns).to eq("code" => {"source_column_name" => "Code"})
       end
     end
 
@@ -238,16 +269,16 @@ RSpec.describe Pipeforge::Engine do
       context "with a target column that is not in the schema" do
         let(:mapped_columns) { {"state" => {source_column_name: "Status"}} }
 
-        it "gives the code target_column_not_in_schema, with the columns and the table" do
+        it "gives the code target_column_not_in_schema, with the target column" do
           expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError) do |error|
             expect(error.errors.map { |entry| entry.except(:message) }).to eq(
-              [{code: :target_column_not_in_schema, source_column_name: "Status", target_column_name: "state", table_name: "records"}]
+              [{code: :target_column_not_in_schema, target_column_name: "state"}]
             )
           end
         end
 
-        it "names the source column, the target column and the table in the message" do
-          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, /state.*records/)
+        it "names the target column in the message" do
+          expect { result }.to raise_error(Pipeforge::InvalidMappedColumnsError, /\Astate is not a column of the target table/)
         end
       end
 

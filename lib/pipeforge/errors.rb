@@ -50,14 +50,46 @@ module Pipeforge
   end
 
   # Raised when the mapped columns given to {Engine#analyze_column_values} cannot be used (checked by
-  # {MappedDataValidator}). Codes: +mapped_columns_not_name_value_entries+ (the mapped columns
-  # are not a Hash; raised alone), +mapped_column_not_name_value_entries+ (an entry is not a
-  # Hash), +target_column_not_in_schema+ (the target column is not a column of the table that can
-  # be loaded), +column_missing_source_column+, +mapped_column_not_in_file+,
-  # +value_mapping_not_name_value_entries+ (the value mapping is not a Hash) and
-  # +required_column_unmapped+ (a required target column has no entry), one entry for each
-  # mistake.
-  class InvalidMappedColumnsError < Error; end
+  # {MappedColumns}) because they do not fit the table or the file. Codes:
+  # +target_column_not_in_schema+ (the target column is not a column of the table that can be loaded),
+  # +column_missing_source_column+, +mapped_column_not_in_file+ and +required_column_unmapped+ (a required target
+  # column has no entry), one entry for each mistake. A mapping with the wrong shape is an ArgumentError instead.
+  class InvalidMappedColumnsError < Error
+    # The entries of the error, each written once and keyed by its code. The value of a key is a function that takes the
+    # facts its sentence uses and returns the entry: the +code+, the +message+ (with the column first) and the fields
+    # that locate the mistake.
+    ENTRIES = {
+      target_column_not_in_schema: ->(target_column_name:) {
+        {
+          code: :target_column_not_in_schema,
+          message: "#{target_column_name} is not a column of the target table that can be loaded",
+          target_column_name: target_column_name
+        }
+      },
+      column_missing_source_column: ->(target_column_name:) {
+        {
+          code: :column_missing_source_column,
+          message: "#{target_column_name} has no source_column_name",
+          target_column_name: target_column_name
+        }
+      },
+      mapped_column_not_in_file: ->(target_column_name:, source_column_name:) {
+        {
+          code: :mapped_column_not_in_file,
+          message: "#{target_column_name} is mapped to the source column #{source_column_name}, which is not in the file",
+          target_column_name: target_column_name,
+          source_column_name: source_column_name
+        }
+      },
+      required_column_unmapped: ->(target_column_name:) {
+        {
+          code: :required_column_unmapped,
+          message: "#{target_column_name} is required but no source column is mapped to it",
+          target_column_name: target_column_name
+        }
+      }
+    }.freeze
+  end
 
   # Raised by a target that cannot read the schema of the target. A table that does
   # not exist is the shared code +target_table_not_found+ (field +table_name+). A code that belongs

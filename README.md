@@ -18,7 +18,7 @@ Usually a developer finds out by reading the schema, reading the model, and runn
 
 Target model: the model class the rows are loaded through, given by name, for example `"User"`. Its table is the target table. What counts as a model is the adapter's decision; for the ActiveRecord adapter it is an ActiveRecord class.
 
-Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{"age" => {source_column_name: "Age"}}`. The source is the CSV file, and a source column is one of its header names.
+Mapped columns: a plain Hash you build, keyed by target column, that says which source column fills it, for example `{age: {source_column_name: "Age"}}`. The keys are Symbols; a key written as a String works too, so a mapping read with `JSON.parse` works as it is. The source is the CSV file, and a source column is one of its header names.
 
 Distinct values: each different value found in a column, with how many times it appears.
 
@@ -70,14 +70,14 @@ You build `mapped_columns` yourself, from the matches or from your own knowledge
 
 ```ruby
 mapped_columns = {
-  "email" => {source_column_name: "Email"},
-  "first_name" => {source_column_name: "First Name"},
-  "last_name" => {source_column_name: "Last Name"},
-  "company_id" => {source_column_name: "Company"},
-  "age" => {source_column_name: "Age"},
-  "balance" => {source_column_name: "Balance"},
-  "status" => {source_column_name: "Status"},
-  "active" => {source_column_name: "Active"}
+  email: {source_column_name: "Email"},
+  first_name: {source_column_name: "First Name"},
+  last_name: {source_column_name: "Last Name"},
+  company_id: {source_column_name: "Company"},
+  age: {source_column_name: "Age"},
+  balance: {source_column_name: "Balance"},
+  status: {source_column_name: "Status"},
+  active: {source_column_name: "Active"}
 }
 value_analysis = engine.analyze_column_values(mapped_columns: mapped_columns)
 
@@ -97,7 +97,7 @@ Look at `Initech`. It sits in a column of ids, and its `casted_to` of 0 says wha
 ### 3. Fix values with a value mapping
 
 ```ruby
-mapped_columns["company_id"][:value_mapping] = {"Initech" => "3"}
+mapped_columns[:company_id][:value_mapping] = {"Initech" => "3"}
 ```
 
 The keys are texts as they appear in the file. A value that maps to `nil` or to an empty text is loaded as empty. The file is read again on every call, so you can edit a mapping and measure again. Pipeforge never looks up a parent row by name; you decide that `Initech` is company 3, with the list of distinct values in front of you. Measure again and the list still shows `Initech`, the text of the file, now with `mapped_value` `"3"` (what it would load as) and `casted_to` 3. A `mapped_value` keeps the shape you gave it: a number, `false`, or a Hash for a json column. A text mapped into a json column is read as JSON, so to load the JSON string `unknown` write `"\"unknown\""`. `mapping_applied` says whether your mapping had an entry for the text: a value that does not fit and has `mapping_applied` false still needs a mapping, and one with it true has a mapping that does not fit.
@@ -260,7 +260,7 @@ Two kinds, handled differently.
 
 A mistake in your data (the mapped columns, the source file, the target) raises a `Pipeforge::Error` subclass. It answers `codes`, and `errors` gives one entry for each mistake with a `code`, a `message` and the fields that locate it. Every mistake is listed together. `InvalidMappedColumnsError` covers the mapping (`mapped_column_not_in_file`, `required_column_unmapped`, `target_column_not_in_schema`); `TargetSchemaError` covers a missing model or table; the `Source::` errors cover an empty file, a blank or repeated header name, and a row that cannot be parsed.
 
-A mistake in the call itself (a mode that is not `:dry_run` or `:run`, a negative `offset:`) or in `pipeforge.yml` is a plain `ArgumentError` with the sentence in its message and no code.
+A mistake in the call itself (a mode that is not `:dry_run` or `:run`, a negative `offset:`, mapped columns with the wrong shape such as an entry that is not a Hash or a misspelled key) or in `pipeforge.yml` is a plain `ArgumentError` with the sentence in its message and no code.
 
 ## For reviewers
 
