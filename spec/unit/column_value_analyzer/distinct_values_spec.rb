@@ -83,6 +83,22 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer::DistinctValues do
       end
     end
 
+    context "when \"Active\" and then \"active\" are recorded" do
+      before do
+        distinct_values.record(value: "Active", colour: "red")
+        distinct_values.record(value: "active", colour: "red")
+      end
+
+      it "lists both, each with a count of 1" do
+        expect(distinct_values.values).to eq(
+          [
+            listed_value_class.new(value: "Active", count: 1, colour: "red"),
+            listed_value_class.new(value: "active", count: 1, colour: "red")
+          ]
+        )
+      end
+    end
+
     context "when a value is recorded again with another field" do
       before do
         distinct_values.record(value: "a", colour: "red")

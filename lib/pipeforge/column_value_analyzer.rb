@@ -63,8 +63,8 @@ module Pipeforge
       # @param resolved_mapped_columns [Hash{String => ResolvedMappedColumn}] target column => its source column, value mapping
       #   and column of the target table, which gives the type and the limits. Only these columns are measured.
       # @return [Result]
-      # @raise [Source::Error] the file has no header line, a header cell is blank or a name appears twice, or a row
-      #   cannot be parsed or has more cells than the header
+      #
+      # Errors raised by +source_reader+ and +target+ are not rescued.
       def call(source_reader:, resolved_mapped_columns:, target:)
         header_names = source_reader.headers
 

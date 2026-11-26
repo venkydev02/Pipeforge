@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-# The reader, ColumnSummaryBuilder.new, ColumnLimitsChecker.for and the target are doubles: the analyzer only
-# reads the header for the position of each source column, builds a summary builder for each resolved mapped column,
-# hands each builder the cell of its source column row after row and collects the summaries into a Result.
-# What a summary builder does with a cell belongs to its own spec.
 RSpec.describe Pipeforge::ColumnValueAnalyzer do
   let(:summary_builder_class) { Pipeforge::ColumnValueAnalyzer::ColumnSummaryBuilder }
   let(:column_summary_class) { Pipeforge::ColumnValueAnalyzer::ColumnSummary }
@@ -64,20 +60,6 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
       end
       allow(Pipeforge::ColumnLimitsChecker).to receive(:for) do |target_column:|
         limits_checkers.fetch(target_column.name)
-      end
-    end
-
-    describe "the header" do
-      context "when headers raises Pipeforge::Source::Error" do
-        let(:error_of_the_source) do
-          Pipeforge::Source::Error.single(code: :source_empty, message: "the source has no header row")
-        end
-
-        before { allow(source_reader).to receive(:headers).and_raise(error_of_the_source) }
-
-        it "raises it to the caller" do
-          expect { result }.to raise_error(error_of_the_source)
-        end
       end
     end
 
@@ -212,6 +194,145 @@ RSpec.describe Pipeforge::ColumnValueAnalyzer do
           expect(result.column_summaries).to eq({})
           expect(result.row_count).to eq(3)
         end
+      end
+    end
+  end
+
+  describe ".call with the real collaborators" do
+    subject(:result) do
+      described_class.call(
+        source_reader: source_reader, resolved_mapped_columns: resolved_mapped_columns, target: target
+      )
+    end
+
+    let(:source_reader) { csv_reader(source_text) }
+    let(:target) { Pipeforge::ActiveRecordTarget.new(target_model_name: model.name) }
+    let(:resolved_mapped_columns) do
+      resolve_mapped_columns_of(target_columns: target.schema.columns, mapped_columns: mapped_columns)
+    end
+    let(:limits_checkers_by_target_column_name) { {} }
+
+    before do
+      allow(Pipeforge::ColumnLimitsChecker).to receive(:for).and_wrap_original do |original, target_column:|
+        limits_checkers_by_target_column_name[target_column.name] = original.call(target_column: target_column)
+      end
+      allow(summary_builder_class).to receive(:new).and_call_original
+      allow(source_reader).to receive(:each_row).and_call_original
+    end
+
+    context "when there are two resolved mapped columns, one with a value_mapping, and the source has rows" do
+      let(:model) do
+        define_model(
+          name: "ModelWithEmailAndNickname",
+          columns: ->(table) {
+            table.string :email
+            table.string :nickname
+          }
+        )
+      end
+      # The header has the source columns in the other order, so a wrong position or cell shows.
+      let(:source_text) { "Name,Mail\nAda,ada@example.com\nBo,\nCy,cy@example.com\n" }
+      let(:mapped_columns) do
+        {
+          "email" => {source_column_name: "Mail"},
+          "nickname" => {source_column_name: "Name", value_mapping: {"Bo" => "Robert"}}
+        }
+      end
+      let(:expected_result) do
+        described_class::Result.new(
+          row_count: 3,
+          column_summaries: {
+            "email" => column_summary_class.new(
+              source_column_name: "Mail", position: 2, empty: 1, value_mapping: {},
+              distinct_values: described_class::DistinctValueLists.new(
+                compatible: [
+                  described_class::CompatibleValue.new(
+                    value: "ada@example.com", count: 1, mapping_applied: false, mapped_value: "ada@example.com",
+                    casted_to: "ada@example.com"
+                  ),
+                  described_class::CompatibleValue.new(
+                    value: "cy@example.com", count: 1, mapping_applied: false, mapped_value: "cy@example.com",
+                    casted_to: "cy@example.com"
+                  )
+                ],
+                incompatible: [], compatible_count: 2, incompatible_count: 0
+              )
+            ),
+            "nickname" => column_summary_class.new(
+              source_column_name: "Name", position: 1, empty: 0, value_mapping: {"Bo" => "Robert"},
+              distinct_values: described_class::DistinctValueLists.new(
+                compatible: [
+                  described_class::CompatibleValue.new(
+                    value: "Ada", count: 1, mapping_applied: false, mapped_value: "Ada", casted_to: "Ada"
+                  ),
+                  described_class::CompatibleValue.new(
+                    value: "Bo", count: 1, mapping_applied: true, mapped_value: "Robert", casted_to: "Robert"
+                  ),
+                  described_class::CompatibleValue.new(
+                    value: "Cy", count: 1, mapping_applied: false, mapped_value: "Cy", casted_to: "Cy"
+                  )
+                ],
+                incompatible: [], compatible_count: 3, incompatible_count: 0
+              )
+            )
+          }
+        )
+      end
+
+      it "asks ColumnLimitsChecker.for with each target_column" do
+        result
+
+        expect(Pipeforge::ColumnLimitsChecker).to have_received(:for)
+          .with(target_column: resolved_mapped_columns.fetch("email").target_column).once
+        expect(Pipeforge::ColumnLimitsChecker).to have_received(:for)
+          .with(target_column: resolved_mapped_columns.fetch("nickname").target_column).once
+      end
+
+      it "makes one summary builder for each column, with the checker ColumnLimitsChecker.for gave for that column" do
+        result
+
+        expect(summary_builder_class).to have_received(:new).once.with(
+          target_column_name: "email", source_column_name: "Mail", position: 2,
+          limits_checker: limits_checkers_by_target_column_name.fetch("email"), value_mapping: {}, target: target
+        )
+        expect(summary_builder_class).to have_received(:new).once.with(
+          target_column_name: "nickname", source_column_name: "Name", position: 1,
+          limits_checker: limits_checkers_by_target_column_name.fetch("nickname"),
+          value_mapping: {"Bo" => "Robert"}, target: target
+        )
+      end
+
+      it "reads the rows with each_row once" do
+        result
+
+        expect(source_reader).to have_received(:each_row).with(no_args).once
+      end
+
+      it "gives the whole Result" do
+        expect(result).to eq(expected_result)
+      end
+    end
+
+    context "when resolved_mapped_columns is empty and the source has rows" do
+      let(:model) { define_model(name: "ModelWithEmail", columns: ->(table) { table.string :email }) }
+      let(:source_text) { "Mail\nada@example.com\ncy@example.com\n" }
+      let(:mapped_columns) { {} }
+
+      it "reads the rows with each_row once" do
+        result
+
+        expect(source_reader).to have_received(:each_row).with(no_args).once
+      end
+
+      it "asks for no limits checker and makes no summary builder" do
+        result
+
+        expect(Pipeforge::ColumnLimitsChecker).not_to have_received(:for)
+        expect(summary_builder_class).not_to have_received(:new)
+      end
+
+      it "gives the row_count of the reader and no column_summaries" do
+        expect(result).to eq(described_class::Result.new(row_count: 2, column_summaries: {}))
       end
     end
   end
