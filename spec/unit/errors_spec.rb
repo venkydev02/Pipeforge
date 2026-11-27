@@ -373,7 +373,6 @@ RSpec.describe "Pipeforge::ArgumentMessages::MESSAGES" do
         value_not_whole_number_at_least_0
         value_not_whole_number_at_least_1
         value_not_whole_number_from_0_to_100
-        block_needed
         source_missing_methods
         error_not_from_error_catalog
         mapped_columns_not_a_hash
@@ -442,17 +441,6 @@ RSpec.describe "Pipeforge::ArgumentMessages::MESSAGES" do
       let(:name) { "threshold" }
       let(:value) { 101 }
       let(:expected_message) { "threshold must be a whole number from 0 to 100, got 101" }
-
-      include_examples "a message built from its facts"
-    end
-  end
-
-  describe ":block_needed" do
-    subject(:message) { messages.fetch(:block_needed).call(method_name: method_name) }
-
-    context "when given a method_name" do
-      let(:method_name) { "run" }
-      let(:expected_message) { "run needs a block" }
 
       include_examples "a message built from its facts"
     end

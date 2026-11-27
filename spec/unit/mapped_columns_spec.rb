@@ -10,10 +10,6 @@ RSpec.describe Pipeforge::MappedColumns do
   let(:email_column) { build_target_column(name: "email") }
   let(:age_column) { build_target_column(name: "age") }
 
-  def message(key, **arguments)
-    Pipeforge::ArgumentMessages::MESSAGES.fetch(key).call(**arguments)
-  end
-
   def entry_keys_text
     described_class::ENTRY_KEYS_TEXT
   end
@@ -39,7 +35,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError, alone" do
           expect { mapping }.to raise_error(
-            ArgumentError, message(:mapped_columns_not_a_hash, given_class: Array)
+            ArgumentError, argument_message(:mapped_columns_not_a_hash, given_class: Array)
           )
         end
       end
@@ -51,7 +47,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError naming the key and saying it must be a Symbol or a String" do
           expect { mapping }.to raise_error(
-            ArgumentError, message(:mapped_column_name_not_symbol_or_string, target_column_name: 1)
+            ArgumentError, argument_message(:mapped_column_name_not_symbol_or_string, target_column_name: 1)
           )
         end
       end
@@ -61,7 +57,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises ArgumentError naming the target column" do
           expect { mapping }.to raise_error(
-            ArgumentError, message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
+            ArgumentError, argument_message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
           )
         end
       end
@@ -73,8 +69,8 @@ RSpec.describe Pipeforge::MappedColumns do
           expect { mapping }.to raise_error(
             ArgumentError,
             [
-              message(:mapped_column_name_not_symbol_or_string, target_column_name: 1),
-              message(:mapped_column_entry_not_a_hash, target_column_name: 1, given_class: NilClass)
+              argument_message(:mapped_column_name_not_symbol_or_string, target_column_name: 1),
+              argument_message(:mapped_column_entry_not_a_hash, target_column_name: 1, given_class: NilClass)
             ].join("; ")
           )
         end
@@ -88,7 +84,7 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the key and the keys that are read" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            message(
+            argument_message(
               :mapped_column_unknown_key,
               target_column_name: "email", key: :value_mappping, entry_keys_text: entry_keys_text
             )
@@ -102,7 +98,7 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the key as it was written" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            message(
+            argument_message(
               :mapped_column_unknown_key,
               target_column_name: "email", key: "value_mappping", entry_keys_text: entry_keys_text
             )
@@ -116,7 +112,7 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the key as it was written" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            message(:mapped_column_unknown_key, target_column_name: "email", key: 2, entry_keys_text: entry_keys_text)
+            argument_message(:mapped_column_unknown_key, target_column_name: "email", key: 2, entry_keys_text: entry_keys_text)
           )
         end
       end
@@ -127,7 +123,7 @@ RSpec.describe Pipeforge::MappedColumns do
         it "raises ArgumentError naming the target column and the class" do
           expect { mapping }.to raise_error(
             ArgumentError,
-            message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
+            argument_message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
           )
         end
       end
@@ -141,11 +137,11 @@ RSpec.describe Pipeforge::MappedColumns do
           expect { mapping }.to raise_error(
             ArgumentError,
             [
-              message(
+              argument_message(
                 :mapped_column_unknown_key,
                 target_column_name: "email", key: :value_mappping, entry_keys_text: entry_keys_text
               ),
-              message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
+              argument_message(:value_mapping_not_a_hash, target_column_name: "email", given_class: Array)
             ].join("; ")
           )
         end
@@ -160,8 +156,8 @@ RSpec.describe Pipeforge::MappedColumns do
           expect { mapping }.to raise_error(
             ArgumentError,
             [
-              message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass),
-              message(:value_mapping_not_a_hash, target_column_name: "age", given_class: Array)
+              argument_message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass),
+              argument_message(:value_mapping_not_a_hash, target_column_name: "age", given_class: Array)
             ].join("; ")
           )
         end
@@ -172,7 +168,7 @@ RSpec.describe Pipeforge::MappedColumns do
 
         it "raises only the ArgumentError of the shape" do
           expect { mapping }.to raise_error(
-            ArgumentError, message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
+            ArgumentError, argument_message(:mapped_column_entry_not_a_hash, target_column_name: "email", given_class: NilClass)
           )
         end
       end

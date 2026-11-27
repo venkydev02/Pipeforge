@@ -172,9 +172,6 @@ module Pipeforge
       value_not_whole_number_from_0_to_100: ->(name:, value:) {
         "#{name} must be a whole number from 0 to 100, got #{value.inspect}"
       },
-      block_needed: ->(method_name:) {
-        "#{method_name} needs a block"
-      },
       source_missing_methods: ->(required_method_names:, missing_method_names:) {
         "the source must respond to #{required_method_names.join(", ")}; " \
           "it does not respond to #{missing_method_names.join(", ")}"
