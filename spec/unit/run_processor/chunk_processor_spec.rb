@@ -1277,3 +1277,55 @@ RSpec.describe Pipeforge::RunProcessor::FailedRow do
     end
   end
 end
+
+RSpec.describe Pipeforge::RunProcessor::ChunkResult do
+  describe "#to_h" do
+    subject(:chunk_result_hash) { chunk_result.to_h }
+
+    let(:chunk_result) do
+      described_class.new(
+        first_row_number: 5, last_row_number: 8, processed_rows_count: 4, valid_rows_count: 3,
+        failed_rows_count: failed_rows.size, failed_rows: failed_rows
+      )
+    end
+    let(:failed_row_with_a_schema_error) do
+      Pipeforge::RunProcessor::FailedRow.new(
+        row_number: 6, attributes: {"email" => nil},
+        errors: [
+          Pipeforge::ErrorCatalog::ERRORS.fetch(:value_missing).call(origin: :schema, target_column_name: "email", value: nil)
+        ]
+      )
+    end
+    let(:failed_row_with_no_attributes) do
+      Pipeforge::RunProcessor::FailedRow.new(row_number: 8, attributes: {}, errors: [])
+    end
+
+    context "when the chunk result has two failed rows" do
+      let(:failed_rows) { [failed_row_with_a_schema_error, failed_row_with_no_attributes] }
+      let(:expected_hash) do
+        {
+          first_row_number: 5, last_row_number: 8, processed_rows_count: 4, valid_rows_count: 3, failed_rows_count: 2,
+          failed_rows: [failed_row_with_a_schema_error.to_h, failed_row_with_no_attributes.to_h]
+        }
+      end
+
+      it "gives every field, with each failed row as its to_h gives it, in the same order" do
+        expect(chunk_result_hash).to eq(expected_hash)
+      end
+
+      it "leaves the failed rows of the chunk result as the FailedRow objects" do
+        chunk_result_hash
+
+        expect(chunk_result.failed_rows).to eq([failed_row_with_a_schema_error, failed_row_with_no_attributes])
+      end
+    end
+
+    context "when the chunk result has no failed row" do
+      let(:failed_rows) { [] }
+
+      it "gives an empty failed_rows" do
+        expect(chunk_result_hash[:failed_rows]).to eq([])
+      end
+    end
+  end
+end

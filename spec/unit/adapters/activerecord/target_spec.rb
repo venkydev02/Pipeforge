@@ -630,6 +630,22 @@ RSpec.describe Pipeforge::ActiveRecordTarget do
 
           expect(model_record).not_to have_received(:add_error)
         end
+
+        it "gives the model record a record that holds the Hash the text describes" do
+          built_record
+
+          expect(handed_record.settings).to eq("theme" => "dark")
+        end
+      end
+
+      context "and attributes are settings \"null\", the JSON null" do
+        let(:attributes) { {"settings" => "null"} }
+
+        it "gives the model record a record that holds nil for settings" do
+          built_record
+
+          expect(handed_record.settings).to be_nil
+        end
       end
 
       context "and attributes are settings nil" do
