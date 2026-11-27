@@ -18,10 +18,10 @@ RSpec.configure do |config|
     mocks.verify_doubled_constant_names = true
   end
 
-  # Every spec under spec/integration is of type :integration, so the helpers meant for them
-  # (config.include ..., type: :integration) reach them without a tag on each file.
-  config.define_derived_metadata(file_path: %r{/spec/integration/}) do |metadata|
-    metadata[:type] = :integration
+  # Every spec under spec/end_to_end is of type :end_to_end, so the helpers meant for them
+  # (config.include ..., type: :end_to_end) reach them without a tag on each file.
+  config.define_derived_metadata(file_path: %r{/spec/end_to_end/}) do |metadata|
+    metadata[:type] = :end_to_end
   end
 
   # Run `fit` / `fdescribe` / `focus: true` examples alone while working on one.

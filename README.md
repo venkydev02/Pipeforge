@@ -273,7 +273,7 @@ Each step hands over a value object, not a shared Hash: `HeaderAnalysis`, `Colum
 
 Every decision is in `docs/decisions/adrs.md` with its context, its consequences and what it replaced, including the ones that reversed an earlier choice. The target is named by its model class (ADR-26); matching uses names only (ADR-12); a dry run and a run report the same failures (ADR-17); the schema offers only columns that can be loaded (ADR-22); one repository folder with one gem per adapter (ADR-23).
 
-Every line and branch of `lib/` is run by an example, and `script/coverage.rb` reports the ones that are not. The specs are in two folders: `spec/unit` has one spec file for each class, with its collaborators replaced by doubles, and the header stage's specs were also checked by breaking the code on purpose to see that they fail; `spec/integration` runs real parts together, for example a consumer's program in a new process.
+Every line and branch of `lib/` is run by an example, and `script/coverage.rb` reports the ones that are not. The specs are in two folders: `spec/unit` has one spec file for each class, with its collaborators replaced by doubles, and the header stage's specs were also checked by breaking the code on purpose to see that they fail; `spec/end_to_end` runs the gem as your application would: a separate program that requires it, reads its own settings file, has its own tables and uses only the public methods.
 
 ## Developing
 
