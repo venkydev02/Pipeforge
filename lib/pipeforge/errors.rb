@@ -179,6 +179,12 @@ module Pipeforge
       error_not_from_error_catalog: ->(given_class:) {
         "add_error takes an error built by ErrorCatalog (ErrorCatalog::ERRORS.fetch(key).call(...)), not #{given_class}"
       },
+      adapter_not_loaded: ->(name:, reason:) {
+        "cannot load the #{name} adapter of Pipeforge. Missing a gem it depends on? #{reason}"
+      },
+      value_not_a_known_adapter: ->(name:, value:, known_names:) {
+        "#{name} must be one of #{known_names.join(", ")}, got #{value.inspect}"
+      },
       mapped_columns_not_a_hash: ->(given_class:) {
         "mapped_columns must be a Hash of target column name => entry, got #{given_class}"
       },

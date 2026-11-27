@@ -22,8 +22,8 @@ module Pipeforge
   #   )
   #   totals = engine.run(mode: :dry_run, mapped_columns: {email: {source_column_name: "Mail"}})
   #
-  # The engine reaches the target through a target class that an adapter gem installs when it is
-  # loaded ({.install_target}); the engine builds one target from it for its target model. The core
+  # The engine reaches the target through the target class of an adapter, installed ({.install_target})
+  # when the gem is required; the engine builds one target from it for its target model. The core
   # names no database library. A target answers +schema+ (the {TargetSchema} of the model's table),
   # +cast_value(column_name:, value:)+ (a {CastResult}: whether the model can cast a value and what it
   # would load, in Ruby and in JSON types), +build_record(attributes:)+ (the target's record of one
@@ -37,10 +37,9 @@ module Pipeforge
     RUN_MODES = %i[dry_run run].freeze
 
     class << self
-      # Gives the engine the target class of an adapter gem. The gem entry calls it once, when the
-      # gem is loaded. Every engine builds its own target from this class, for one target model, so
-      # the class keeps no state of its own. If two adapter gems are loaded, the last one installed
-      # is used.
+      # Gives the engine the target class of an adapter. The gem calls it once, when it is required, with the
+      # class of the adapter the settings name. Every engine builds its own target from this class, for one
+      # target model, so the class keeps no state of its own. The last class installed is used.
       #
       # @api private
       # @param target_class [Class] follows the target contract above and is built with

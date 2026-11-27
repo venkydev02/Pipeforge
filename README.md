@@ -232,24 +232,27 @@ The header and value stages never read existing rows of the target. Only the loa
 
 ## Install
 
-The gem is `pipeforge-activerecord`, the ActiveRecord adapter. It already contains the core (the part with no database library), so there is one gem to add. It needs Ruby 3.3 or later and ActiveRecord 8.0 or later (below 9); ActiveRecord does not require Rails. An adapter for another ORM would be another gem that carries the same core; none exists yet. Until the first release, take it from the repository:
+The gem is `pipeforge`. It holds the core (the part with no database library) and the adapters, of which ActiveRecord is the only one so far. It needs Ruby 3.3 or later. The ActiveRecord adapter needs ActiveRecord 8.0 or later (below 9) in your application; Pipeforge does not install it, and ActiveRecord does not require Rails. A Rails application already has it. Until the first release, take the gem from the repository:
 
 ```ruby
-gem "pipeforge-activerecord", github: "venkydev02/Pipeforge"
+gem "pipeforge", github: "venkydev02/Pipeforge"
 ```
 
-Then `require "pipeforge-activerecord"`. The first release targets PostgreSQL. Credentials stay in your application's own database configuration (ActiveRecord's, for this adapter); Pipeforge never asks for them.
+Bundler requires it for you; elsewhere, `require "pipeforge"`. The adapter is loaded at that point, so an application without ActiveRecord, or with a version out of range, stops there. The first release targets PostgreSQL. Credentials stay in your application's own database configuration (ActiveRecord's, for this adapter); Pipeforge never asks for them.
 
 ## Settings
 
 Behaviour that stays the same across migrations lives in `config/pipeforge.yml`, read once when the gem is required. The file is optional; every setting has a default, and a setting you leave out keeps it.
 
 ```yaml
-execution:
-  chunk_size: 2000          # rows read, checked and given to your block at a time
-recommendation:
-  inclusion_threshold: 55   # the lowest score (a whole number, 1 or more) a pair needs to count as a match
-  reorder_penalty: 10       # points taken off (0 to 100) when matched words come in a different order
+engine:
+  execution:
+    chunk_size: 2000          # rows read, checked and given to your block at a time
+  recommendation:
+    inclusion_threshold: 55   # the lowest score (a whole number, 1 or more) a pair needs to count as a match
+    reorder_penalty: 10       # points taken off (0 to 100) when matched words come in a different order
+  target:
+    adapter: activerecord     # the adapter that reaches your database; the only one so far
 ```
 
 A file in the wrong place is ignored. A file in the right place that is not valid YAML, or that holds an unknown setting or a value out of range, stops the application at boot with one `ArgumentError` that lists every mistake. Per-call input (the mapped columns, the mode, `offset:`, and a `chunk_size:` that overrides the setting) goes to the call, not to the file.

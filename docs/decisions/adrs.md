@@ -547,3 +547,21 @@
   * The raised data errors (the mapped columns, the source file, the target) have their own fields and are not in the catalog yet.
   * `README.md`, `protocols.md` and `target-access.md` are updated in the same change.
 * **Amendment (2026-11-21): the catalog gives an object, and only the catalog can make it.** *Supersedes "returns the error as a Hash" in item 1.* The functions of `ERRORS` return an `ErrorCatalog::ColumnError`, a Data object with the same seven fields (it is about a column, whose name is nil for the record as a whole). The class cannot be named or built outside the module (`private_constant` and a private `new`), and `ErrorCatalog.error?(candidate:)` is how another class asks whether an object is one. `add_error(error:)` takes only that object and raises an `ArgumentError` for anything else. A failed row holds its errors as these objects, and `FailedRow#to_h` gives them as Hashes with the seven keys, as the other results give their plain form with `to_h`. Every error that the model reports carries the model's own text as the fact `native_message`, as the errors of the database do. Ruby's reflection can get around the privacy, so it stops what ordinary code can do and no more.
+
+### ADR-35: One Gem With Its Adapters; a Registry Loads the One the Settings Name
+
+* **Status:** Accepted (2026-11-27). **Supersedes ADR-23** (each adapter is a gem that carries the core).
+* **Context:** A gem for each adapter means a gemspec and a release for each, and an application with two adapters installs the core twice. With one adapter and nothing released, changing the layout costs little. ActiveRecord ships its database adapters in one gem, keeps a registry of them and does not depend on their drivers.
+* **Decision:**
+  1. **One gem, `pipeforge`,** with the core and every adapter. One gemspec, one version. The library of an adapter is not a dependency of the gem.
+  2. **`AdapterRegistry::ADAPTERS` is a constant that holds, for each adapter name, its target class name and its file.** `resolve(name:)` requires the file and gives the class. There is no way to add an adapter at run time.
+  3. **The setting `engine.target.adapter` names the adapter** (default `activerecord`). A name the registry does not have is a mistake in the configuration.
+  4. **The adapter is resolved and installed when the gem is required,** after the settings are read, not at first use: there is nothing to wait for, so a missing library or a version out of range stops the application as it boots. A later `Configuration.load` does not change the installed adapter.
+  5. **The adapter's entry file states the version range of its library** (`gem "activerecord", ">= 8.0", "< 9"`), then requires it. A `LoadError` is raised again naming the adapter.
+  6. **An adapter's files touch its library only inside methods,** never while they are loaded, because in Rails the gem is required during boot.
+* **Consequences:**
+  * The core holds the adapter's name, class name and file path, as text. It still names no ActiveRecord class in code that runs.
+  * The core can no longer be loaded without the library of an adapter.
+  * The application lists the library itself; a Rails application has it.
+  * **Open:** whether the name `pipeforge` is free on RubyGems, and whether other gems may add adapters.
+

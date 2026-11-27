@@ -375,6 +375,8 @@ RSpec.describe "Pipeforge::ArgumentMessages::MESSAGES" do
         value_not_whole_number_from_0_to_100
         source_missing_methods
         error_not_from_error_catalog
+        adapter_not_loaded
+        value_not_a_known_adapter
         mapped_columns_not_a_hash
         mapped_column_name_not_symbol_or_string
         mapped_column_entry_not_a_hash
@@ -485,6 +487,35 @@ RSpec.describe "Pipeforge::ArgumentMessages::MESSAGES" do
       let(:expected_message) do
         "add_error takes an error built by ErrorCatalog (ErrorCatalog::ERRORS.fetch(key).call(...)), not String"
       end
+
+      include_examples "a message built from its facts"
+    end
+  end
+
+  describe ":adapter_not_loaded" do
+    subject(:message) { messages.fetch(:adapter_not_loaded).call(name: name, reason: reason) }
+
+    context "when given a name and a reason" do
+      let(:name) { "sequel" }
+      let(:reason) { "cannot load such file -- sequel" }
+      let(:expected_message) do
+        "cannot load the sequel adapter of Pipeforge. Missing a gem it depends on? cannot load such file -- sequel"
+      end
+
+      include_examples "a message built from its facts"
+    end
+  end
+
+  describe ":value_not_a_known_adapter" do
+    subject(:message) do
+      messages.fetch(:value_not_a_known_adapter).call(name: name, value: value, known_names: known_names)
+    end
+
+    context "when given a name, a value and two known_names" do
+      let(:name) { "target.adapter" }
+      let(:value) { "sequel" }
+      let(:known_names) { %w[activerecord mongoid] }
+      let(:expected_message) { 'target.adapter must be one of activerecord, mongoid, got "sequel"' }
 
       include_examples "a message built from its facts"
     end

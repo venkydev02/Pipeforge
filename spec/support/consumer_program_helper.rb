@@ -20,17 +20,14 @@ module ConsumerProgramHelper
 
   # @param files [Hash{String => String}] path relative to the project directory => content, for
   #   example "config/pipeforge.yml" => "engine:\n  execution:\n    chunk_size: 10\n"
-  # @param entry_file [String] the entry file of the adapter gem the program requires:
-  #   "pipeforge-activerecord" (the default), or that of a future adapter. A consumer never requires
-  #   the core alone: it comes inside the adapter gem.
   # @return [ConsumerProgramRun]
-  def run_consumer_program(files: {}, entry_file: "pipeforge-activerecord")
+  def run_consumer_program(files: {})
     Dir.mktmpdir do |project_directory|
       files.each do |path, content|
         write_project_file(project_directory: project_directory, path: path, content: content)
       end
 
-      write_project_file(project_directory: project_directory, path: "program.rb", content: "require #{entry_file.inspect}\n")
+      write_project_file(project_directory: project_directory, path: "program.rb", content: "require \"pipeforge\"\n")
 
       stdout, stderr, status = Open3.capture3(
         RbConfig.ruby, "-I", File.join(consumer_program_repository_root, "lib"), "program.rb",

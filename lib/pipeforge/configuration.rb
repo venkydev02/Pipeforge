@@ -13,7 +13,8 @@ module Pipeforge
   # keeps its default.
   #
   # Each value is checked when the file is read: a whole number of at least 1 for +chunk_size+
-  # and +inclusion_threshold+, and a whole number from 0 to 100 for +reorder_penalty+.
+  # and +inclusion_threshold+, a whole number from 0 to 100 for +reorder_penalty+, and the name of a known
+  # adapter for +adapter+. The adapter is installed when the gem is required, so a later load does not change it.
   #
   # A file that cannot be read at all (not valid YAML, not name: value entries) stops at once.
   # Every other mistake is collected, so one ArgumentError lists them all. When {.load} fails,
@@ -33,13 +34,17 @@ module Pipeforge
     # (0 to 100) are taken off when the matched words are in a different order.
     RecommendationSettings = Data.define(:inclusion_threshold, :reorder_penalty)
 
+    # The +target+ section: +adapter+ is the name of the adapter that reaches the target.
+    TargetSettings = Data.define(:adapter)
+
     # The sections the settings file may have.
-    SECTION_NAMES = %w[execution recommendation].freeze
+    SECTION_NAMES = %w[execution recommendation target].freeze
 
     # The value of each setting when the file does not give it.
     DEFAULTS = {
       execution: {chunk_size: 2000},
-      recommendation: {inclusion_threshold: 55, reorder_penalty: 10}
+      recommendation: {inclusion_threshold: 55, reorder_penalty: 10},
+      target: {adapter: "activerecord"}
     }.freeze
 
     class << self
@@ -48,6 +53,9 @@ module Pipeforge
 
       # @return [RecommendationSettings]
       attr_reader :recommendation
+
+      # @return [TargetSettings]
+      attr_reader :target
 
       # Reads {DEFAULT_PATH} and keeps its settings, replacing the ones kept before.
       #
@@ -60,10 +68,12 @@ module Pipeforge
         @sections_by_name = read_sections
         execution_settings = build_execution
         recommendation_settings = build_recommendation
+        target_settings = build_target
         raise_errors
 
         @execution = execution_settings
         @recommendation = recommendation_settings
+        @target = target_settings
       end
 
       private
@@ -129,6 +139,15 @@ module Pipeforge
         recommendation_settings
       end
 
+      def build_target
+        target_settings = build_section(
+          settings_class: TargetSettings, section_name: "target", defaults: DEFAULTS.fetch(:target)
+        )
+        require_known_adapter(setting_name: "target.adapter", value: target_settings.adapter)
+
+        target_settings
+      end
+
       # The section's settings from the file, over the defaults given. A section that is not
       # settings, or a setting that is not known, is recorded as an error and the rest is still
       # read, so the values that can be checked are checked.
@@ -168,6 +187,17 @@ module Pipeforge
 
         add_error(
           message: ArgumentMessages::MESSAGES.fetch(:value_not_whole_number_from_0_to_100).call(name: setting_name, value: value)
+        )
+      end
+
+      # The name of an adapter of the registry.
+      def require_known_adapter(setting_name:, value:)
+        return if AdapterRegistry.names.include?(value)
+
+        add_error(
+          message: ArgumentMessages::MESSAGES.fetch(:value_not_a_known_adapter).call(
+            name: setting_name, value: value, known_names: AdapterRegistry.names
+          )
         )
       end
 
