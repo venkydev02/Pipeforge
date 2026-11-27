@@ -255,10 +255,10 @@ RSpec.describe Pipeforge::Source::CsvReader do
       end
 
       context "when no block is given" do
-        let(:csv) { "A,B\n1,2\n" }
+        let(:csv) { "A,B\n1,2\n3,4\n" }
 
-        it "raises ArgumentError" do
-          expect { reader.each_chunk }.to raise_error(ArgumentError)
+        it "gives the number of data rows" do
+          expect(reader.each_chunk).to eq(2)
         end
       end
     end
@@ -615,10 +615,10 @@ RSpec.describe Pipeforge::Source::CsvReader do
   describe "#each_row" do
     describe "the block and the rows" do
       context "when no block is given" do
-        let(:csv) { "A,B\n1,2\n" }
+        let(:csv) { "A,B\n1,2\n3,4\n" }
 
-        it "raises ArgumentError" do
-          expect { reader.each_row }.to raise_error(ArgumentError)
+        it "gives the number of data rows" do
+          expect(reader.each_row).to eq(2)
         end
       end
 

@@ -64,7 +64,7 @@ module Pipeforge
       # Yields each chunk of the file, in order. The header is checked first, so a file with an
       # unusable header yields nothing. Each call reads the whole file again.
       #
-      # A block is required: this method exists to go through the real file.
+      # The block is optional: without one the rows are only read and counted.
       #
       # @param offset [Integer] the number of data rows to drop from the start of the file
       # @param chunk_size [Integer] the most rows in a chunk; the +execution.chunk_size+ setting when not given
@@ -73,12 +73,9 @@ module Pipeforge
       # @yieldparam rows [Array<Hash{String => String, nil}>] header => raw text, or nil when empty
       # @return [Integer] the number of data rows read, the dropped ones included. Blank lines and rows
       #   with only empty cells are not rows.
-      # @raise [ArgumentError] no block is given
       # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
       #   has more cells than the header (+source_row_too_long+)
       def each_chunk(offset: 0, chunk_size: Configuration.execution.chunk_size, columns: nil)
-        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:block_needed).call(method_name: "each_chunk") unless block_given?
-
         headers
         rows_read = 0
         # The gem's own line counters also count the header and the lines it drops, so the rows are counted here.
@@ -94,7 +91,7 @@ module Pipeforge
         rows.each_slice(chunk_size) do |chunk|
           # The columns are cut after the rows are read, so a row is dropped, kept and counted the same with or
           # without them, and a row with more cells than the header still stops the read.
-          yield only_columns(rows: chunk, columns: columns)
+          yield only_columns(rows: chunk, columns: columns) if block_given?
         end
 
         rows_read
@@ -104,22 +101,19 @@ module Pipeforge
       # an unusable header yields nothing. Blank rows and rows with only empty cells are not rows. Each call
       # reads the whole file again.
       #
-      # A block is required: this method exists to go through the real file.
+      # The block is optional: without one the rows are only read and counted.
       #
       # @yieldparam row [Hash{String => String, nil}] header => raw text, or nil when empty
       # @return [Integer] the number of data rows read
-      # @raise [ArgumentError] no block is given
       # @raise [Error] the header cannot be used (see +headers+), a row cannot be parsed (+malformed_row+) or
       #   has more cells than the header (+source_row_too_long+)
       def each_row
-        raise ArgumentError, ArgumentMessages::MESSAGES.fetch(:block_needed).call(method_name: "each_row") unless block_given?
-
         headers
         rows_read = 0
 
         SmarterCSV::Reader.new(@source_io, OPTIONS).each do |row|
           rows_read += 1
-          yield row
+          yield row if block_given?
         end
 
         rows_read
@@ -134,8 +128,9 @@ module Pipeforge
       # every one is listed in one error.
       #
       # @return [Array<String>]
-      # @raise [Error] there is no header line to read (+source_empty+), or a header cell is blank or a name
-      #   appears twice (+source_header_blank+, +source_header_duplicated+)
+      # @raise [Error] there is no header line to read (+source_empty+), a header cell is blank or a name
+      #   appears twice (+source_header_blank+, +source_header_duplicated+), or the first data row cannot be parsed
+      #   (+malformed_row+) or has more cells than the header (+source_row_too_long+)
       def headers
         if @headers.nil?
           header_names = read_header_names

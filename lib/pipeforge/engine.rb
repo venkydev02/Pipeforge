@@ -9,9 +9,10 @@ require_relative "mapped_columns"
 require_relative "run_processor"
 
 module Pipeforge
-  # The entry point of the engine. It is built for one source file and one target table, and runs
-  # the stages on them: header analysis ({#analyze_headers}) and column values analysis
-  # ({#analyze_column_values}).
+  # The entry point of the engine. It is built for one source file and one target model, and runs
+  # the stages on them: header analysis ({#analyze_headers}), column values analysis
+  # ({#analyze_column_values}) and the run ({#run}). The stages do not depend on each other. Building
+  # the engine reads the header of the source and the schema of the target, once.
   #
   # @example
   #   engine = Pipeforge::Engine.new(source_io: File.open("data/users.csv"), target_model_name: "User")
@@ -19,6 +20,7 @@ module Pipeforge
   #   value_analysis = engine.analyze_column_values(
   #     mapped_columns: {email: {source_column_name: "Mail", value_mapping: {"N/A" => nil}}}
   #   )
+  #   totals = engine.run(mode: :dry_run, mapped_columns: {email: {source_column_name: "Mail"}})
   #
   # The engine reaches the target through a target class that an adapter gem installs when it is
   # loaded ({.install_target}); the engine builds one target from it for its target model. The core
@@ -60,9 +62,15 @@ module Pipeforge
     #   for example +"User"+
     #
     # @raise [ArgumentError] the source is missing a method the engine needs (+read+, +rewind+ or +seek+)
+    # @raise [Source::Error] the source has no header row, or a header cell is blank or a name appears twice; or the
+    #   first data row, which is read with the header, cannot be parsed or has more cells than the header
+    # @raise [TargetSchemaError] the table or its model cannot be found
     def initialize(source_io:, target_model_name:)
       @source_reader = Source::CsvReader.new(source_io: Source::ReusableIO.new(io: source_io))
-      @target_model_name = target_model_name
+      # The header is read before the target is built, so an unusable file stops before the database is asked anything.
+      @source_headers = @source_reader.headers
+      @target = self.class.target_class.new(target_model_name: target_model_name)
+      @target_schema = @target.schema
     end
 
     # Matches the columns of the source to the columns of the target table by name only, and
@@ -71,12 +79,10 @@ module Pipeforge
     # are read, never any value or row.
     #
     # @return [HeaderAnalyzer::Result]
-    # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [Source::Error] the source has no header row, or a header cell is blank or a name appears twice
     def analyze_headers
       HeaderAnalyzer.call(
-        source_headers: @source_reader.headers,
-        target_schema: target_schema
+        source_headers: @source_headers,
+        target_schema: @target_schema
       )
     end
 
@@ -96,9 +102,7 @@ module Pipeforge
     #   value that maps to nil or a blank is loaded as empty. The caller's Hash is not changed (see
     #   {ResolvedMappedColumn}); the type and the limits of each target column come from the schema of the table.
     # @return [ColumnValueAnalyzer::Result]
-    # @raise [TargetSchemaError] the table or its model cannot be found
-    # @raise [Source::Error] the source has no header row, a header cell is blank or a name appears twice, or a row
-    #   cannot be parsed or has more cells than the header
+    # @raise [Source::Error] a row cannot be parsed, or has more cells than the header
     # @raise [ArgumentError] the mapped columns are not a Hash (alone), or an entry is not a Hash, an entry has a key
     #   other than +source_column_name+ and +value_mapping+, or a value mapping is not a Hash. Every such mistake is in
     #   the message.
@@ -108,7 +112,7 @@ module Pipeforge
       resolved_mapped_columns = resolved_mapped_columns_of(mapped_columns: mapped_columns)
 
       ColumnValueAnalyzer.call(
-        source_reader: @source_reader, resolved_mapped_columns: resolved_mapped_columns, target: target
+        source_reader: @source_reader, resolved_mapped_columns: resolved_mapped_columns, target: @target
       )
     end
 
@@ -122,16 +126,16 @@ module Pipeforge
     # the target database.
     #
     # @param mode [Symbol] +:dry_run+ or +:run+
-    # @param mapped_columns [Hash{String => Hash}] as in {#analyze_column_values}; the caller's Hash is not changed
+    # @param mapped_columns [Hash{Symbol, String => Hash}] as in {#analyze_column_values}; the caller's Hash is not
+    #   changed
     # @param offset [Integer] rows to skip before the first one processed; the +row_number+ of the last
     #   row of an earlier run continues that run
     # @param chunk_size [Integer] rows read, processed and yielded at a time; the +execution.chunk_size+
     #   setting when not given
-    # @yieldparam chunk_result [RunProcessor::ChunkResult] the outcome of one chunk
+    # @yieldparam chunk_result [RunProcessor::ChunkResult] the outcome of one chunk; the block is optional
     # @return [RunProcessor::RunResult]
     # @raise [ArgumentError] +mode+ is not +:dry_run+ or +:run+, +offset+ is not a whole number of at least 0,
     #   or +chunk_size+ is not a whole number of at least 1; every bad one is in the message
-    # @raise [TargetSchemaError] the table or its model cannot be found
     # @raise [InvalidMappedColumnsError] as in {#analyze_column_values}; so is the +ArgumentError+ for the shape of
     #   the mapped columns
     # @raise [Source::Error] a row cannot be parsed, or has more cells than the header
@@ -141,7 +145,7 @@ module Pipeforge
 
       RunProcessor.call(
         source_reader: @source_reader, resolved_mapped_columns: resolved_mapped_columns,
-        offset: offset, chunk_size: chunk_size, mode: mode, target: target, &on_chunk
+        offset: offset, chunk_size: chunk_size, mode: mode, target: @target, &on_chunk
       )
     end
 
@@ -178,29 +182,9 @@ module Pipeforge
     # @raise [InvalidMappedColumnsError] the mapped columns do not fit the file or the table; every mistake is listed
     def resolved_mapped_columns_of(mapped_columns:)
       MappedColumns.new(
-        mapped_columns: mapped_columns, source_header_names: @source_reader.headers,
-        target_columns: target_schema.columns
+        mapped_columns: mapped_columns, source_header_names: @source_headers,
+        target_columns: @target_schema.columns
       ).resolved_mapped_columns!
-    end
-
-    # The target of the target model, which reads its schema, casts texts and builds records.
-    def target
-      if @target.nil?
-        # Kept only once the target is built, so a failed build is tried again on the next call.
-        @target = self.class.target_class.new(target_model_name: @target_model_name)
-      end
-
-      @target
-    end
-
-    # The schema of the target table. The target is asked on the first call and the answer is
-    # kept. A failed read is not kept, so the next call asks again.
-    def target_schema
-      if @target_schema.nil?
-        @target_schema = target.schema
-      end
-
-      @target_schema
     end
   end
 end
