@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# The whole gem: the core and the ActiveRecord adapter, which installs itself.
-require "pipeforge-activerecord"
+# The whole gem: the core, with the adapter the default settings name.
+require "pipeforge"
 
 Dir[File.join(__dir__, "support", "**", "*.rb")].sort.each { |file| require file }
 

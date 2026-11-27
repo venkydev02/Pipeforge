@@ -68,7 +68,7 @@ flowchart TD
         Runtime["run (dry run or run)"]
     end
 
-    subgraph Adapter["Adapter gem: pipeforge-activerecord"]
+    subgraph Adapter["Adapter: activerecord (inside the gem)"]
         Schema["schema → TargetSchema (metadata only)"]
         Loader["Loader (transactions, insert_all!, save)"]
     end
@@ -125,7 +125,7 @@ sequenceDiagram
     participant Src as Source (CSV)
     participant Core as Core (pipeforge)
     participant Consumer as Consumer (review)
-    participant Adapter as Adapter (pipeforge-activerecord)
+    participant Adapter as Adapter (activerecord)
 
     Note over Core: Stage 1: names
     Core->>Src: Read header row only

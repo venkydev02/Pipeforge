@@ -13,20 +13,21 @@ RSpec.describe Pipeforge::Configuration do
       {execution: described_class.execution, recommendation: described_class.recommendation}
     end
 
+    let(:kept_target) do
+      loading
+      described_class.target
+    end
+
     def engine_file(engine)
       {"engine" => engine}.to_yaml
     end
 
-    def message(key, **arguments)
-      Pipeforge::ArgumentMessages::MESSAGES.fetch(key).call(**arguments)
-    end
-
     def file_message(*error_messages)
-      message(:settings_file_has_errors, path: described_class::DEFAULT_PATH, error_messages: error_messages)
+      argument_message(:settings_file_has_errors, path: described_class::DEFAULT_PATH, error_messages: error_messages)
     end
 
     def file_message_start(key, **arguments)
-      /\A#{Regexp.escape(described_class::DEFAULT_PATH)}: #{Regexp.escape(message(key, **arguments))}/
+      /\A#{Regexp.escape(described_class::DEFAULT_PATH)}: #{Regexp.escape(argument_message(key, **arguments))}/
     end
 
     context "when the settings file has every known setting" do
@@ -53,6 +54,10 @@ RSpec.describe Pipeforge::Configuration do
 
         it "keeps the defaults" do
           expect(kept_settings).to eq(defaults)
+        end
+
+        it "keeps target as a TargetSettings with the adapter activerecord" do
+          expect(kept_target).to eq(described_class::TargetSettings.new(adapter: "activerecord"))
         end
       end
 
@@ -169,13 +174,33 @@ RSpec.describe Pipeforge::Configuration do
       end
     end
 
+    describe "target.adapter" do
+      context "when target.adapter is activerecord" do
+        let(:settings_file) { engine_file("target" => {"adapter" => "activerecord"}) }
+
+        it "accepts it" do
+          expect(kept_target.adapter).to eq("activerecord")
+        end
+      end
+
+      context "when target.adapter is the name of a second adapter of the registry" do
+        let(:settings_file) { engine_file("target" => {"adapter" => "spec_adapter"}) }
+
+        before { add_spec_adapter }
+
+        it "keeps that name" do
+          expect(kept_target.adapter).to eq("spec_adapter")
+        end
+      end
+    end
+
     describe "a value that is refused" do
       context "when execution.chunk_size is text" do
         let(:settings_file) { engine_file("execution" => {"chunk_size" => "5"}) }
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: "5"))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: "5"))
           )
         end
       end
@@ -185,7 +210,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_at_least_1, name: "recommendation.inclusion_threshold", value: 0))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_at_least_1, name: "recommendation.inclusion_threshold", value: 0))
           )
         end
       end
@@ -195,7 +220,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101))
           )
         end
       end
@@ -205,7 +230,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: -1))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: -1))
           )
         end
       end
@@ -215,7 +240,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 5.5))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 5.5))
           )
         end
       end
@@ -225,7 +250,22 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the setting and the value" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: "10"))
+            ArgumentError, file_message(argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: "10"))
+          )
+        end
+      end
+    end
+
+    describe "an adapter that is refused" do
+      context "when target.adapter is sequel, which is not registered" do
+        let(:settings_file) { engine_file("target" => {"adapter" => "sequel"}) }
+
+        it "raises ArgumentError naming the setting, the value and the adapters" do
+          expect { loading }.to raise_error(
+            ArgumentError,
+            file_message(
+              argument_message(:value_not_a_known_adapter, name: "target.adapter", value: "sequel", known_names: ["activerecord"])
+            )
           )
         end
       end
@@ -253,7 +293,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying it must be made of name: value entries" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:settings_not_name_value_entries))
+            ArgumentError, file_message(argument_message(:settings_not_name_value_entries))
           )
         end
       end
@@ -263,7 +303,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying engine must hold sections" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:settings_engine_not_sections))
+            ArgumentError, file_message(argument_message(:settings_engine_not_sections))
           )
         end
       end
@@ -275,7 +315,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError naming the section" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:settings_section_unknown, section_name: "source"))
+            ArgumentError, file_message(argument_message(:settings_section_unknown, section_name: "source"))
           )
         end
       end
@@ -286,7 +326,18 @@ RSpec.describe Pipeforge::Configuration do
         it "raises ArgumentError naming the setting and the section" do
           expect { loading }.to raise_error(
             ArgumentError,
-            file_message(message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"))
+            file_message(argument_message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"))
+          )
+        end
+      end
+
+      context "when target has a setting it does not know" do
+        let(:settings_file) { engine_file("target" => {"database" => "contacts"}) }
+
+        it "raises ArgumentError naming the setting and the section" do
+          expect { loading }.to raise_error(
+            ArgumentError,
+            file_message(argument_message(:settings_setting_unknown, setting_name: :database, section_name: "target"))
           )
         end
       end
@@ -296,7 +347,7 @@ RSpec.describe Pipeforge::Configuration do
 
         it "raises ArgumentError saying the section must hold settings" do
           expect { loading }.to raise_error(
-            ArgumentError, file_message(message(:settings_section_not_settings, section_name: "execution"))
+            ArgumentError, file_message(argument_message(:settings_section_not_settings, section_name: "execution"))
           )
         end
       end
@@ -312,9 +363,9 @@ RSpec.describe Pipeforge::Configuration do
           expect { loading }.to raise_error(
             ArgumentError,
             file_message(
-              message(:settings_section_unknown, section_name: "source"),
-              message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"),
-              message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0)
+              argument_message(:settings_section_unknown, section_name: "source"),
+              argument_message(:settings_setting_unknown, setting_name: :batch_size, section_name: "execution"),
+              argument_message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0)
             )
           )
         end
@@ -329,8 +380,8 @@ RSpec.describe Pipeforge::Configuration do
           expect { loading }.to raise_error(
             ArgumentError,
             file_message(
-              message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0),
-              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+              argument_message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0),
+              argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
             )
           )
         end
@@ -345,8 +396,8 @@ RSpec.describe Pipeforge::Configuration do
           expect { loading }.to raise_error(
             ArgumentError,
             file_message(
-              message(:settings_section_not_settings, section_name: "execution"),
-              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+              argument_message(:settings_section_not_settings, section_name: "execution"),
+              argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
             )
           )
         end
@@ -361,8 +412,24 @@ RSpec.describe Pipeforge::Configuration do
           expect { loading }.to raise_error(
             ArgumentError,
             file_message(
-              message(:settings_setting_unknown, setting_name: :batch_size, section_name: "recommendation"),
-              message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+              argument_message(:settings_setting_unknown, setting_name: :batch_size, section_name: "recommendation"),
+              argument_message(:value_not_whole_number_from_0_to_100, name: "recommendation.reorder_penalty", value: 101)
+            )
+          )
+        end
+      end
+
+      context "when target.adapter and execution.chunk_size are both wrong" do
+        let(:settings_file) do
+          engine_file("target" => {"adapter" => "sequel"}, "execution" => {"chunk_size" => 0})
+        end
+
+        it "reports both, execution.chunk_size first" do
+          expect { loading }.to raise_error(
+            ArgumentError,
+            file_message(
+              argument_message(:value_not_whole_number_at_least_1, name: "execution.chunk_size", value: 0),
+              argument_message(:value_not_a_known_adapter, name: "target.adapter", value: "sequel", known_names: ["activerecord"])
             )
           )
         end
@@ -386,6 +453,20 @@ RSpec.describe Pipeforge::Configuration do
         end
       end
 
+      context "when a load fails after a good load whose target.adapter is spec_adapter" do
+        let(:settings_file) { engine_file("execution" => {"chunk_size" => 0}) }
+
+        before do
+          add_spec_adapter
+          use_settings(target: {adapter: "spec_adapter"})
+        end
+
+        it "keeps target of the good load" do
+          expect { loading }.to raise_error(ArgumentError)
+          expect(described_class.target).to eq(described_class::TargetSettings.new(adapter: "spec_adapter"))
+        end
+      end
+
       context "when a second good load has other values" do
         let(:settings_file) { engine_file("execution" => {"chunk_size" => 9}) }
 
@@ -402,7 +483,7 @@ RSpec.describe Pipeforge::Configuration do
       end
     end
 
-    describe "collaboration with Utilities" do
+    describe "collaboration" do
       before do
         allow(Pipeforge::Utilities).to receive(:positive_whole_number?).and_call_original
       end
@@ -424,6 +505,24 @@ RSpec.describe Pipeforge::Configuration do
             described_class::RecommendationSettings.new(inclusion_threshold: 7, reorder_penalty: 10)
           )
           expect(Pipeforge::Utilities).to have_received(:positive_whole_number?).with(value: 7)
+        end
+      end
+
+      context "when target.adapter is activerecord" do
+        let(:settings_file) { engine_file("target" => {"adapter" => "activerecord"}) }
+
+        before do
+          allow(Pipeforge::AdapterRegistry).to receive(:names).and_call_original
+          allow(Pipeforge::AdapterRegistry).to receive(:resolve).and_call_original
+          loading
+        end
+
+        it "asks AdapterRegistry.names" do
+          expect(Pipeforge::AdapterRegistry).to have_received(:names)
+        end
+
+        it "does not resolve the adapter" do
+          expect(Pipeforge::AdapterRegistry).not_to have_received(:resolve)
         end
       end
     end
