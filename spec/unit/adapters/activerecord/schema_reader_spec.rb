@@ -140,6 +140,27 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
         end
       end
 
+      context "when model is ModelWithIgnoredColumn, which ignores legacy_code" do
+        let(:model) do
+          define_model(
+            name: "ModelWithIgnoredColumn",
+            columns: lambda do |table|
+              table.string :email
+              table.string :legacy_code
+            end
+          ) do
+            self.ignored_columns = %w[legacy_code]
+          end
+        end
+
+        it "leaves out legacy_code and has email" do
+          names = schema.columns.map(&:name)
+
+          expect(names).to include("email")
+          expect(names).not_to include("legacy_code")
+        end
+      end
+
       context "when model is ModelWithArrayColumns, which has the array columns track_ids and tags" do
         let(:model) do
           define_model(
@@ -427,6 +448,22 @@ RSpec.describe Pipeforge::ActiveRecordSchemaReader do
             "from_company_id" => Pipeforge::ForeignKey.new(association_name: "from_company", parent_table_name: "companies"),
             "to_company_id" => Pipeforge::ForeignKey.new(association_name: "to_company", parent_table_name: "companies")
           )
+        end
+      end
+
+      context "when model is ModelWithPolymorphicParent, whose belongs_to :commentable is polymorphic" do
+        let(:model) { define_model_with_polymorphic_parent }
+        let(:polymorphic_columns_by_column_name) do
+          {
+            "commentable_id" => Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "id"),
+            "commentable_type" => Pipeforge::PolymorphicColumn.new(association_name: "commentable", role: "type")
+          }
+        end
+
+        it "has foreign_key nil on the id column and the type column" do
+          foreign_keys_by_column_name = schema.columns.to_h { |column| [column.name, column.foreign_key] }
+
+          expect(foreign_keys_by_column_name).to eq("commentable_id" => nil, "commentable_type" => nil)
         end
       end
 
