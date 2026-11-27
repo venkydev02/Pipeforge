@@ -139,7 +139,7 @@ The first layer matters most when the model says nothing. `User` has no validati
 
 ## Behind a screen
 
-Pipeforge never prompts and never draws anything; the review between the steps is yours. What it gives you is the data for that review. The header result and the value result convert to plain hashes with `to_h`, so they go straight to JSON. This is one match from `analyze_headers`, with the less useful metadata fields left out:
+Pipeforge never prompts and never draws anything; the review between the steps is yours. What it gives you is the data for that review. The header result, the value result, each chunk result of a run and the run's totals convert to plain hashes with `to_h`, so they go straight to JSON. This is one match from `analyze_headers`, with the less useful metadata fields left out:
 
 ```json
 {

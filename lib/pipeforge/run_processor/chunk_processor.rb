@@ -12,7 +12,23 @@ module Pipeforge
     ChunkResult = Data.define(
       :first_row_number, :last_row_number, :processed_rows_count, :valid_rows_count, :failed_rows_count,
       :failed_rows
-    )
+    ) do
+      # @return [Hash] the chunk result as plain JSON types, ready to store or send: its failed rows are the Hashes
+      #   {FailedRow#to_h} gives
+      def to_h
+        failed_row_hashes = []
+        failed_rows.each { |failed_row| failed_row_hashes << failed_row.to_h }
+
+        {
+          first_row_number: first_row_number,
+          last_row_number: last_row_number,
+          processed_rows_count: processed_rows_count,
+          valid_rows_count: valid_rows_count,
+          failed_rows_count: failed_rows_count,
+          failed_rows: failed_row_hashes
+        }
+      end
+    end
 
     # One row that failed, as the consumer sees it.
     #   row_number  absolute 1-based data record number (the header is not counted)
